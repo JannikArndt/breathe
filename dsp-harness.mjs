@@ -117,11 +117,25 @@ console.log('source: ' + htmlPath + '\n');
   check('tracks 6/min', Math.abs(slow - 6) < 0.6, `${slow.toFixed(2)}/min`);
 }
 
-// 3. inhale/exhale split, 2 s in / 5 s out
+// 3. inhale/exhale split, true 2 s in / 5 s out
+//
+// Expect a systematic skew, not the true values. The tau = 0.35 s smoothing
+// filter delays a sharp transition more than a gentle one, so on asymmetric
+// breathing the peak lands late and the trough early: reported inhale runs
+// ~0.4 s long and exhale ~0.4 s short at a 7 s cycle. This is measured, stable
+// at zero noise, and harmless for the app, which uses the ratio and the sum.
+// If these bounds start failing, the smoothing time constant has moved.
 {
   session({ bpm: 60 / 7, inShare: 2 / 7, secs: 90 });
-  check('inhale duration', Math.abs(Breath.inhaleDur - 2) < 0.6, `${Breath.inhaleDur.toFixed(2)} s`);
-  check('exhale duration', Math.abs(Breath.exhaleDur - 5) < 0.6, `${Breath.exhaleDur.toFixed(2)} s`);
+  const i = Breath.inhaleDur, o = Breath.exhaleDur;
+  check('inhale duration (true 2.0 s, skewed long)',
+    i > 2.1 && i < 2.9, `${i.toFixed(2)} s`);
+  check('exhale duration (true 5.0 s, skewed short)',
+    o > 4.1 && o < 4.9, `${o.toFixed(2)} s`);
+  check('skew cancels in the total', Math.abs(i + o - 7) < 0.35,
+    `${(i + o).toFixed(2)} s vs 7.00 s`);
+  check('exhale still reads clearly longer', o > i * 1.6,
+    `ratio ${(o / i).toFixed(2)}`);
 }
 
 // 4. sign heuristic: phone mounted either way up must give the same split

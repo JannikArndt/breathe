@@ -32,8 +32,9 @@ These are not preferences. Breaking one breaks the product.
 | One file, zero dependencies, no build step | It has to run from a file:// copy, a phone, a gist, or a Pages branch with nothing installed. Do not add npm, bundlers, TypeScript compilation, or CDN imports. |
 | No `localStorage` / `sessionStorage` / IndexedDB / cookies | Blocked in the Claude artifact sandbox, and the app is deliberately stateless — nothing about a user's breathing is retained. |
 | No network calls of any kind | Privacy claim in the UI copy ("Motion never leaves the phone") must stay literally true. No fonts, no analytics, no error reporting. |
-| `DeviceMotionEvent.requestPermission()` is called synchronously inside the Begin tap handler | It requires transient activation and a secure context; calling it from a timer, a promise chain that has already yielded, or page load throws `NotAllowedError`. Verified: https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent/requestPermission_static |
-| `AudioContext` is created in the same tap | iOS starts it suspended otherwise and the session runs silently. |
+| `DeviceMotionEvent.requestPermission()` is called synchronously inside the Begin tap handler, **with no `await` anywhere before it** | It requires transient activation and a secure context; without activation it rejects with `NotAllowedError` (https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent/requestPermission_static). WebKit is cruder than the spec — activation in practice only holds inside the same stack as the click handler, so one `await` before the call is enough to lose it (https://macwright.com/2022/07/11/activation). This shipped broken once: `await Audio.start()` sat above the call. See §9. |
+| `AudioContext` is created in the same tap | iOS starts it suspended otherwise and the session runs silently. `Audio.start()` is async but constructs the context before its first `await`, so calling it without awaiting is correct and deliberate. |
+| Every failure path produces a specific notice | A sensor failure that falls through silently reads to the user as "the app is broken". `requestSensor()` returns `ok` / `denied` / `unsupported` / `error:<Name>`; `begin()` must handle all four. |
 | No medical claims in UI copy | It says "A relaxation tool, not a medical device." Keep it that way. Feature copy may describe what the sound does, never what the body will do. |
 | System fonts only | No webfont fetch. The stacks in `:root` degrade sanely on Android and desktop. |
 
@@ -93,6 +94,11 @@ user-facing escape hatch — keep it.
 ±1.8. The 0.006 floor stops the gain running away when the phone is on a table. If you
 raise the τ, the app takes longer to adapt after the user shifts position.
 
+**Known bias.** The τ = 0.35 s smoothing filter delays sharp transitions more than gentle
+ones, so on asymmetric breathing the reported inhale runs ~0.4 s long and the exhale ~0.4 s
+short at a 7 s cycle. The total is unaffected. The harness asserts these bounds explicitly
+rather than the true values — if those checks start failing, the smoothing τ has moved.
+
 **Cycle detection.** Peak/trough with hysteresis `H = 0.34` on the normalised signal.
 Periods outside 2–25 s are discarded. Period EMA α = 0.45, bpm EMA α = 0.4. Lowering `H`
 makes it double-count on noisy signals; raising it drops shallow breaths.
@@ -141,7 +147,7 @@ node tools/dsp-harness.mjs                    # defaults to ./index.html
 node tools/dsp-harness.mjs path/to/other.html
 ```
 
-16 checks: axis recovery, rate tracking at 12 and 6/min, inhale/exhale split, sign
+18 checks: axis recovery, rate tracking at 12 and 6/min, inhale/exhale split, sign
 correction with the phone inverted, tolerance to 0.6 m/s² per minute of postural drift, the
 quality meter, the phase convention, and the pacer schedule. Exit code 0 on success.
 
@@ -212,7 +218,12 @@ the app already surfaces a notice after 5 s of silence.
 - Replace the peak/trough detector with FFT-based rate estimation without a plan for the
   latency: at 6 breaths/min a usable window is 60 s+, and the app needs a rate estimate
   within two breaths.
-- Move `requestPermission()` or `new AudioContext()` out of the tap handler.
+- Move `requestPermission()` or `new AudioContext()` out of the tap handler, or make the
+  click handler `async` and put an `await` above them. The handler is deliberately
+  synchronous: it starts both promises and hands them to `begin()`, which does the awaiting.
+  If you find yourself adding `await` to that handler, you are re-introducing a shipped bug.
+- Add a `catch` that returns a bare `'error'`. Carry the `err.name` through — the difference
+  between `NotAllowedError` and anything else is the whole diagnosis.
 - Tighten `H`, `τ`, or the AGC floor "to make it more responsive" without running the
   harness — those constants trade responsiveness against false cycles, and the harness is
   the only thing that measures the trade.

@@ -704,7 +704,8 @@ const UI = {
   demo:false, demoPhase:0,
   wakeLock:null, silentEl:null,
   rich:0.4, lastFrame:0, sensorSeen:false, calTimer:null,
-  trace:[], traceAcc:0
+  trace:[], traceAcc:0,
+  sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
 };
 
 const el = {
@@ -756,39 +757,59 @@ function onMotion(e){
   Breath.push(g.x, g.y, g.z, performance.now()/1000);
 }
 
-async function enableSensor(){
+/**
+ * MUST be called synchronously from inside the tap handler, and the returned
+ * promise must NOT be awaited before other gesture-gated calls are made.
+ *
+ * requestPermission() requires transient activation. WebKit's implementation is
+ * cruder than the spec: in practice you only have activation inside the same
+ * stack as the click handler, so a single `await` anywhere before this line
+ * loses it and the call rejects with NotAllowedError.
+ * Spec:     https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent/requestPermission_static
+ * WebKit:   https://macwright.com/2022/07/11/activation
+ *
+ * @returns Promise<'ok'|'denied'|'unsupported'|`error:${string}`>
+ */
+function requestSensor(){
   const DM = window.DeviceMotionEvent;
-  if(!DM) return 'unsupported';
-  // iOS 13+ gate: must be called from the tap itself, over HTTPS
-  if(typeof DM.requestPermission === 'function'){
-    let res;
-    try{ res = await DM.requestPermission(); }
-    catch(err){ return 'error'; }
-    if(res !== 'granted') return 'denied';
-  }
-  window.addEventListener('devicemotion', onMotion, {passive:true});
-  return 'ok';
+  if(!DM) return Promise.resolve('unsupported');
+
+  const attach = () => {
+    window.addEventListener('devicemotion', onMotion, {passive:true});
+    return 'ok';
+  };
+  // Android and older iOS: no gate at all
+  if(typeof DM.requestPermission !== 'function') return Promise.resolve(attach());
+
+  let p;
+  try{ p = DM.requestPermission(); }
+  catch(err){ return Promise.resolve('error:' + ((err && err.name) || 'unknown')); }
+  return Promise.resolve(p).then(
+    res => res === 'granted' ? attach() : 'denied',
+    err => 'error:' + ((err && err.name) || 'unknown')
+  );
 }
 
 /* ---------- session control ---------- */
-async function begin(){
-  el.main.disabled = true;
-  primeSilentChannel();
-
-  let audioOk = true;
-  try{ await Audio.start(); }
-  catch(e){ audioOk = false; }
-
-  const sensor = UI.demo ? 'ok' : await enableSensor();
+/** Both promises are started inside the tap handler; begin() only awaits them. */
+async function begin(sensorP, audioP){
+  const audioOk = await audioP;
+  const sensor  = await sensorP;
+  UI.sensorPerm = sensor;
 
   if(!audioOk){
-    notice('No sound', 'This browser blocked audio. Try Safari on iOS, or reload and tap Begin again.', 0);
+    notice('No sound', 'This browser blocked audio. Reload the page and tap Begin again.', 0);
     el.main.disabled = false; return;
   }
   if(sensor === 'denied'){
-    notice('Motion blocked', 'Safari → Settings → Motion & Orientation Access, then reload. Or switch on Demo mode under Adjust.', 0);
+    notice('Motion declined', 'Reload the page to be asked again. If no prompt appears, clear this site\u2019s data in Safari settings — a past "Don\u2019t Allow" is remembered per site.', 0);
   }else if(sensor === 'unsupported'){
     notice('No motion sensor', 'This device or browser has no motion sensor. Demo mode under Adjust will still show you how it sounds.', 0);
+  }else if(sensor.indexOf('error:') === 0){
+    const name = sensor.slice(6);
+    notice('Motion request failed', name === 'NotAllowedError'
+      ? 'Safari did not treat that as a direct tap. Reload the page and tap Begin as your first action, without scrolling first.'
+      : name + '. Reload and try again, or use Demo mode under Adjust.', 0);
   }
 
   requestWakeLock();
@@ -814,10 +835,13 @@ function startCalibration(){
   clearTimeout(UI.calTimer);
   UI.calTimer = setTimeout(finishCalibration, 20000);
 
-  // if nothing arrives, say so rather than sitting there silently
+  // if nothing arrives, say which of the two possible causes it is
   setTimeout(()=>{
-    if(UI.state==='calibrating' && !UI.sensorSeen && !UI.demo)
-      notice('No movement yet', 'No sensor data is arriving. If this page is inside another app, open it in Safari directly — motion access is blocked in embedded frames.', 0);
+    if(UI.state!=='calibrating' || UI.sensorSeen || UI.demo) return;
+    if(UI.sensorPerm === 'ok')
+      notice('Allowed, but silent', 'Motion access was granted and no readings are arriving. Lock and unlock the screen, or reload the page. If this is inside another app, open it in Safari directly.', 0);
+    else
+      notice('Motion not active', 'Permission state: ' + UI.sensorPerm + '. Reload and tap Begin first, or switch on Demo mode under Adjust.', 0);
   }, 5000);
 }
 
@@ -892,6 +916,16 @@ function loop(now){
   }else{
     // during calibration keep it quiet: just a hint of air
     Audio.frame(0.35, Breath.speed()*0.4, 0.15, 0);
+  }
+
+  // live sample rate in the header: 0 Hz means no events are arriving at all
+  UI.hzAcc += dt;
+  if(UI.hzAcc >= 1){
+    UI.hz = Math.round((Breath.samples - UI.lastSamples)/UI.hzAcc);
+    UI.lastSamples = Breath.samples; UI.hzAcc = 0;
+    el.statusTag.textContent =
+      (UI.state==='calibrating' ? 'learning' : 'listening') +
+      (UI.demo ? ' \u00b7 demo' : ' \u00b7 ' + UI.hz + ' Hz');
   }
 
   // rolling trace at ~10 Hz
@@ -976,7 +1010,16 @@ function drawTrace(){
 }
 
 /* ---------- wiring ---------- */
-el.main.addEventListener('click', ()=>{ UI.state==='idle' ? begin() : end(); });
+el.main.addEventListener('click', ()=>{
+  if(UI.state !== 'idle'){ end(); return; }
+  // ---- everything gated on user activation happens synchronously, right here.
+  // Do not await anything above these three lines. See requestSensor().
+  primeSilentChannel();
+  const sensorP = UI.demo ? Promise.resolve('ok') : requestSensor();
+  const audioP  = Audio.start().then(()=>true, ()=>false);
+  el.main.disabled = true;
+  begin(sensorP, audioP);
+});
 el.panelBtn.addEventListener('click', ()=>el.panel.classList.add('open'));
 $('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
 $('recalBtn').addEventListener('click', ()=>{

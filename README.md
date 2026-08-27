@@ -204,6 +204,11 @@ accumulating a record of how well you did.
   signal to find.
 - **Large postural shifts** blow out the baseline for roughly 30 s. The signal meter shows
   "noisy" while it recovers.
+- **The inhale/exhale split is skewed by about 0.4 s** at a 7 s cycle. The 0.35 s smoothing
+  filter delays a sharp transition more than a gentle one, so a fast inhale followed by a
+  slow exhale reads as slightly too long in and slightly too short out. Measured, stable,
+  and present even with zero noise. The total cycle length is unaffected, so rate and the
+  in-vs-out ratio are both fine; only the absolute seconds on the readout are biased.
 - **Sample rate.** iOS caps `devicemotion` at about 60 Hz. Ample for a 0.1 Hz signal, and the
   τ-form filters mean a different rate on another device does not shift the band.
 - **Not tested on Android.** The Chrome axis convention differs from Safari's, but since the
@@ -231,7 +236,7 @@ accumulating a record of how well you did.
 node tools/dsp-harness.mjs
 ```
 
-16 headless checks against the signal chain and pacer: axis recovery, rate tracking, the
+18 headless checks against the signal chain and pacer: axis recovery, rate tracking, the
 inhale/exhale split, sign correction with the phone inverted, drift rejection, the quality
 meter, the phase convention, and the pacer schedule. See `CLAUDE.md` for the invariants
 those checks protect and what not to change without re-running them.

@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#08171E">
+<title>Tide — breath instrument</title>
+<style>
+  :root{
+    --abyss:#08171E;
+    --deep:#0E2732;
+    --shelf:#163A46;
+    --glass:#7FBFAE;
+    --sand:#D9A85B;
+    --foam:#E3EDE9;
+    --mute:#7C9AA1;
+
+    --display:"Futura","Avenir Next Condensed","Jost","Century Gothic",system-ui,sans-serif;
+    --body:"Avenir Next","Avenir",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --data:ui-monospace,"SF Mono","Menlo","Roboto Mono",monospace;
+  }
+
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;overscroll-behavior:none}
+  body{
+    background:var(--abyss);
+    color:var(--foam);
+    font-family:var(--body);
+    -webkit-font-smoothing:antialiased;
+    touch-action:manipulation;
+    user-select:none;-webkit-user-select:none;
+  }
+
+  #app{
+    position:fixed;inset:0;
+    display:flex;flex-direction:column;
+    padding:calc(env(safe-area-inset-top) + 14px) 18px calc(env(safe-area-inset-bottom) + 14px);
+  }
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:baseline;justify-content:space-between;flex:0 0 auto}
+  .wordmark{
+    font-family:var(--display);
+    font-size:15px;letter-spacing:.42em;text-transform:uppercase;
+    color:var(--foam);margin:0;font-weight:500;
+  }
+  .depth{
+    font-family:var(--data);font-size:11px;letter-spacing:.14em;
+    color:var(--mute);text-transform:uppercase;
+  }
+
+  /* ---------- stage ---------- */
+  .stage{flex:1 1 auto;position:relative;display:flex;align-items:center;justify-content:center;min-height:0}
+  #dial{width:100%;height:100%;display:block}
+
+  .center-read{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;pointer-events:none;text-align:center;
+  }
+  .cue{
+    font-family:var(--display);
+    font-size:clamp(26px,9vw,40px);
+    letter-spacing:.30em;text-transform:uppercase;
+    margin:0 0 0 .30em;font-weight:500;
+    color:var(--foam);opacity:.92;
+    transition:opacity .5s ease;
+  }
+  .sub{
+    font-family:var(--data);font-size:12px;letter-spacing:.16em;
+    color:var(--mute);text-transform:uppercase;margin-top:12px;
+    max-width:15em;line-height:1.7;
+  }
+
+  /* ---------- trace ---------- */
+  .trace-wrap{flex:0 0 auto;margin-top:10px}
+  #trace{width:100%;height:74px;display:block;border-radius:2px}
+  .trace-key{
+    display:flex;gap:16px;margin-top:7px;
+    font-family:var(--data);font-size:10px;letter-spacing:.1em;color:var(--mute);text-transform:uppercase;
+  }
+  .key-dot{display:inline-block;width:7px;height:2px;vertical-align:middle;margin-right:6px}
+
+  /* ---------- readout strip ---------- */
+  .readout{
+    flex:0 0 auto;display:grid;grid-template-columns:repeat(3,1fr);
+    gap:1px;background:rgba(124,154,161,.18);
+    margin-top:14px;border-radius:3px;overflow:hidden;
+  }
+  .cell{background:var(--abyss);padding:10px 8px}
+  .cell .k{font-family:var(--data);font-size:9.5px;letter-spacing:.14em;color:var(--mute);text-transform:uppercase}
+  .cell .v{font-family:var(--data);font-size:21px;margin-top:3px;color:var(--foam);font-variant-numeric:tabular-nums}
+  .cell .v small{font-size:11px;color:var(--mute);margin-left:2px}
+
+  /* ---------- controls ---------- */
+  .bar{flex:0 0 auto;display:flex;gap:10px;margin-top:14px}
+  button{
+    font-family:var(--display);font-size:13px;letter-spacing:.26em;text-transform:uppercase;
+    border:1px solid rgba(227,237,233,.28);background:transparent;color:var(--foam);
+    padding:15px 12px;border-radius:2px;flex:1;cursor:pointer;font-weight:500;
+    transition:background .18s ease,border-color .18s ease,opacity .18s ease;
+  }
+  button:active{background:rgba(227,237,233,.10)}
+  button:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
+  button.primary{background:var(--glass);border-color:var(--glass);color:#062028}
+  button.ghost{flex:0 0 auto;padding:15px 16px;letter-spacing:.18em;font-size:12px;color:var(--mute);border-color:rgba(124,154,161,.3)}
+  button[disabled]{opacity:.35;pointer-events:none}
+
+  /* ---------- panel ---------- */
+  .panel{
+    position:fixed;left:0;right:0;bottom:0;z-index:20;
+    background:var(--deep);
+    border-top:1px solid rgba(124,154,161,.28);
+    padding:20px 18px calc(env(safe-area-inset-bottom) + 20px);
+    transform:translateY(101%);transition:transform .3s cubic-bezier(.3,.7,.3,1);
+    max-height:82vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  }
+  .panel.open{transform:translateY(0)}
+  .panel h2{
+    font-family:var(--display);font-size:12px;letter-spacing:.34em;text-transform:uppercase;
+    margin:0 0 18px;color:var(--mute);font-weight:500;
+  }
+  .row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid rgba(124,154,161,.14)}
+  .row:last-of-type{border-bottom:0}
+  .row label{font-size:14px;line-height:1.35}
+  .row .hint{display:block;font-family:var(--data);font-size:10.5px;letter-spacing:.06em;color:var(--mute);margin-top:4px;text-transform:uppercase}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:130px;height:2px;background:rgba(227,237,233,.25);border-radius:2px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--glass)}
+  select{
+    font-family:var(--data);font-size:13px;background:var(--shelf);color:var(--foam);
+    border:1px solid rgba(227,237,233,.2);border-radius:2px;padding:9px 10px;
+  }
+  .toggle{
+    width:52px;height:30px;border-radius:15px;background:rgba(227,237,233,.16);
+    position:relative;flex:0 0 auto;cursor:pointer;transition:background .2s ease;border:0;padding:0;
+  }
+  .toggle::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--foam);transition:transform .2s ease}
+  .toggle[aria-checked=true]{background:var(--glass)}
+  .toggle[aria-checked=true]::after{transform:translateX(22px)}
+
+  /* ---------- notice ---------- */
+  .notice{
+    position:fixed;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:30;
+    background:var(--shelf);border-left:2px solid var(--sand);
+    padding:14px 16px;border-radius:2px;font-size:13.5px;line-height:1.55;
+    box-shadow:0 12px 40px rgba(0,0,0,.5);
+    transform:translateY(140%);transition:transform .32s cubic-bezier(.3,.7,.3,1);
+  }
+  .notice.show{transform:translateY(0)}
+  .notice b{font-family:var(--display);letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:var(--sand);display:block;margin-bottom:5px;font-weight:500}
+
+  /* ---------- intro ---------- */
+  .intro{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:24px;padding:0 4px}
+  .intro h1{
+    font-family:var(--display);font-weight:500;
+    font-size:clamp(30px,10vw,46px);line-height:1.06;letter-spacing:.01em;margin:0;
+  }
+  .intro h1 em{font-style:normal;color:var(--glass)}
+  .steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:14px}
+  .steps li{display:flex;gap:14px;align-items:flex-start;font-size:14.5px;line-height:1.5;color:#C7D8D4}
+  .steps .n{
+    font-family:var(--data);font-size:10px;color:var(--sand);letter-spacing:.1em;
+    padding-top:3px;flex:0 0 22px;
+  }
+  .fineprint{font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute);line-height:1.75}
+
+  .hidden{display:none !important}
+
+  @media (prefers-reduced-motion:reduce){
+    *{transition-duration:.01ms !important}
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header>
+    <h1 class="wordmark">Tide</h1>
+    <span class="depth" id="statusTag">standby</span>
+  </header>
+
+  <div class="stage" id="stage">
+    <!-- intro -->
+    <div class="intro" id="intro">
+      <h1>Your belly<br>moves the <em>water</em>.</h1>
+      <ul class="steps">
+        <li><span class="n">01</span><span>Lie on your back. Phone face-up on your belly, just below the navel.</span></li>
+        <li><span class="n">02</span><span>Headphones, or turn the ringer switch off silent. Volume low to start.</span></li>
+        <li><span class="n">03</span><span>Twenty seconds of ordinary breathing while it learns your movement.</span></li>
+        <li><span class="n">04</span><span>Then close your eyes. The sound follows you, and slowly asks for less.</span></li>
+      </ul>
+      <p class="fineprint">Motion never leaves the phone. Nothing is recorded or sent anywhere.<br>A relaxation tool, not a medical device.</p>
+    </div>
+
+    <!-- live dial -->
+    <canvas id="dial" class="hidden"></canvas>
+    <div class="center-read hidden" id="centerRead">
+      <p class="cue" id="cue">Settle</p>
+      <p class="sub" id="sub">Breathe as you normally would</p>
+    </div>
+  </div>
+
+  <div class="trace-wrap hidden" id="traceWrap">
+    <canvas id="trace"></canvas>
+    <div class="trace-key">
+      <span><i class="key-dot" style="background:var(--glass)"></i>You</span>
+      <span><i class="key-dot" style="background:var(--sand)"></i>Pace</span>
+      <span style="margin-left:auto" id="qualityTxt">signal —</span>
+    </div>
+  </div>
+
+  <div class="readout hidden" id="readout">
+    <div class="cell"><div class="k">Your rate</div><div class="v" id="vRate">—<small>/min</small></div></div>
+    <div class="cell"><div class="k">In / out</div><div class="v" id="vRatio">—</div></div>
+    <div class="cell"><div class="k">Pace</div><div class="v" id="vPace">—<small>/min</small></div></div>
+  </div>
+
+  <div class="bar">
+    <button id="mainBtn" class="primary">Begin</button>
+    <button id="panelBtn" class="ghost" aria-label="Settings">Adjust</button>
+  </div>
+</div>
+
+<!-- settings -->
+<div class="panel" id="panel" role="dialog" aria-label="Settings">
+  <h2>Adjust</h2>
+
+  <div class="row">
+    <label for="vol">Volume</label>
+    <input type="range" id="vol" min="0" max="100" value="55">
+  </div>
+
+  <div class="row">
+    <label for="target">Where it leads you
+      <span class="hint">breaths per minute</span>
+    </label>
+    <select id="target">
+      <option value="7">7 — gentle</option>
+      <option value="6" selected>6 — classic</option>
+      <option value="5.5">5.5 — deep</option>
+      <option value="5">5 — very slow</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label for="ramp">How long it takes to get there
+      <span class="hint">minutes</span>
+    </label>
+    <select id="ramp">
+      <option value="2">2</option>
+      <option value="4" selected>4</option>
+      <option value="7">7</option>
+      <option value="12">12</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label>Guide tone
+      <span class="hint">a soft tone showing the pace</span>
+    </label>
+    <button class="toggle" id="tglPacer" role="switch" aria-checked="true" aria-label="Guide tone"></button>
+  </div>
+
+  <div class="row">
+    <label>Flip direction
+      <span class="hint">use if sound falls when you breathe in</span>
+    </label>
+    <button class="toggle" id="tglInvert" role="switch" aria-checked="false" aria-label="Flip direction"></button>
+  </div>
+
+  <div class="row">
+    <label>Demo mode
+      <span class="hint">simulated breathing, no sensor needed</span>
+    </label>
+    <button class="toggle" id="tglDemo" role="switch" aria-checked="false" aria-label="Demo mode"></button>
+  </div>
+
+  <div class="bar" style="margin-top:18px">
+    <button id="recalBtn">Recalibrate</button>
+    <button id="closePanel" class="ghost">Done</button>
+  </div>
+</div>
+
+<div class="notice" id="notice"><b id="noticeTitle">Note</b><span id="noticeBody"></span></div>
+
+<script>
+"use strict";
+(function(){
+
+/* ============================================================
+   0. small helpers
+   ============================================================ */
+const $  = id => document.getElementById(id);
+const clamp = (v,a,b) => v<a?a:(v>b?b:v);
+const lerp  = (a,b,t) => a+(b-a)*t;
+const TAU = Math.PI*2;
+
+/** one-pole low-pass, time-constant form so it is sample-rate independent */
+function lp(prev, x, dt, tau){
+  if(!isFinite(prev)) return x;
+  const a = dt/(tau+dt);
+  return prev + (x-prev)*a;
+}
+
+let noticeTimer = null;
+function notice(title, body, ms){
+  $('noticeTitle').textContent = title;
+  $('noticeBody').textContent  = body;
+  $('notice').classList.add('show');
+  clearTimeout(noticeTimer);
+  if(ms !== 0) noticeTimer = setTimeout(()=>$('notice').classList.remove('show'), ms||6000);
+}
+
+/* ============================================================
+   1. AUDIO ENGINE
+   ------------------------------------------------------------
+   Layers, all fed by the breath signal:
+     drone  low sustained tone; its low-pass opens as you inhale
+     air    band-passed noise driven by how fast the belly moves
+     pad    open sus2 chord that swells in only when breathing is slow
+     bell   soft low strike at the top of each exhale
+     guide  quiet sine following the target pace
+   ============================================================ */
+const Audio = {
+  ctx:null, ready:false, pacerOn:true, vol:0.55,
+
+  async start(){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) throw new Error('no-webaudio');
+    const ctx = this.ctx = new AC({latencyHint:'playback'});
+    if(ctx.state === 'suspended') await ctx.resume();
+
+    const t = ctx.currentTime;
+
+    // ---- output chain: bus -> (dry | reverb) -> master -> limiter -> out
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -10; limiter.knee.value = 18;
+    limiter.ratio.value = 12; limiter.attack.value = 0.008; limiter.release.value = 0.3;
+    limiter.connect(ctx.destination);
+
+    const master = this.master = ctx.createGain();
+    master.gain.value = 0;
+    master.connect(limiter);
+
+    const conv = ctx.createConvolver();
+    conv.buffer = this.impulse(ctx, 5.0, 2.4);
+    const wet = this.wet = ctx.createGain(); wet.gain.value = 0.34;
+    const dry = ctx.createGain();            dry.gain.value = 0.80;
+    const bus = this.bus = ctx.createGain(); bus.gain.value = 1;
+    bus.connect(dry); dry.connect(master);
+    bus.connect(conv); conv.connect(wet); wet.connect(master);
+
+    // ---- drone
+    const droneFilter = this.droneFilter = ctx.createBiquadFilter();
+    droneFilter.type='lowpass'; droneFilter.frequency.value=240; droneFilter.Q.value=0.8;
+    const droneGain = ctx.createGain(); droneGain.gain.value=0.30;
+    droneFilter.connect(droneGain); droneGain.connect(bus);
+
+    const mkOsc = (freq, type, gain, dest) => {
+      const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
+      const g = ctx.createGain(); g.gain.value = gain;
+      o.connect(g); g.connect(dest); o.start(t);
+      return {o,g};
+    };
+    const F = 110;                                  // A2
+    mkOsc(F/2,       'sine',     0.42, droneFilter); // sub
+    mkOsc(F,         'sine',     0.50, droneFilter);
+    const fifth = mkOsc(F*1.5,   'sine',     0.24, droneFilter);
+    mkOsc(F*2,       'triangle', 0.10, droneFilter);
+
+    // slow detune drift so the drone never sits perfectly still
+    const drift = ctx.createOscillator(); drift.type='sine'; drift.frequency.value=0.055;
+    const driftAmt = ctx.createGain(); driftAmt.gain.value=5;   // cents
+    drift.connect(driftAmt); driftAmt.connect(fifth.o.detune); drift.start(t);
+
+    // ---- air (breath noise)
+    const noiseFilter = this.noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type='bandpass'; noiseFilter.frequency.value=500; noiseFilter.Q.value=1.1;
+    const noiseGain = this.noiseGain = ctx.createGain(); noiseGain.gain.value=0;
+    noiseFilter.connect(noiseGain); noiseGain.connect(bus);
+    const nsrc = ctx.createBufferSource();
+    nsrc.buffer = this.pinkNoise(ctx, 6); nsrc.loop = true;
+    nsrc.connect(noiseFilter); nsrc.start(t);
+
+    // ---- pad (Asus2: A B E A)
+    const padFilter = ctx.createBiquadFilter();
+    padFilter.type='lowpass'; padFilter.frequency.value=1500; padFilter.Q.value=0.6;
+    const padGain = this.padGain = ctx.createGain(); padGain.gain.value=0;
+    padFilter.connect(padGain); padGain.connect(bus);
+    [[220,0.26,-4],[246.94,0.16,3],[329.63,0.20,-2],[440,0.10,5]].forEach(([f,g,d])=>{
+      const v = mkOsc(f,'sine',g,padFilter); v.o.detune.value = d;
+    });
+
+    // ---- guide tone
+    const pacerGain = this.pacerGain = ctx.createGain(); pacerGain.gain.value=0;
+    const pacerFilter = ctx.createBiquadFilter();
+    pacerFilter.type='lowpass'; pacerFilter.frequency.value=2200;
+    pacerGain.connect(pacerFilter); pacerFilter.connect(bus);
+    mkOsc(659.25,'sine',0.55,pacerGain);   // E5
+    mkOsc(987.77,'sine',0.10,pacerGain);   // B5, adds a little shimmer
+
+    this.ready = true;
+    this.fade(this.vol, 2.5);
+  },
+
+  /** procedural room: exponential-decay noise, slightly different per channel */
+  impulse(ctx, seconds, decay){
+    const rate = ctx.sampleRate, n = Math.floor(rate*seconds);
+    const buf = ctx.createBuffer(2, n, rate);
+    for(let c=0;c<2;c++){
+      const d = buf.getChannelData(c);
+      for(let i=0;i<n;i++){
+        const env = Math.pow(1 - i/n, decay);
+        d[i] = (Math.random()*2-1) * env * (i < rate*0.01 ? i/(rate*0.01) : 1);
+      }
+    }
+    return buf;
+  },
+
+  /** Voss-McCartney-ish pink noise; gentler on the ear than white */
+  pinkNoise(ctx, seconds){
+    const n = Math.floor(ctx.sampleRate*seconds);
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+    for(let i=0;i<n;i++){
+      const w = Math.random()*2-1;
+      b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759;
+      b2=0.96900*b2+w*0.1538520; b3=0.86650*b3+w*0.3104856;
+      b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
+      d[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11;
+      b6=w*0.115926;
+    }
+    return buf;
+  },
+
+  fade(to, secs){
+    if(!this.ready) return;
+    const t=this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setValueAtTime(this.master.gain.value, t);
+    this.master.gain.linearRampToValueAtTime(to, t+secs);
+  },
+
+  setVolume(v){ this.vol=v; if(this.ready) this.fade(v, 0.25); },
+
+  /**
+   * @param level    0..1  belly position (1 = fullest inhale)
+   * @param speed    0..1  how fast the belly is moving right now
+   * @param rich     0..1  reward: rises as breathing slows and locks to the pace
+   * @param pacerLvl 0..1  target envelope
+   */
+  frame(level, speed, rich, pacerLvl){
+    if(!this.ready) return;
+    const c=this.ctx, t=c.currentTime, st=(p,v,tc)=>p.setTargetAtTime(v,t,tc);
+    st(this.droneFilter.frequency, 165 + 640*level*(0.45+0.55*rich), 0.12);
+    st(this.noiseFilter.frequency, 300 + 1250*level, 0.09);
+    st(this.noiseGain.gain,        clamp(0.012 + 0.115*speed, 0, 0.14), 0.09);
+    st(this.padGain.gain,          0.15*level*rich, 0.18);
+    st(this.wet.gain,              0.26 + 0.34*rich, 0.5);
+    st(this.pacerGain.gain,        this.pacerOn ? 0.05*pacerLvl : 0, 0.10);
+  },
+
+  /** soft low strike at the moment the exhale begins */
+  bell(strength){
+    if(!this.ready || strength<=0.02) return;
+    const c=this.ctx, t=c.currentTime;
+    const g=c.createGain(); g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(0.16*strength, t+0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+5.0);
+    g.connect(this.bus);
+    [[146.83,1],[293.66,0.30],[440.0,0.08]].forEach(([f,a])=>{
+      const o=c.createOscillator(); o.type='sine'; o.frequency.value=f;
+      const og=c.createGain(); og.gain.value=a;
+      o.connect(og); og.connect(g); o.start(t); o.stop(t+5.2);
+    });
+  },
+
+  async stop(){
+    if(!this.ready) return;
+    this.fade(0, 1.4);
+    const ctx=this.ctx; this.ready=false;
+    setTimeout(()=>{ try{ ctx.close(); }catch(e){} }, 1700);
+    this.ctx=null;
+  }
+};
+
+/* ============================================================
+   2. BREATH TRACKER
+   ------------------------------------------------------------
+   accelerationIncludingGravity is a gravity vector. With the phone
+   resting on the belly, each breath tilts it by a fraction of a
+   degree, so the breath shows up as a slow wander of that vector.
+
+   raw --(lp 0.35s)--> smooth --(lp 12s)--> baseline
+   d = smooth - baseline                        // 0.013 .. 0.45 Hz
+   s = d . u                                    // u from calibration PCA
+   ============================================================ */
+const Breath = {
+  smooth:[NaN,NaN,NaN], base:[NaN,NaN,NaN],
+  u:[0,0,1], invert:false,
+  s:0, sPrev:0, dsLp:0, rms:0.02,
+  lastT:0, samples:0, lastEventT:0,
+  cal:[], calibrating:false, calStart:0, motionRms:0, breathRms:0,
+
+  // cycle bookkeeping
+  rising:true, extreme:0, extremeT:0,
+  lastPeakT:0, lastTroughT:0,
+  inhaleDur:0, exhaleDur:0, period:0, bpm:0, bpmSmooth:0,
+  omega:TAU/5, phase:0, onExhaleStart:null,
+
+  reset(){
+    this.smooth=[NaN,NaN,NaN]; this.base=[NaN,NaN,NaN];
+    this.s=0; this.sPrev=0; this.dsLp=0; this.rms=0.02;
+    this.samples=0; this.bpm=0; this.bpmSmooth=0; this.period=0;
+    this.inhaleDur=0; this.exhaleDur=0; this.lastPeakT=0; this.lastTroughT=0;
+    this.omega=TAU/5;
+  },
+
+  beginCalibration(now){
+    this.reset(); this.cal=[]; this.calibrating=true; this.calStart=now;
+  },
+
+  /** feed one sensor sample. t in seconds. */
+  push(x,y,z,t){
+    this.lastEventT = t;
+    let dt = this.lastT ? t-this.lastT : 1/60;
+    this.lastT = t;
+    if(!(dt>0) || dt>0.5) dt = 1/60;               // guard against stalls
+    this.samples++;
+
+    const v=[x,y,z];
+    for(let i=0;i<3;i++){
+      this.smooth[i] = lp(this.smooth[i], v[i], dt, 0.35);
+      this.base[i]   = lp(this.base[i], this.smooth[i], dt, 12.0);
+    }
+    // energy above the breath band = fidgeting; used for the signal meter
+    let hi=0; for(let i=0;i<3;i++){ const e=v[i]-this.smooth[i]; hi+=e*e; }
+    this.motionRms = lp(this.motionRms, Math.sqrt(hi), dt, 1.5);
+
+    const d = [this.smooth[0]-this.base[0], this.smooth[1]-this.base[1], this.smooth[2]-this.base[2]];
+    if(!isFinite(d[0])) return;
+
+    if(this.calibrating){
+      this.cal.push(d);
+      if(this.cal.length>4000) this.cal.shift();
+      let m=0; for(let i=0;i<3;i++) m+=d[i]*d[i];
+      this.breathRms = lp(this.breathRms, Math.sqrt(m), dt, 2.0);
+      return;
+    }
+
+    // ---- project onto the breath axis
+    let s = d[0]*this.u[0] + d[1]*this.u[1] + d[2]*this.u[2];
+    if(this.invert) s = -s;
+    this.breathRms = lp(this.breathRms, Math.abs(s), dt, 2.0);
+
+    // ---- automatic gain: normalise to roughly +/-1
+    this.rms = lp(this.rms, s*s, dt, 14.0);
+    const scale = Math.max(Math.sqrt(this.rms)*1.55, 0.006);
+    const sN = clamp(s/scale, -1.8, 1.8);
+
+    const ds = (sN - this.sPrev)/dt;
+    this.sPrev = sN;
+    this.dsLp = lp(this.dsLp, ds, dt, 0.28);
+    this.s = sN;
+
+    this.detectCycle(sN, t);
+
+    // ---- instantaneous phase from the signal and its derivative
+    // s = sin(wt) => -ds/w = -cos(wt); atan2 gives 0 at the top of the inhale
+    const w = clamp(this.omega, 0.25, 2.2);
+    this.phase = Math.atan2(-this.dsLp/w, sN);
+  },
+
+  detectCycle(sN, t){
+    const H = 0.34;                                   // hysteresis
+    if(this.rising){
+      if(sN > this.extreme){ this.extreme=sN; this.extremeT=t; }
+      else if(sN < this.extreme - H){                 // that was a peak
+        this.lastPeakT = this.extremeT;
+        if(this.lastTroughT) this.inhaleDur = this.lastPeakT - this.lastTroughT;
+        this.rising=false; this.extreme=sN; this.extremeT=t;
+        if(this.onExhaleStart) this.onExhaleStart(this.inhaleDur, this.exhaleDur);
+      }
+    }else{
+      if(sN < this.extreme){ this.extreme=sN; this.extremeT=t; }
+      else if(sN > this.extreme + H){                 // that was a trough
+        const prevTrough = this.lastTroughT;
+        this.lastTroughT = this.extremeT;
+        if(this.lastPeakT) this.exhaleDur = this.lastTroughT - this.lastPeakT;
+        if(prevTrough){
+          const p = this.lastTroughT - prevTrough;
+          if(p>2 && p<25){
+            this.period = this.period ? lerp(this.period, p, 0.45) : p;
+            this.bpm = 60/this.period;
+            this.bpmSmooth = this.bpmSmooth ? lerp(this.bpmSmooth, this.bpm, 0.4) : this.bpm;
+            this.omega = TAU/this.period;
+          }
+        }
+        this.rising=true; this.extreme=sN; this.extremeT=t;
+      }
+    }
+  },
+
+  /** dominant axis of belly movement: power iteration on the 3x3 covariance */
+  finishCalibration(){
+    this.calibrating = false;
+    const n = this.cal.length;
+    if(n < 60) return false;
+    const C=[[0,0,0],[0,0,0],[0,0,0]];
+    for(const d of this.cal)
+      for(let i=0;i<3;i++) for(let j=0;j<3;j++) C[i][j]+=d[i]*d[j];
+    for(let i=0;i<3;i++) for(let j=0;j<3;j++) C[i][j]/=n;
+
+    let v=[1,1,1];
+    for(let k=0;k<60;k++){
+      const w=[
+        C[0][0]*v[0]+C[0][1]*v[1]+C[0][2]*v[2],
+        C[1][0]*v[0]+C[1][1]*v[1]+C[1][2]*v[2],
+        C[2][0]*v[0]+C[2][1]*v[1]+C[2][2]*v[2]
+      ];
+      const m=Math.hypot(w[0],w[1],w[2]);
+      if(m<1e-12) break;
+      v=[w[0]/m,w[1]/m,w[2]/m];
+    }
+    this.u=v;
+
+    // Sign is ambiguous. Relaxed breathing usually has a longer exhale than
+    // inhale, so orient the axis to make the slower half the falling one.
+    let up=0, down=0;
+    const proj = this.cal.map(d=>d[0]*v[0]+d[1]*v[1]+d[2]*v[2]);
+    for(let i=1;i<proj.length;i++){ (proj[i]>proj[i-1]) ? up++ : down++; }
+    if(up > down*1.12) this.u = [-v[0],-v[1],-v[2]];
+
+    let amp=0; for(const p of proj) amp+=p*p;
+    this.calAmplitude = Math.sqrt(amp/proj.length);
+    this.rms = this.calAmplitude*this.calAmplitude;
+    this.cal = [];
+    return true;
+  },
+
+  /** 0 = fully exhaled, 1 = fully inhaled */
+  level(){ return clamp((this.s+1)/2, 0, 1); },
+  /** 0..1 how quickly the belly is moving */
+  speed(){ return clamp(Math.abs(this.dsLp)/2.4, 0, 1); },
+  quality(){
+    const b=this.breathRms, m=this.motionRms;
+    if(b<=0) return 0;
+    return clamp(b/(b + m*2.2 + 0.004), 0, 1);
+  }
+};
+
+/* ============================================================
+   3. PACER — a slowly decelerating target, softly phase-locked
+   ============================================================ */
+const Pacer = {
+  t:0, startBpm:12, targetBpm:6, rampSec:240, elapsed:0, bpm:12, inShare:0.5, level:0, phase:0,
+
+  begin(measuredBpm, targetBpm, rampMin){
+    this.startBpm  = clamp(measuredBpm || 12, 7, 18);
+    this.targetBpm = targetBpm;
+    this.rampSec   = rampMin*60;
+    this.elapsed   = 0; this.t = 0; this.bpm = this.startBpm;
+  },
+
+  step(dt, userPhase, locked){
+    this.elapsed += dt;
+    const k = clamp(this.elapsed/this.rampSec, 0, 1);
+    const ease = k*k*(3-2*k);
+    this.bpm     = lerp(this.startBpm, this.targetBpm, ease);
+    this.inShare = lerp(0.5, 0.42, ease);            // exhale grows longer
+
+    const period = 60/this.bpm;
+    // gentle phase coupling so the guide walks with you rather than over you
+    let rate = 1;
+    if(locked){
+      const diff = Math.atan2(Math.sin(userPhase-this.phase), Math.cos(userPhase-this.phase));
+      rate = 1 + 0.14*Math.sin(diff);
+    }
+    this.t = (this.t + dt*rate/period) % 1;
+
+    // t: 0 = start of inhale
+    const Ti = this.inShare;
+    let u, rising;
+    if(this.t < Ti){ u = this.t/Ti;            rising = true; }
+    else           { u = (this.t-Ti)/(1-Ti);   rising = false; }
+    this.level = rising ? (1-Math.cos(Math.PI*u))/2 : (1+Math.cos(Math.PI*u))/2;
+
+    // match Breath.phase convention: 0 at the top of the inhale
+    this.phase = rising ? (u-1)*Math.PI : u*Math.PI;
+    return this.level;
+  },
+
+  inSec(){ return 60/this.bpm*this.inShare; },
+  outSec(){ return 60/this.bpm*(1-this.inShare); }
+};
+
+/* ============================================================
+   4. APP
+   ============================================================ */
+const UI = {
+  state:'idle',                       // idle | calibrating | running
+  demo:false, demoPhase:0,
+  wakeLock:null, silentEl:null,
+  rich:0.4, lastFrame:0, sensorSeen:false, calTimer:null,
+  trace:[], traceAcc:0
+};
+
+const el = {
+  main:$('mainBtn'), panelBtn:$('panelBtn'), panel:$('panel'), intro:$('intro'),
+  dial:$('dial'), centerRead:$('centerRead'), cue:$('cue'), sub:$('sub'),
+  traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
+  vRate:$('vRate'), vRatio:$('vRatio'), vPace:$('vPace'),
+  statusTag:$('statusTag'), qualityTxt:$('qualityTxt')
+};
+
+/* ---------- iOS: keep audio out of the "ringer" bucket ----------
+   Community-reported behaviour, not a documented API: starting a silent
+   <audio> element alongside Web Audio makes iOS treat the page as media
+   playback, so the hardware silent switch no longer mutes it. Harmless
+   elsewhere. If it does not work on your build, use headphones. */
+function primeSilentChannel(){
+  try{
+    const a = document.createElement('audio');
+    a.setAttribute('playsinline','');
+    a.loop = true; a.volume = 0.001;
+    // 0.2 s of digital silence, WAV
+    a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+    const p = a.play();
+    if(p && p.catch) p.catch(()=>{});
+    UI.silentEl = a;
+  }catch(e){}
+}
+
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator){
+      UI.wakeLock = await navigator.wakeLock.request('screen');
+      UI.wakeLock.addEventListener('release', ()=>{ UI.wakeLock=null; });
+    }
+  }catch(e){ /* not supported or denied — the session still runs */ }
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible'){
+    if(UI.state!=='idle' && !UI.wakeLock) requestWakeLock();
+    if(Audio.ctx && Audio.ctx.state==='suspended') Audio.ctx.resume();
+  }
+});
+
+/* ---------- sensor ---------- */
+function onMotion(e){
+  const g = e.accelerationIncludingGravity || e.acceleration;
+  if(!g || g.x===null || g.x===undefined) return;
+  UI.sensorSeen = true;
+  Breath.push(g.x, g.y, g.z, performance.now()/1000);
+}
+
+async function enableSensor(){
+  const DM = window.DeviceMotionEvent;
+  if(!DM) return 'unsupported';
+  // iOS 13+ gate: must be called from the tap itself, over HTTPS
+  if(typeof DM.requestPermission === 'function'){
+    let res;
+    try{ res = await DM.requestPermission(); }
+    catch(err){ return 'error'; }
+    if(res !== 'granted') return 'denied';
+  }
+  window.addEventListener('devicemotion', onMotion, {passive:true});
+  return 'ok';
+}
+
+/* ---------- session control ---------- */
+async function begin(){
+  el.main.disabled = true;
+  primeSilentChannel();
+
+  let audioOk = true;
+  try{ await Audio.start(); }
+  catch(e){ audioOk = false; }
+
+  const sensor = UI.demo ? 'ok' : await enableSensor();
+
+  if(!audioOk){
+    notice('No sound', 'This browser blocked audio. Try Safari on iOS, or reload and tap Begin again.', 0);
+    el.main.disabled = false; return;
+  }
+  if(sensor === 'denied'){
+    notice('Motion blocked', 'Safari → Settings → Motion & Orientation Access, then reload. Or switch on Demo mode under Adjust.', 0);
+  }else if(sensor === 'unsupported'){
+    notice('No motion sensor', 'This device or browser has no motion sensor. Demo mode under Adjust will still show you how it sounds.', 0);
+  }
+
+  requestWakeLock();
+  Audio.setVolume(parseInt($('vol').value,10)/100);
+
+  el.intro.classList.add('hidden');
+  [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.remove('hidden'));
+  el.main.textContent = 'End'; el.main.classList.remove('primary'); el.main.disabled = false;
+
+  startCalibration();
+  UI.lastFrame = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function startCalibration(){
+  UI.state = 'calibrating';
+  UI.trace = [];
+  Breath.invert = $('tglInvert').getAttribute('aria-checked')==='true';
+  Breath.beginCalibration(performance.now()/1000);
+  el.statusTag.textContent = 'learning';
+  el.cue.textContent = 'Settle';
+  el.sub.textContent = 'Breathe as you normally would — 20 seconds';
+  clearTimeout(UI.calTimer);
+  UI.calTimer = setTimeout(finishCalibration, 20000);
+
+  // if nothing arrives, say so rather than sitting there silently
+  setTimeout(()=>{
+    if(UI.state==='calibrating' && !UI.sensorSeen && !UI.demo)
+      notice('No movement yet', 'No sensor data is arriving. If this page is inside another app, open it in Safari directly — motion access is blocked in embedded frames.', 0);
+  }, 5000);
+}
+
+function finishCalibration(){
+  if(UI.state!=='calibrating') return;
+  const ok = UI.demo ? true : Breath.finishCalibration();
+  if(!ok){
+    notice('Too little movement', 'The phone did not pick up your breathing. Move it lower on your belly, lie flatter, and tap Recalibrate.', 0);
+    Breath.calibrating = false;
+  }
+  UI.state = 'running';
+  el.statusTag.textContent = 'listening';
+
+  const measured = Breath.bpmSmooth || (UI.demo ? 13 : 12);
+  Pacer.begin(measured, parseFloat($('target').value), parseFloat($('ramp').value));
+
+  el.cue.textContent = 'Breathe';
+  el.sub.textContent = 'Eyes closed. Let the sound do the counting.';
+  Breath.onExhaleStart = (inD)=>{
+    const slow = clamp((inD-2.0)/3.0, 0, 1);
+    Audio.bell(0.35 + 0.65*slow*UI.rich);
+  };
+}
+
+async function end(){
+  UI.state='idle';
+  clearTimeout(UI.calTimer);
+  window.removeEventListener('devicemotion', onMotion);
+  Breath.onExhaleStart = null;
+  await Audio.stop();
+  if(UI.silentEl){ try{ UI.silentEl.pause(); }catch(e){} UI.silentEl=null; }
+  if(UI.wakeLock){ try{ UI.wakeLock.release(); }catch(e){} UI.wakeLock=null; }
+  el.intro.classList.remove('hidden');
+  [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.add('hidden'));
+  el.main.textContent='Begin'; el.main.classList.add('primary');
+  el.statusTag.textContent='standby';
+  UI.sensorSeen=false;
+}
+
+/* ---------- main loop ---------- */
+function loop(now){
+  if(UI.state==='idle') return;
+  const dt = clamp((now-UI.lastFrame)/1000, 0.001, 0.1);
+  UI.lastFrame = now;
+
+  if(UI.demo){
+    // 13 -> target bpm, so demo mode behaves like a cooperative breather
+    const p = 60/lerp(13, Pacer.bpm||13, 0.5);
+    UI.demoPhase = (UI.demoPhase + dt/p) % 1;
+    const s = Math.sin(UI.demoPhase*TAU - Math.PI/2);
+    Breath.push(s*0.05, 0.2, 9.79 + s*0.05, now/1000);
+    if(UI.state==='calibrating' && Breath.cal.length>200) Breath.u=[0.7,0,0.71];
+  }
+
+  let level=0.5, speed=0, pacerLvl=0;
+
+  if(UI.state==='running'){
+    level = Breath.level();
+    speed = Breath.speed();
+    const locked = Breath.quality()>0.35 && Breath.bpmSmooth>0;
+    pacerLvl = Pacer.step(dt, Breath.phase, locked);
+
+    // reward: slower breathing + staying with the guide opens the sound up
+    const slow = clamp((14 - (Breath.bpmSmooth||14))/8, 0, 1);
+    const diff = Math.atan2(Math.sin(Breath.phase-Pacer.phase), Math.cos(Breath.phase-Pacer.phase));
+    const sync = (1+Math.cos(diff))/2;
+    const targetRich = clamp(0.28 + 0.72*(0.6*slow + 0.4*sync), 0, 1);
+    UI.rich = lp(UI.rich, targetRich, dt, 3.0);
+
+    Audio.frame(level, speed, UI.rich, pacerLvl);
+    updateReadout();
+  }else{
+    // during calibration keep it quiet: just a hint of air
+    Audio.frame(0.35, Breath.speed()*0.4, 0.15, 0);
+  }
+
+  // rolling trace at ~10 Hz
+  UI.traceAcc += dt;
+  if(UI.traceAcc>0.1){
+    UI.traceAcc=0;
+    UI.trace.push([clamp(Breath.s,-1.6,1.6), pacerLvl*2-1]);
+    if(UI.trace.length>620) UI.trace.shift();
+  }
+
+  drawDial(level, pacerLvl);
+  drawTrace();
+  requestAnimationFrame(loop);
+}
+
+function updateReadout(){
+  const b=Breath.bpmSmooth;
+  el.vRate.innerHTML = (b?b.toFixed(1):'—') + '<small>/min</small>';
+  el.vPace.innerHTML = Pacer.bpm.toFixed(1) + '<small>/min</small>';
+  const i=Breath.inhaleDur, o=Breath.exhaleDur;
+  el.vRatio.textContent = (i>0.4&&o>0.4) ? (i.toFixed(1)+' / '+o.toFixed(1)) : '—';
+  const q=Breath.quality();
+  el.qualityTxt.textContent = 'signal ' + (q>0.7?'clear':q>0.4?'fair':'noisy');
+  el.qualityTxt.style.color = q>0.7?'var(--glass)':q>0.4?'var(--mute)':'var(--sand)';
+}
+
+/* ---------- drawing ---------- */
+function fitCanvas(c){
+  const r=c.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1, 2.5);
+  if(c.width!==Math.round(r.width*dpr) || c.height!==Math.round(r.height*dpr)){
+    c.width=Math.round(r.width*dpr); c.height=Math.round(r.height*dpr);
+  }
+  const ctx=c.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx, w:r.width, h:r.height};
+}
+
+function drawDial(level, pacerLvl){
+  const {ctx,w,h}=fitCanvas(el.dial);
+  ctx.clearRect(0,0,w,h);
+  const cx=w/2, cy=h/2, R=Math.min(w,h)*0.40;
+
+  // guide ring — where the pace wants you to be
+  const pr = R*(0.42 + 0.58*pacerLvl);
+  ctx.beginPath(); ctx.arc(cx,cy,pr,0,TAU);
+  ctx.strokeStyle='rgba(217,168,91,'+(UI.state==='running'?0.62:0.16)+')';
+  ctx.lineWidth=1.25; ctx.stroke();
+
+  // your breath — filled swell
+  const br = R*(0.36 + 0.64*level);
+  const grd = ctx.createRadialGradient(cx,cy,br*0.15,cx,cy,br);
+  grd.addColorStop(0,'rgba(127,191,174,'+(0.10+0.24*UI.rich)+')');
+  grd.addColorStop(1,'rgba(127,191,174,0.015)');
+  ctx.beginPath(); ctx.arc(cx,cy,br,0,TAU); ctx.fillStyle=grd; ctx.fill();
+  ctx.strokeStyle='rgba(127,191,174,0.80)'; ctx.lineWidth=1.6; ctx.stroke();
+
+  // still centre
+  ctx.beginPath(); ctx.arc(cx,cy,2.2,0,TAU);
+  ctx.fillStyle='rgba(227,237,233,0.5)'; ctx.fill();
+}
+
+function drawTrace(){
+  const {ctx,w,h}=fitCanvas(el.trace);
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='rgba(14,39,50,0.55)'; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='rgba(124,154,161,0.20)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,h/2); ctx.lineTo(w,h/2); ctx.stroke();
+
+  const n=UI.trace.length; if(n<2) return;
+  const step=w/620, x0=w-n*step;
+  const line=(idx,color,width,alpha)=>{
+    ctx.beginPath();
+    for(let i=0;i<n;i++){
+      const y=h/2 - clamp(UI.trace[i][idx],-1.6,1.6)*(h/2-5)/1.6;
+      i?ctx.lineTo(x0+i*step,y):ctx.moveTo(x0+i*step,y);
+    }
+    ctx.strokeStyle=color; ctx.globalAlpha=alpha; ctx.lineWidth=width;
+    ctx.lineJoin='round'; ctx.stroke(); ctx.globalAlpha=1;
+  };
+  if(UI.state==='running') line(1,'#D9A85B',1,0.55);
+  line(0,'#7FBFAE',1.7,1);
+}
+
+/* ---------- wiring ---------- */
+el.main.addEventListener('click', ()=>{ UI.state==='idle' ? begin() : end(); });
+el.panelBtn.addEventListener('click', ()=>el.panel.classList.add('open'));
+$('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
+$('recalBtn').addEventListener('click', ()=>{
+  el.panel.classList.remove('open');
+  if(UI.state!=='idle') startCalibration();
+});
+$('vol').addEventListener('input', e=>Audio.setVolume(parseInt(e.target.value,10)/100));
+$('target').addEventListener('change', e=>{ Pacer.targetBpm=parseFloat(e.target.value); });
+$('ramp').addEventListener('change', e=>{ Pacer.rampSec=parseFloat(e.target.value)*60; });
+
+function bindToggle(id, fn){
+  const b=$(id);
+  b.addEventListener('click', ()=>{
+    const on = b.getAttribute('aria-checked')!=='true';
+    b.setAttribute('aria-checked', String(on));
+    fn(on);
+  });
+}
+bindToggle('tglPacer',  on=>{ Audio.pacerOn=on; });
+bindToggle('tglInvert', on=>{ Breath.invert=on; });
+bindToggle('tglDemo',   on=>{ UI.demo=on; if(on) notice('Demo mode','Simulated breathing. Good for checking the sound without lying down.',5000); });
+
+$('notice').addEventListener('click', ()=>$('notice').classList.remove('show'));
+window.addEventListener('resize', ()=>{ if(UI.state!=='idle'){ drawDial(Breath.level(),Pacer.level); drawTrace(); } });
+
+// secure-context check up front — requestPermission simply will not fire otherwise
+if(!window.isSecureContext && location.hostname!=='localhost'){
+  notice('Not a secure page','Motion sensors need HTTPS. Open this page over https:// and it will work.',0);
+}
+
+})();
+</script>
+</body>
+</html>

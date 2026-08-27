@@ -1,0 +1,199 @@
+#!/usr/bin/env node
+/**
+ * dsp-harness.mjs — headless test for the breath tracker and pacer.
+ *
+ * There is no build step and no module system in index.html, so this file
+ * slices sections 0-3 out of the single-file app and evaluates them in Node.
+ * Section 1 (audio) comes along for the ride; it is inert because nothing
+ * calls Audio.start(), which is the only place Web Audio is touched.
+ *
+ *   node tools/dsp-harness.mjs [path-to-html]
+ *
+ * Exit code 0 = all assertions passed, 1 = at least one failed.
+ */
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const htmlPath = resolve(process.argv[2] || `${here}/../index.html`);
+
+// ---------------------------------------------------------------- extract
+const html = readFileSync(htmlPath, 'utf8');
+const js = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+if (!js) fail('no <script> block found in ' + htmlPath);
+
+const START = 'const clamp';
+const END = '   4. APP';
+const a = js.indexOf(START);
+const b = js.indexOf(END);
+if (a < 0 || b < 0) fail('section markers moved — update START/END in this harness');
+
+// walk back to the start of the banner comment that precedes "4. APP"
+const core = js.slice(a, js.lastIndexOf('/* =====', b));
+
+const { Breath, Pacer } = new Function(core + '\nreturn { Breath, Pacer };')();
+
+// ---------------------------------------------------------------- utils
+const TAU = Math.PI * 2;
+let failures = 0;
+
+function fail(msg) { console.error('FAIL ' + msg); process.exit(1); }
+
+function check(name, ok, detail) {
+  console.log(`${ok ? 'ok  ' : 'FAIL'}  ${name}${detail ? '   ' + detail : ''}`);
+  if (!ok) failures++;
+}
+
+/** Raised-cosine belly tilt, amplitude in m/s^2 on the gravity vector. */
+function tilt(u, inShare) {
+  return u < inShare
+    ? (1 - Math.cos(Math.PI * u / inShare)) / 2 - 0.5
+    : (1 + Math.cos(Math.PI * (u - inShare) / (1 - inShare))) / 2 - 0.5;
+}
+
+/**
+ * Feed synthetic motion samples.
+ * @param opts.bpm       breaths per minute
+ * @param opts.secs      duration
+ * @param opts.amp       peak-to-peak tilt in m/s^2 (0.09 ~ a relaxed adult belly)
+ * @param opts.inShare   fraction of the cycle spent inhaling
+ * @param opts.axis      unit vector the breath moves along
+ * @param opts.flip      invert the physical signal (phone upside down)
+ * @param opts.noise     white noise amplitude in m/s^2
+ * @param opts.drift     baseline drift in m/s^2 per minute
+ */
+function feed(state, opts) {
+  const { bpm, secs, amp = 0.09, inShare = 0.45, axis = [0.81, 0, 0.58],
+          flip = false, noise = 0.004, drift = 0 } = opts;
+  const dt = 1 / 60, period = 60 / bpm;
+  for (let i = 0; i < secs / dt; i++) {
+    state.t += dt;
+    state.u = (state.u + dt / period) % 1;
+    const s = tilt(state.u, inShare) * amp * (flip ? -1 : 1);
+    const d = drift * state.t / 60;
+    const n = () => (Math.random() - 0.5) * 2 * noise;
+    Breath.push(
+      axis[0] * s + 0.30 + d + n(),
+      axis[1] * s + 0.15 + n(),
+      axis[2] * s + 9.79 + n()
+    , state.t);
+  }
+}
+
+function session(opts) {
+  const state = { t: 0, u: 0 };
+  Breath.beginCalibration(0);
+  feed(state, { ...opts, secs: 20 });
+  const calOk = Breath.finishCalibration();
+  feed(state, { ...opts, secs: opts.secs ?? 90 });
+  return { calOk, state };
+}
+
+// ---------------------------------------------------------------- tests
+console.log('source: ' + htmlPath + '\n');
+
+// 1. axis recovery
+{
+  const axis = [0.81, 0, 0.58];
+  const { calOk } = session({ bpm: 12, axis });
+  const dot = Math.abs(Breath.u[0] * axis[0] + Breath.u[1] * axis[1] + Breath.u[2] * axis[2]);
+  check('calibration succeeds', calOk === true);
+  check('breath axis recovered', dot > 0.97, `|u.axis| = ${dot.toFixed(3)}`);
+}
+
+// 2. rate tracking, fast then slow
+{
+  const state = { t: 0, u: 0 };
+  Breath.beginCalibration(0);
+  feed(state, { bpm: 12, secs: 20 });
+  Breath.finishCalibration();
+  feed(state, { bpm: 12, secs: 90 });
+  const fast = Breath.bpmSmooth;
+  feed(state, { bpm: 6, secs: 120 });
+  const slow = Breath.bpmSmooth;
+  check('tracks 12/min', Math.abs(fast - 12) < 0.6, `${fast.toFixed(2)}/min`);
+  check('tracks 6/min', Math.abs(slow - 6) < 0.6, `${slow.toFixed(2)}/min`);
+}
+
+// 3. inhale/exhale split, 2 s in / 5 s out
+{
+  session({ bpm: 60 / 7, inShare: 2 / 7, secs: 90 });
+  check('inhale duration', Math.abs(Breath.inhaleDur - 2) < 0.6, `${Breath.inhaleDur.toFixed(2)} s`);
+  check('exhale duration', Math.abs(Breath.exhaleDur - 5) < 0.6, `${Breath.exhaleDur.toFixed(2)} s`);
+}
+
+// 4. sign heuristic: phone mounted either way up must give the same split
+{
+  session({ bpm: 60 / 7, inShare: 2 / 7, flip: true, secs: 90 });
+  check('sign corrected when flipped',
+    Breath.exhaleDur > Breath.inhaleDur * 1.5,
+    `in ${Breath.inhaleDur.toFixed(2)} s / out ${Breath.exhaleDur.toFixed(2)} s`);
+}
+
+// 5. rejection: postural drift must not register as breathing
+{
+  session({ bpm: 6, drift: 0.6, secs: 120 });
+  check('survives 0.6 m/s^2 per minute of drift',
+    Math.abs(Breath.bpmSmooth - 6) < 0.8, `${Breath.bpmSmooth.toFixed(2)}/min`);
+}
+
+// 6. quality meter falls when the body is fidgeting
+{
+  session({ bpm: 6, noise: 0.004, secs: 60 });
+  const clean = Breath.quality();
+  session({ bpm: 6, noise: 0.09, secs: 60 });
+  const noisy = Breath.quality();
+  check('quality distinguishes still from restless',
+    clean > 0.6 && noisy < clean * 0.75, `clean ${clean.toFixed(2)} / noisy ${noisy.toFixed(2)}`);
+}
+
+// 7. phase convention: 0 at the top of the inhale, positive while exhaling
+{
+  const state = { t: 0, u: 0 };
+  Breath.beginCalibration(0);
+  feed(state, { bpm: 6, inShare: 0.5, secs: 20 });
+  Breath.finishCalibration();
+  feed(state, { bpm: 6, inShare: 0.5, secs: 60 });
+
+  const dt = 1 / 60, obs = [];
+  for (let i = 0; i < 90 / dt; i++) {
+    feed(state, { bpm: 6, inShare: 0.5, secs: dt });
+    obs.push([Breath.level(), Breath.phase, Breath.dsLp]);
+  }
+  obs.sort((p, q) => q[0] - p[0]);
+  const top = obs.slice(0, Math.floor(obs.length * 0.02));
+  const worst = Math.max(...top.map(o => Math.abs(o[1])));
+  check('phase ~0 at full inhale', worst < 0.7, `max |phase| = ${worst.toFixed(2)} rad`);
+
+  const rising = obs.filter(o => o[2] > 0.4);
+  const badSign = rising.filter(o => o[1] > 0).length / Math.max(rising.length, 1);
+  check('phase negative while inhaling', badSign < 0.05,
+    `${(badSign * 100).toFixed(1)}% wrong sign`);
+}
+
+// 8. pacer ramp and envelope
+{
+  Pacer.begin(12, 6, 4);
+  const levels = [];
+  for (let i = 0; i < 60 * 60 * 5; i++) levels.push(Pacer.step(1 / 60, 0, false));
+  check('pacer reaches target', Math.abs(Pacer.bpm - 6) < 0.05, `${Pacer.bpm.toFixed(2)}/min`);
+  check('exhale ends up longer than inhale',
+    Pacer.outSec() > Pacer.inSec() * 1.2,
+    `${Pacer.inSec().toFixed(1)} s in / ${Pacer.outSec().toFixed(1)} s out`);
+  check('envelope spans 0..1',
+    Math.min(...levels) < 0.01 && Math.max(...levels) > 0.99);
+}
+
+// 9. pacer start rate is clamped to a plausible range
+{
+  Pacer.begin(40, 6, 4);
+  check('absurd measured rate is clamped', Pacer.startBpm <= 18, `${Pacer.startBpm}/min`);
+  Pacer.begin(2, 6, 4);
+  check('implausibly slow measured rate is clamped', Pacer.startBpm >= 7, `${Pacer.startBpm}/min`);
+}
+
+console.log('');
+if (failures) { console.error(`${failures} check(s) failed`); process.exit(1); }
+console.log('all checks passed');

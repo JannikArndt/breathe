@@ -1,13 +1,14 @@
-# Tide
+# breathe
 
 A breath instrument for a phone lying on your belly.
 
 The phone reads its own motion sensors, pulls your breathing out of the gravity vector, and
 turns it into a slow ambient sound. Breathe more slowly and the sound opens up: the low-pass
-lifts, a chord fades in, the room gets longer. A quiet guide tone starts at whatever rate
-you are actually breathing and eases toward a target over several minutes.
+lifts, a chord fades in, the room gets longer. It follows you; it does not lead you
+anywhere.
 
-Single HTML file. No dependencies, no build step, no network calls, nothing stored.
+Single HTML file. No dependencies, no build step, no network calls. Sessions are recorded
+to the phone and go nowhere unless you export them yourself.
 
 ---
 
@@ -84,7 +85,7 @@ phase = atan2(−ṡ/ω, s)
 
 Zero at the top of the inhale, running positive through the exhale to ±π at the bottom, then
 negative back up through the inhale. It gives a smooth position within the breath cycle
-between peaks, which is what the sound and the guide tone both need.
+between peaks, which is what the sound needs between turning points.
 
 ### The sound
 
@@ -150,7 +151,7 @@ session quiet for the rest of the sitting.
 
 Every session is recorded to the phone and nothing is uploaded. The reason is narrow: the
 tracker was tuned against synthetic tilt, and `tools/replay.mjs` feeds a real recording
-back through the same `Breath` and `Pacer` code the app runs, so a change can be measured
+back through the same `Breath` code the app runs, so a change can be measured
 against real breathing.
 
 Storage is IndexedDB, not localStorage — twenty minutes at 60 Hz is ~2.8 MB exported, so
@@ -164,17 +165,44 @@ Sessions can be labelled after the fact — the first thirty seconds of any reco
 getting settled, which pollutes calibration, so marking where you actually lay down makes
 the data usable.
 
-### The pacer
+### There is no pacer any more
 
-The guide tone starts at your measured rate — clamped to 7–18/min so a bad calibration
-cannot start it somewhere absurd — and eases to the target over the chosen ramp using a
-smoothstep curve. The inhale share of the cycle shifts from 0.5 to 0.42, so the exhale
-gradually lengthens.
+There used to be one: a guide tone that started at your measured rate and eased toward a
+target over several minutes, phase-coupled to you at 14 %, with the reward channel scoring
+how well you stayed with it.
 
-It is **phase-coupled to you at 14%**. The guide's own clock speeds up or slows down
-slightly depending on where you are in your cycle, so it walks with you instead of over you.
-Coupling only engages when the signal quality is good, so fidgeting does not drag the pace
-around.
+It is gone. The app is for attending to your own breathing, and a second thing to follow —
+one that is quietly grading you — competes with that. `rich` is now driven by slowness
+alone. Nothing should reintroduce a target rate, a guide tone, or a sync reward.
+
+### Holding still between breaths
+
+Slow breathing has rests in it, and the first real recording is full of them: 13 of 18
+pauses came after the bottom of an exhale. The app used to read those rests as the start of
+an inhale, because two separate things made a belly tremor look like a breath.
+
+The hysteresis was a fixed 0.34 on the normalised signal. That recording's median stroke is
+1.75, so the threshold sat at 19 % of a real breath — 56 of 57 exhale bottoms cleared it
+more than 0.6 s before the signal reached half a stroke. It now scales with a learned
+stroke amplitude, which on that recording puts it at 0.61 and drops the count to 23, while
+finding the identical 57 peaks and troughs at the same 11.28 s median period.
+
+The rest of it was in the audio path. `frame()` divides velocity by the peak the current
+rate implies, so that slowing down does not fade the breath-driven layers. At 5.4 /min that
+divisor is 0.216, and a tremor of 0.05 comes out the other side as a quarter-strength
+inhale. Comparing velocity against the *rate* cannot tell a hold from a stroke; comparing
+it against this user's own strokes can, so `detectRest()` does that and gates the velocity
+channels through `restGate`.
+
+### Heart rate, experimentally
+
+Off by default. Each heartbeat moves a little blood and the reaction reaches the phone —
+ballistocardiography. Band-pass 4–14 Hz, envelope, autocorrelate twelve seconds of it, and
+report only when the peak clearly stands out of the curve and the body is still. On
+synthetic beats it is within 4 /min across 42–135 /min and produces no false positives on
+noise, but it has never been checked against a real heartbeat, and on a belly rather than a
+chest it may simply never find one. It shows a dash rather than a stale number, which will
+be most of the time.
 
 ---
 
@@ -199,9 +227,9 @@ Two things from the same source shaped the design:
   is restored during exhalation, when heart rate falls — the mechanism behind respiratory
   sinus arrhythmia.
 
-**What is not established here:** the 4:6 inhale-to-exhale ratio the pacer drifts toward is a
-design choice reflecting common practice, not something verified against a source in this
-project. The claim that a longer exhale specifically increases RSA amplitude appears in the
+**What is not established here:** the 4:6 inhale-to-exhale ratio the app once drifted people
+toward was a design choice reflecting common practice, not something verified against a
+source in this project. Nothing asks for it now. The claim that a longer exhale specifically increases RSA amplitude appears in the
 literature but has not been checked against a fetched primary source — treat it as unverified.
 Individual resonance frequency also appears not to be stable across sessions, so 6/min is a
 reasonable starting point rather than a personal optimum.
@@ -223,9 +251,9 @@ away the other two components of a diagonal tilt. The 3×3 eigenvector is cheap 
 of power iteration on a matrix that small is nothing — and handles arbitrary placement.
 
 **Peaks with hysteresis over FFT rate estimation.** A spectral estimate at 6 breaths/min
-needs a 60 s+ window to resolve usefully. The app needs a rate within about two breaths so
-the pacer can start where the user actually is. Peak detection also gives inhale and exhale
-durations separately, which a rate estimate does not.
+needs a 60 s+ window to resolve usefully. The app needs a rate within about two breaths, to
+scale the velocity reference and the learned stroke amplitude. Peak detection also gives
+inhale and exhale durations separately, which a rate estimate does not.
 
 **Automatic gain over a fixed threshold.** Tilt amplitude varies with body shape, clothing,
 mattress firmness, and how deeply someone happens to be breathing. A fixed threshold would
@@ -246,6 +274,9 @@ accumulating a record of how well you did.
 
 ## Known limitations
 
+- **The heart rate has never seen a real heartbeat.** Everything behind it was tuned
+  against synthetic beats. The one real recording predates the export fix and carries no
+  motion rows, so there was nothing to run it over.
 - **Cross-voice loudness is matched on peak, not loudness.** The three voices sit within
   1.0 dB of each other by peak level, but peak is not loudness and the usual RMS proxy
   ignores filtering — which is exactly where these voices differ. Each carries a `trim`,
@@ -304,7 +335,8 @@ accumulating a record of how well you did.
 node tools/dsp-harness.mjs
 ```
 
-18 headless checks against the signal chain and pacer: axis recovery, rate tracking, the
+21 headless checks against the signal chain: axis recovery, rate tracking, the
 inhale/exhale split, sign correction with the phone inverted, drift rejection, the quality
-meter, the phase convention, and the pacer schedule. See `CLAUDE.md` for the invariants
-those checks protect and what not to change without re-running them.
+meter, the phase convention, the learned stroke amplitude, rest detection, and the pulse
+estimator. See `CLAUDE.md` for the invariants those checks protect and what not to change
+without re-running them.

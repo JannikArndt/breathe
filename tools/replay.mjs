@@ -77,7 +77,7 @@ const a = js.indexOf('const clamp');
 const pacer = js.indexOf('3. PACER');
 let b = pacer >= 0 ? js.indexOf('/* =====', pacer) : -1;
 if (b < 0) {                                    // fall back to the harness's markers
-  for (const marker of ['   3. SPEECH', '   4. SPEECH', '   4. APP', '   4. ', '   7. APP']) {
+  for (const marker of ['   4. SPEECH', '   3. SPEECH', '   4. APP', '   4. ', '   7. APP']) {
     const m = js.indexOf(marker);
     if (m > 0) { b = js.lastIndexOf('/* =====', m); break; }
   }

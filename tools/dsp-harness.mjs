@@ -25,7 +25,7 @@ const js = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 if (!js) fail('no <script> block found in ' + htmlPath);
 
 const START = 'const clamp';
-const END = '   3. SPEECH';
+const END = '   4. SPEECH';
 const a = js.indexOf(START);
 const b = js.indexOf(END);
 if (a < 0 || b < 0) fail('section markers moved — update START/END in this harness');
@@ -33,7 +33,7 @@ if (a < 0 || b < 0) fail('section markers moved — update START/END in this har
 // walk back to the start of the banner comment that precedes "3. SPEECH"
 const core = js.slice(a, js.lastIndexOf('/* =====', b));
 
-const { Breath } = new Function(core + '\nreturn { Breath };')();
+const { Breath, Pulse } = new Function(core + '\nreturn { Breath, Pulse };')();
 
 // ---------------------------------------------------------------- utils
 const TAU = Math.PI * 2;
@@ -233,6 +233,46 @@ console.log('source: ' + htmlPath + '\n');
   check('the gate closes on a hold', gateLow < 0.25, `gate fell to ${gateLow.toFixed(2)}`);
   check('an ordinary stroke is not rest', midResting === false && midGate > 0.75,
     `gate stayed ${midGate.toFixed(2)}`);
+}
+
+// 10. the experimental pulse estimator
+{
+  // A heartbeat in an accelerometer is a short damped ring once per beat, not a
+  // sinusoid. 62 bpm at 4 milli-g, which is the low end of what a torso
+  // produces, buried under a breathing tilt ten times larger.
+  const HR = 62, dt = 1 / 60;
+  Pulse.enabled = true;
+  Pulse.reset();
+  let t = 0, phase = 0;
+  for (let i = 0; i < 60 * 45; i++) {
+    t += dt;
+    phase += dt * HR / 60;
+    const since = (phase % 1) * 60 / HR;              // seconds since the last beat
+    // damped 9 Hz ring, 90 ms long: roughly the shape of a J-wave in a phone
+    const beat = since < 0.09 ? Math.exp(-since * 34) * Math.sin(TAU * 9 * since) : 0;
+    const breath = 0.045 * Math.sin(TAU * t / 6);      // 10/min, 60x larger
+    const noise = (Math.random() - 0.5) * 0.0009;
+    Pulse.push(9.81 + breath + beat * 0.004 + noise, dt, t);
+  }
+  const got = Pulse.bpm;
+  check('pulse recovers a synthetic heartbeat', got > 0 && Math.abs(got - HR) < 4,
+    got > 0 ? `${got.toFixed(1)} bpm vs ${HR}` : 'reported nothing');
+
+  // The same signal with the beat removed must NOT produce a number. Reporting
+  // a heart rate off noise is worse than reporting none.
+  Pulse.reset();
+  t = 0;
+  for (let i = 0; i < 60 * 45; i++) {
+    t += dt;
+    Pulse.push(9.81 + 0.045 * Math.sin(TAU * t / 6) + (Math.random() - 0.5) * 0.0009, dt, t);
+  }
+  check('pulse stays silent on noise alone', Pulse.bpm === 0,
+    Pulse.bpm ? `claimed ${Pulse.bpm.toFixed(1)} bpm` : 'reported nothing');
+
+  // And it must refuse while the body is moving, whatever it last computed.
+  Pulse.bpm = 65;
+  check('pulse refuses while the body moves', Pulse.reading(0.2) === 0);
+  Pulse.enabled = false;
 }
 
 console.log('');

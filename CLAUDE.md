@@ -54,15 +54,16 @@ section, update the harness in the same commit.
 | `0. small helpers` | `clamp`, `lerp`, `TAU`, `lp()` one-pole filter, `notice()` toast |
 | `1. AUDIO ENGINE` | `Audio` — three voices (`tide`, `shore`, `harmonium`), crossfading, procedural noise and impulse responses, per-frame parameter updates, ducking |
 | `2. BREATH TRACKER` | `Breath` — filtering, calibration PCA, projection, AGC, cycle detection, phase |
-| `3. SPEECH` | `Speech` — Web Speech API guidance, keyed copy table, iOS priming, duck and restore, the `quiet` gate |
-| `4. RECORDER + STORE` | `Recorder` (typed-array capture) and `Store` (IndexedDB, eviction, export) |
-| `5. REVIEW UI` | `Review` — the summary End lands on, the session browser, labelling |
-| `6. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
+| `3. PULSE` | `Pulse` — experimental heart rate from the same accelerometer |
+| `4. SPEECH` | `Speech` — Web Speech API guidance, keyed copy table, iOS priming, duck and restore, the `quiet` gate |
+| `5. RECORDER + STORE` | `Recorder` (typed-array capture) and `Store` (IndexedDB, eviction, export) |
+| `6. REVIEW UI` | `Review` — the summary End lands on, the session browser, labelling |
+| `7. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
 
-Sections 3–5 sit between the DSP and APP so the harness's slice of 0–2 is unchanged.
+Sections 4–6 sit between the DSP and APP so the harness's slice of 0–3 is unchanged.
 **They must be inert at definition time** — no `document.getElementById`, `indexedDB`
 or `speechSynthesis` at the top level of the IIFE, only inside methods. The harness
-slices `const clamp` → the banner before `3. SPEECH`; renumbering means editing
+slices `const clamp` → the banner before `4. SPEECH`; renumbering means editing
 `END` in `tools/dsp-harness.mjs` in the same commit.
 
 There is no pacer. The app once led the user from their measured rate toward a target
@@ -71,7 +72,7 @@ competes for attention with the breathing itself. Nothing should reintroduce a t
 rate, a guide tone, or a sync reward.
 
 `Audio` is inert until `Audio.start()` runs, which is why the harness can evaluate
-sections 0–2 in Node without stubbing Web Audio.
+sections 0–3 in Node without stubbing Web Audio.
 
 ---
 
@@ -157,6 +158,35 @@ session carries a `phase` channel that uses it, so replay and analysis still rea
 
 ---
 
+## 4a. Pulse (experimental)
+
+Ballistocardiography from the same accelerometer. It is **off by default** and must stay
+that way: on a belly the beat is one to ten milli-g against a breathing tilt of 90, and it
+finds nothing far more often than it finds something.
+
+- Band-pass 4–14 Hz, **two poles on the high-pass**. One pole leaves breathing only 27 dB
+  down, and rectifying that leak produced an envelope with no beat in it at all — the
+  autocorrelation was a clean monotonic slope from the breathing and nothing else.
+- The envelope is de-trended (`τ = 0.35 s`) before buffering, because rectification folds
+  slow modulation straight back in.
+- **Take the best *local* maximum of the autocorrelation, never the global one.** The
+  envelope is smoothed at 60 ms, so neighbouring samples correlate strongly and the curve
+  decays monotonically from zero lag; the global maximum is always the shortest lag tried,
+  whatever the real rate.
+- **Prefer the shortest lag within 80 % of the strongest.** Every beat also peaks at twice
+  its period. Without this the estimate alternates between a rate and half of it, and any
+  smoothing then parks on an average the heart never had — 96/min was reported as 48.
+- A jump over 20 % replaces the estimate rather than blending into it, for the same reason.
+- `reading()` returns 0 whenever confidence is under `MIN_CONF` or `Breath.motionRms`
+  exceeds `MAX_MOTION`, and the UI shows a dash. **Never hold the last number on screen
+  after the evidence has gone** — that makes it look far more reliable than it is.
+- No medical claims. It is labelled experimental in the settings and says so plainly.
+
+Measured on synthetic data: correct within 4/min across 42–135 bpm (39 of 39 runs), zero
+false positives on noise over 10 runs, and a lock threshold around 2 milli-g of beat
+amplitude. **None of this has been checked against a real heartbeat** — the one real
+recording predates the export fix and carries no motion rows.
+
 ## 5. Audio invariants
 
 - **`Audio.frame(f)` takes an object, and it carries direction.** The old positional
@@ -214,10 +244,12 @@ node tools/dsp-harness.mjs                    # defaults to ./index.html
 node tools/dsp-harness.mjs path/to/other.html
 ```
 
-18 checks: axis recovery, rate tracking at 12 and 6/min, inhale/exhale split, sign
+21 checks: axis recovery, rate tracking at 12 and 6/min, inhale/exhale split, sign
 correction with the phone inverted, tolerance to 0.6 m/s² per minute of postural drift, the
 quality meter, the phase convention, the learned stroke amplitude, and rest detection —
 that a hold reads as rest and closes the gate while an ordinary stroke does neither.
+Three more cover the pulse estimator: it recovers a synthetic 62 bpm heartbeat, it
+reports nothing on noise alone, and it refuses to read while the body is moving.
 Exit code 0 on success.
 
 The harness synthesises tilt at 0.09 m/s² peak-to-peak, which is roughly what a relaxed
@@ -243,8 +275,8 @@ Demo mode, tap Begin, wait out calibration, tap End, and assert the summary rend
 real numbers and the session appears under Recordings. This is what caught the demo
 calibration bug and the empty-summary bug during integration.
 
-**Run the harness after any change to sections 0–2.** It will not catch anything in
-sections 3–6, the audio graph, or the canvas.
+**Run the harness after any change to sections 0–3.** It will not catch anything in
+sections 4–7, the audio graph, or the canvas.
 
 `tools/analyze.mjs` describes a recording rather than re-running the tracker over it:
 cycle timing, stroke depth, how much of the session was spent held still, and how often

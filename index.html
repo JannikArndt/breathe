@@ -4247,7 +4247,7 @@ const UI = {
 
 const el = {
   main:$('mainBtn'), panelBtn:$('panelBtn'), panel:$('panel'), intro:$('intro'),
-  homeSub:$('homeSub'),
+  homeSub:$('homeSub'), recBtn:$('recBtn'),
   dial:$('dial'), centerRead:$('centerRead'), cue:$('cue'), sub:$('sub'),
   traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
   vRate:$('vRate'), vRatio:$('vRatio'), vHr:$('vHr'), cellHr:$('cellHr'),
@@ -4341,7 +4341,11 @@ function requestSensor(){
 /** Both promises are started inside the tap handler; begin() only awaits them. */
 async function begin(sensorP, audioP){
   UI.ending = false;
-  el.homeSub.classList.add('hidden');
+  // Adjust stays reachable while breathing — it holds the volume and the
+  // recalibrate button, both of which are wanted mid-session. Only Recordings
+  // goes, since opening the browser over a running session is not a thing to
+  // do by accident.
+  el.recBtn.classList.add('hidden');
   const audioOk = await audioP;
   const sensor  = await sensorP;
   UI.sensorPerm = sensor;
@@ -4495,7 +4499,7 @@ async function end(timeUp){
     reachable mid-session, so closing those must return you to the session. */
 function toIntro(){
   el.intro.classList.remove('hidden');
-  el.homeSub.classList.remove('hidden');
+  el.recBtn.classList.remove('hidden');
   el.statusTag.textContent = 'standby';
 }
 

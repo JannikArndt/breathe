@@ -296,6 +296,53 @@ Do these on a real phone over HTTPS before calling a change done:
 
 ---
 
+## 6a. Views and how you move between them
+
+Seven screens. Two shells: `#app` (home and the live session) and two overlays that sit on
+top of it, `#panel` (settings) and `#review` (summary, list, detail).
+
+```mermaid
+stateDiagram-v2
+    [*] --> Home
+
+    Home --> Calibrating: Begin
+    Home --> List: Recordings
+    Home --> Settings: Adjust
+
+    Calibrating --> Breathing: after 20 s
+    Calibrating --> Summary: End
+    Breathing --> Summary: End
+    Breathing --> Summary: length elapsed
+    Breathing --> Settings: Adjust
+    Settings --> Calibrating: Measure my breathing again
+
+    Summary --> Home: Back
+    Summary --> Detail: Label
+    List --> Home: Back
+    List --> Detail: tap a recording
+    Detail --> Summary: Back (opened from the summary)
+    Detail --> List: Back (opened from the list)
+    Detail --> List: Delete
+
+    Settings --> List: Storage, Open
+```
+
+Two rules hold everywhere, and the previous layout broke both:
+
+**Back is top-left, and it is the only way out.** There are no Done or Close buttons. The
+bottom bar carries actions only — Begin, End, Label, Export, Export all, Delete. Before
+this, Back was at the top and Done at the bottom did the same job, on different screens.
+
+**Recordings is a place, not a setting.** It is reachable from the home screen. Reaching it
+used to mean opening Adjust first, which is why it was hard to find. The row under Storage
+in Settings still opens it, since that is where the space it uses is reported.
+
+`Review.back()` implements the Detail split: it returns to whichever screen opened the
+detail, and leaving the Summary is what calls `onDone` and returns the app to Home.
+
+Adjust stays reachable while breathing — it holds volume and recalibrate. Recordings does
+not, because opening the browser over a running session is not something to do by accident.
+
 ## 7. Style
 
 - Metric units everywhere, in code comments and UI.

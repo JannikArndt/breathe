@@ -2016,9 +2016,7 @@ const Speech = {
     calibrateDone  : 'That is enough to work with.',
     calibrateFailed: 'The phone did not pick up your breathing. Move it lower on your belly.',
     running        : 'Close your eyes. The sound follows your breathing.',
-    ending         : 'That is the end of the session. The sound is fading out.',
-    timeUp         : 'That is your {min} minutes. Stay as long as you like.',
-    summaryReady   : 'Your session summary is on the screen.',
+    ending         : 'Session complete.',
     recalibrate    : 'Learning your movement again. Breathe as you normally would.',
 
     errDenied      : 'Motion access was declined. Reload the page to be asked again.',
@@ -4469,7 +4467,7 @@ async function end(timeUp){
   clearTimeout(UI.calTimer); clearTimeout(UI.voiceTimer);
   window.removeEventListener('devicemotion', onMotion);
   Breath.onExhaleStart = null;
-  Speech.say(timeUp ? 'timeUp' : 'ending', {min: String(UI.durationMin)});
+  Speech.say('ending');
   // A session that ran its length gets a long fade; one you ended by hand
   // should stop close to when you meant it to.
   await Audio.stop(timeUp ? 6.0 : 1.4);
@@ -4493,7 +4491,6 @@ async function end(timeUp){
   }
   reportSaveTrouble();
   Review.showSummary(session);
-  Speech.say('summaryReady');
   refreshStorageRow();
 }
 

@@ -543,7 +543,6 @@
     <canvas id="trace"></canvas>
     <div class="trace-key">
       <span><i class="key-dot" style="background:var(--glass)"></i>You</span>
-      <span><i class="key-dot" style="background:var(--sand)"></i>Pace</span>
       <span style="margin-left:auto" id="qualityTxt">signal —</span>
     </div>
   </div>
@@ -551,7 +550,6 @@
   <div class="readout hidden" id="readout">
     <div class="cell"><div class="k">Your rate</div><div class="v" id="vRate">—<small>/min</small></div></div>
     <div class="cell"><div class="k">In / out</div><div class="v" id="vRatio">—</div></div>
-    <div class="cell"><div class="k">Pace</div><div class="v" id="vPace">—<small>/min</small></div></div>
   </div>
 
   <div class="bar">
@@ -578,37 +576,6 @@
   <div class="row">
     <label for="vol">Volume</label>
     <input type="range" id="vol" min="0" max="100" value="55">
-  </div>
-
-  <div class="row">
-    <label for="target">Where it leads you
-      <span class="hint">breaths per minute</span>
-    </label>
-    <select id="target">
-      <option value="7">7 — gentle</option>
-      <option value="6" selected>6 — classic</option>
-      <option value="5.5">5.5 — deep</option>
-      <option value="5">5 — very slow</option>
-    </select>
-  </div>
-
-  <div class="row">
-    <label for="ramp">How long it takes to get there
-      <span class="hint">minutes</span>
-    </label>
-    <select id="ramp">
-      <option value="2">2</option>
-      <option value="4" selected>4</option>
-      <option value="7">7</option>
-      <option value="12">12</option>
-    </select>
-  </div>
-
-  <div class="row">
-    <label>Guide tone
-      <span class="hint">a soft tone showing the pace</span>
-    </label>
-    <button class="toggle" id="tglPacer" role="switch" aria-checked="true" aria-label="Guide tone"></button>
   </div>
 
 <div class="row">
@@ -685,7 +652,7 @@
       <canvas class="spark" id="revSpark"></canvas>
       <div class="trace-key rev-key">
         <span><i class="key-dot key-you"></i>You</span>
-        <span><i class="key-dot key-pace"></i>Pace</span>
+        <span id="revKeyPace" class="hidden"><i class="key-dot key-pace"></i>Pace</span>
       </div>
       <p class="rev-cap">Rate over the whole session, in breaths per minute.
          The shading behind it is how deep each breath was.</p>
@@ -841,7 +808,7 @@ function notice(title, body, ms){
 const fin = (x,d) => (typeof x === 'number' && x-x === 0) ? x : d;
 
 const Audio = {
-  ctx:null, ready:false, pacerOn:true, vol:0.55,
+  ctx:null, ready:false, vol:0.55,
 
   voiceId:'tide',
   voices:[
@@ -852,7 +819,7 @@ const Audio = {
 
   v:null,                       // built voices, keyed by id
   m:null,                       // the per-frame bundle, allocated once
-  dir:-1, pdir:-1, wasIn:false, // held breath / guide direction
+  dir:-1, wasIn:false,          // held breath direction
   lastTop:0, lastBottom:0,
   fadeFrom:null, fadeUntil:0,
 
@@ -932,16 +899,6 @@ const Audio = {
       V.out.connect(V.send); V.send.connect(conv);
       V.out.gain.value = (id === this.voiceId) ? V.trim : 0;
     }
-
-    // ---- guide tone, shared by all three voices so that changing voice does
-    //      not change what the pace sounds like.
-    const guideCut = this.guideCut = F('lowpass', 1400, 0.7);
-    const guideOut = this.guideOut = G(0);
-    guideCut.connect(guideOut);
-    guideOut.connect(dry);
-    const guideSend = G(0.30); guideOut.connect(guideSend); guideSend.connect(conv);
-    O(659.25,'sine',0.55,guideCut);                        // E5, the pace itself
-    this.guideShim = O(987.77,'sine',0,guideCut).g;        // B5, only on the guide's inhale
 
     // Built once: frame() runs 60 times a second for as long as the session
     // lasts, and allocating a bundle plus four closures each time is the one
@@ -1364,7 +1321,7 @@ const Audio = {
      per-frame update
      ============================================================ */
   /**
-   * @param f {level, vel, speed, inhaling, rich, pacerLvl, pacerVel, bpm, dt}
+   * @param f {level, vel, speed, inhaling, resting, rich, bpm, dt}
    *          level 0..1 (1 = fullest inhale), vel -1..1 (positive inhaling).
    */
   frame(f){
@@ -1422,15 +1379,6 @@ const Audio = {
       else this.fadeFrom = null;
     }
 
-    // ---- guide tone. It states its own direction too: brightness follows the
-    //      envelope, and the upper partial sounds only on the guide's inhale.
-    const pl = clamp(fin(f.pacerLvl, 0), 0, 1);
-    const pv = clamp(fin(f.pacerVel, 0), -1, 1);
-    this.pdir = lp(this.pdir, pv > 0 ? 1 : -1, dt, 0.25);
-    const pin = clamp((this.pdir+1)/2, 0, 1);
-    m.stG(this.guideOut.gain,      this.pacerOn ? 0.055*pl : 0, 0.10);
-    m.stF(this.guideCut.frequency, 850*Math.pow(2, 1.7*pl), 0.12);
-    m.stG(this.guideShim.gain,     this.pacerOn ? 0.11*pin*pl : 0, 0.15);
   },
 
   /* ============================================================
@@ -1763,54 +1711,7 @@ const Breath = {
 };
 
 /* ============================================================
-   3. PACER — a slowly decelerating target, softly phase-locked
-   ============================================================ */
-const Pacer = {
-  t:0, startBpm:12, targetBpm:6, rampSec:240, elapsed:0, bpm:12, inShare:0.5, level:0, phase:0,
-
-  begin(measuredBpm, targetBpm, rampMin){
-    this.startBpm  = clamp(measuredBpm || 12, 7, 18);
-    this.targetBpm = targetBpm;
-    this.rampSec   = rampMin*60;
-    this.elapsed   = 0; this.t = 0; this.bpm = this.startBpm;
-  },
-
-  step(dt, userPhase, locked){
-    this.elapsed += dt;
-    const k = clamp(this.elapsed/this.rampSec, 0, 1);
-    const ease = k*k*(3-2*k);
-    this.bpm     = lerp(this.startBpm, this.targetBpm, ease);
-    this.inShare = lerp(0.5, 0.42, ease);            // exhale grows longer
-
-    const period = 60/this.bpm;
-    // gentle phase coupling so the guide walks with you rather than over you
-    let rate = 1;
-    if(locked){
-      const diff = Math.atan2(Math.sin(userPhase-this.phase), Math.cos(userPhase-this.phase));
-      rate = 1 + 0.14*Math.sin(diff);
-    }
-    this.t = (this.t + dt*rate/period) % 1;
-
-    // t: 0 = start of inhale
-    const Ti = this.inShare;
-    let u, rising;
-    if(this.t < Ti){ u = this.t/Ti;            rising = true; }
-    else           { u = (this.t-Ti)/(1-Ti);   rising = false; }
-    this.level = rising ? (1-Math.cos(Math.PI*u))/2 : (1+Math.cos(Math.PI*u))/2;
-    this.rising = rising;                            // the guide is asking for an inhale
-    this.vel = (rising ? 1 : -1) * Math.sin(Math.PI*u);   // -1..1, peaks mid-stroke
-
-    // match Breath.phase convention: 0 at the top of the inhale
-    this.phase = rising ? (u-1)*Math.PI : u*Math.PI;
-    return this.level;
-  },
-
-  inSec(){ return 60/this.bpm*this.inShare; },
-  outSec(){ return 60/this.bpm*(1-this.inShare); }
-};
-
-/* ============================================================
-   4. SPEECH
+   3. SPEECH
    ------------------------------------------------------------
    The phone is on the user's belly, so the screen cannot be read
    without a movement that ruins the signal. Anything the app has
@@ -1884,8 +1785,6 @@ const Speech = {
     calibrateDone  : 'That is enough to work with.',
     calibrateFailed: 'The phone did not pick up your breathing. Move it lower on your belly.',
     running        : 'Close your eyes. The sound follows your breathing.',
-    paceStep       : 'The pace is easing to {bpm} breaths a minute.',
-    nearTarget     : 'That is as slow as it will ask. It stays here now.',
     ending         : 'That is the end of the session. The sound is fading out.',
     summaryReady   : 'Your session summary is on the screen.',
     recalibrate    : 'Learning your movement again. Breathe as you normally would.',
@@ -2222,7 +2121,7 @@ const Speech = {
 };
 
 /* ============================================================
-   5. RECORDER + STORE
+   4. RECORDER + STORE
    ------------------------------------------------------------
    Every session records, with no toggle, so the breath detector can
    later be tested against real breathing instead of synthetic tilt.
@@ -2271,7 +2170,7 @@ const Store = {
 
   FORMAT:'breathe-session/1',
   MOTION_COLUMNS:['t','x','y','z'],
-  DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich','pacerLevel','pacerBpm'],
+  DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich'],
   DERIVED_HZ:10,
 
   /* Fixed vocabulary. A label also carries a free `note`. */
@@ -2845,7 +2744,7 @@ const Recorder = {
   maxSamples:0,
 
   /**
-   * @param meta.app  {voice, targetBpm, rampMin, invert, demo}
+   * @param meta.app  {voice, invert, demo}
    * @param t         session zero, in the same clock sample() will use.
    *                  Defaults to now; pass it explicitly when replaying a
    *                  recorded clock. Every tSec in the file is relative to it,
@@ -2894,7 +2793,7 @@ const Recorder = {
 
   /**
    * ~10 Hz snapshot of what the tracker believed at that moment.
-   * @param o {t,s,level,phase,bpm,quality,rich,pacerLevel,pacerBpm}
+   * @param o {t,s,level,phase,bpm,quality,rich}
    */
   derived(o){
     if(!this.active || !o) return;
@@ -2909,8 +2808,6 @@ const Recorder = {
     d.v[3][i] = o.bpm || 0;
     d.v[4][i] = o.quality || 0;
     d.v[5][i] = o.rich || 0;
-    d.v[6][i] = o.pacerLevel || 0;
-    d.v[7][i] = o.pacerBpm || 0;
   },
 
   /**
@@ -3114,7 +3011,7 @@ function summarise(d, events, hz){
 }
 
 /* ============================================================
-   6. REVIEW UI
+   5. REVIEW UI
    ------------------------------------------------------------
    Three screens sharing one overlay:
 
@@ -3183,6 +3080,7 @@ const Review = {
       scr:{ summary:$('revSummary'), list:$('revList'), detail:$('revDetail') },
       bar:{ summary:$('revSumBar'), list:$('revListBar'), detail:$('revDetBar') },
       spark:$('revSpark'), sumGrid:$('revSumGrid'), sumFlag:$('revSumFlag'),
+      keyPace:$('revKeyPace'),
       rows:$('revRows'), listEmpty:$('revListEmpty'), listFoot:$('revListFoot'),
       over:$('revOver'), fine:$('revFine'),
       vAt:$('revVAt'), vSig:$('revVSig'), vRate:$('revVRate'),
@@ -3488,6 +3386,8 @@ const Review = {
     const n = rows.length;
     const t=new Float32Array(n), s=new Float32Array(n), p=new Float32Array(n),
           b=new Float32Array(n), pb=new Float32Array(n), q=new Float32Array(n);
+    // Recordings made before the guide tone was removed still carry these two
+    // channels. Reading them keeps those files renderable; nothing writes them now.
     const hasP = ci.pacerLevel!=null, hasPB = ci.pacerBpm!=null, hasQ = ci.quality!=null;
     for(let i=0;i<n;i++){
       const r = rows[i] || [];
@@ -3499,6 +3399,9 @@ const Review = {
       q[i]  = hasQ  ? (+r[ci.quality]||0) : 0;
     }
     this.sig = { n, t, s, p, b, pb, q, hasP, hasPB };
+    // Only recordings from before the guide tone was removed have a pace line
+    // to label. Newer ones would show a legend for a curve that is not there.
+    if(this.d && this.d.keyPace) this.d.keyPace.classList.toggle('hidden', !hasPB);
     this.det.dur = session.durationSec || (n ? t[n-1] : 0);
     this.det.play = clamp(this.det.play, 0, this.det.dur);
     if(!(this.det.span>0)) this.det.span = this.det.dur || 30;
@@ -4089,7 +3992,7 @@ const Review = {
 };
 
 /* ============================================================
-   7. APP
+   6. APP
    ============================================================ */
 const UI = {
   state:'idle',                       // idle | calibrating | running
@@ -4105,7 +4008,7 @@ const el = {
   main:$('mainBtn'), panelBtn:$('panelBtn'), panel:$('panel'), intro:$('intro'),
   dial:$('dial'), centerRead:$('centerRead'), cue:$('cue'), sub:$('sub'),
   traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
-  vRate:$('vRate'), vRatio:$('vRatio'), vPace:$('vPace'),
+  vRate:$('vRate'), vRatio:$('vRatio'),
   statusTag:$('statusTag'), qualityTxt:$('qualityTxt')
 };
 
@@ -4222,8 +4125,6 @@ async function begin(sensorP, audioP){
   if(sensor === 'ok' || UI.demo){
     Recorder.start({app:{
       voice:     Audio.voiceId,
-      targetBpm: parseFloat($('target').value),
-      rampMin:   parseFloat($('ramp').value),
       invert:    $('tglInvert').getAttribute('aria-checked') === 'true',
       demo:      UI.demo
     }}, performance.now()/1000);        // session zero, the same clock onMotion reads
@@ -4286,14 +4187,10 @@ function finishCalibration(){
   UI.state = 'running';
   el.statusTag.textContent = 'listening';
 
-  const measured = Breath.bpmSmooth || (UI.demo ? 13 : 12);
-  Pacer.begin(measured, parseFloat($('target').value), parseFloat($('ramp').value));
-
   el.cue.textContent = 'Breathe';
   el.sub.textContent = 'Eyes closed. Let the sound do the counting.';
   Speech.say(ok ? 'calibrateDone' : 'calibrateFailed');
   Speech.say('running');
-  UI.paceSaid = 0; UI.nearSaid = false;
   Breath.onExhaleStart = (inD)=>{
     const slow = clamp((inD-2.0)/3.0, 0, 1);
     Audio.bell(0.35 + 0.65*slow*UI.rich);
@@ -4355,20 +4252,6 @@ function reportSaveTrouble(){
   }
 }
 
-/** The pacer decelerates smoothly, so any "step" is one we invented. Two spoken
-    markers across the whole ramp, not one every forty seconds. */
-function paceVoice(){
-  const k = Pacer.rampSec ? Pacer.elapsed/Pacer.rampSec : 1;
-  const marks = [0.34, 0.67];
-  if(UI.paceSaid < marks.length && k >= marks[UI.paceSaid]){
-    UI.paceSaid++;
-    Speech.say('paceStep', {bpm: String(Math.round(Pacer.bpm*2)/2)});
-  }else if(!UI.nearSaid && k >= 1){
-    UI.nearSaid = true;
-    Speech.say('nearTarget');
-  }
-}
-
 /* ---------- main loop ---------- */
 function loop(now){
   if(UI.state==='idle') return;
@@ -4376,8 +4259,8 @@ function loop(now){
   UI.lastFrame = now;
 
   if(UI.demo){
-    // 13 -> target bpm, so demo mode behaves like a cooperative breather
-    const p = 60/lerp(13, Pacer.bpm||13, 0.5);
+    // demo breathes at a steady, plausible rate; nothing is steering it now
+    const p = 60/9;
     UI.demoPhase = (UI.demoPhase + dt/p) % 1;
     const s = Math.sin(UI.demoPhase*TAU - Math.PI/2);
     const dx = s*0.05, dy = 0.2, dz = 9.79 + s*0.05, dt0 = now/1000;
@@ -4386,33 +4269,25 @@ function loop(now){
     if(UI.state==='calibrating' && Breath.cal.length>200) Breath.u=[0.7,0,0.71];
   }
 
-  let level=0.5, speed=0, pacerLvl=0;
+  // The sound runs from the first frame, calibration included. Waiting for the
+  // axis left the user lying in silence for twenty seconds wondering whether
+  // anything worked. Before finishCalibration() the projection uses the default
+  // z axis, which on a phone lying face-up on a belly already carries most of
+  // the movement, so it responds — just less precisely than it will in a moment.
+  const level = Breath.level();
+  const speed = Breath.speed();
 
-  if(UI.state==='running'){
-    level = Breath.level();
-    speed = Breath.speed();
-    const locked = Breath.quality()>0.35 && Breath.bpmSmooth>0;
-    pacerLvl = Pacer.step(dt, Breath.phase, locked);
+  // reward: slower breathing opens the sound up. bpmSmooth is 0 until the
+  // second breath is timed, and (14-14)/8 = 0 holds rich at its floor until
+  // there is a rate to reward.
+  const slow = clamp((14 - (Breath.bpmSmooth||14))/8, 0, 1);
+  UI.rich = lp(UI.rich, clamp(0.28 + 0.72*slow, 0, 1), dt, 3.0);
 
-    // reward: slower breathing + staying with the guide opens the sound up
-    const slow = clamp((14 - (Breath.bpmSmooth||14))/8, 0, 1);
-    const diff = Math.atan2(Math.sin(Breath.phase-Pacer.phase), Math.cos(Breath.phase-Pacer.phase));
-    const sync = (1+Math.cos(diff))/2;
-    const targetRich = clamp(0.28 + 0.72*(0.6*slow + 0.4*sync), 0, 1);
-    UI.rich = lp(UI.rich, targetRich, dt, 3.0);
-
-    Audio.frame({
-      level, vel:Breath.vel(), speed, inhaling:Breath.rising, resting:Breath.resting,
-      rich:UI.rich, pacerLvl, pacerVel:Pacer.vel,
-      bpm:Breath.bpmSmooth||0, dt
-    });
-    updateReadout();
-    paceVoice();
-  }else{
-    // during calibration keep it quiet: just a hint of air
-    Audio.frame({level:0.35, vel:0, speed:Breath.speed()*0.4, inhaling:Breath.rising,
-                 rich:0.15, pacerLvl:0, pacerVel:0, bpm:0, dt});
-  }
+  Audio.frame({
+    level, vel:Breath.vel(), speed, inhaling:Breath.rising, resting:Breath.resting,
+    rich:UI.rich, bpm:Breath.bpmSmooth||0, dt
+  });
+  if(UI.state==='running') updateReadout();
 
   // live sample rate in the header: 0 Hz means no events are arriving at all
   UI.hzAcc += dt;
@@ -4428,14 +4303,14 @@ function loop(now){
   UI.traceAcc += dt;
   if(UI.traceAcc>0.1){
     UI.traceAcc-=0.1;              // carry the remainder: resetting to 0 ran the tick at ~8.6 Hz
-    UI.trace.push([clamp(Breath.s,-1.6,1.6), pacerLvl*2-1]);
+    UI.trace.push([clamp(Breath.s,-1.6,1.6), 0]);
     if(UI.trace.length>620) UI.trace.shift();
     Recorder.derived({t:now/1000, s:Breath.s, level:level, phase:Breath.phase,
                       bpm:Breath.bpmSmooth||0, quality:Breath.quality(), rich:UI.rich,
-                      pacerLevel:pacerLvl, pacerBpm:Pacer.bpm});
+                      });
   }
 
-  drawDial(level, pacerLvl);
+  drawDial(level);
   drawTrace();
   requestAnimationFrame(loop);
 }
@@ -4443,7 +4318,6 @@ function loop(now){
 function updateReadout(){
   const b=Breath.bpmSmooth;
   el.vRate.innerHTML = (b?b.toFixed(1):'—') + '<small>/min</small>';
-  el.vPace.innerHTML = Pacer.bpm.toFixed(1) + '<small>/min</small>';
   const i=Breath.inhaleDur, o=Breath.exhaleDur;
   el.vRatio.textContent = (i>0.4&&o>0.4) ? (i.toFixed(1)+' / '+o.toFixed(1)) : '—';
   const q=Breath.quality();
@@ -4462,16 +4336,10 @@ function fitCanvas(c){
   return {ctx, w:r.width, h:r.height};
 }
 
-function drawDial(level, pacerLvl){
+function drawDial(level){
   const {ctx,w,h}=fitCanvas(el.dial);
   ctx.clearRect(0,0,w,h);
   const cx=w/2, cy=h/2, R=Math.min(w,h)*0.40;
-
-  // guide ring — where the pace wants you to be
-  const pr = R*(0.42 + 0.58*pacerLvl);
-  ctx.beginPath(); ctx.arc(cx,cy,pr,0,TAU);
-  ctx.strokeStyle='rgba(217,168,91,'+(UI.state==='running'?0.62:0.16)+')';
-  ctx.lineWidth=1.25; ctx.stroke();
 
   // your breath — filled swell
   const br = R*(0.36 + 0.64*level);
@@ -4530,8 +4398,6 @@ $('recalBtn').addEventListener('click', ()=>{
   if(UI.state!=='idle'){ UI.recal = true; startCalibration(); }
 });
 $('vol').addEventListener('input', e=>Audio.setVolume(parseInt(e.target.value,10)/100));
-$('target').addEventListener('change', e=>{ Pacer.targetBpm=parseFloat(e.target.value); });
-$('ramp').addEventListener('change', e=>{ Pacer.rampSec=parseFloat(e.target.value)*60; });
 
 function bindToggle(id, fn){
   const b=$(id);
@@ -4541,12 +4407,11 @@ function bindToggle(id, fn){
     fn(on);
   });
 }
-bindToggle('tglPacer',  on=>{ Audio.pacerOn=on; });
 bindToggle('tglInvert', on=>{ Breath.invert=on; });
 bindToggle('tglDemo',   on=>{ UI.demo=on; if(on) notice('Demo mode','Simulated breathing. Good for checking the sound without lying down.',5000); });
 
 $('notice').addEventListener('click', ()=>$('notice').classList.remove('show'));
-window.addEventListener('resize', ()=>{ if(UI.state!=='idle'){ drawDial(Breath.level(),Pacer.level); drawTrace(); } });
+window.addEventListener('resize', ()=>{ if(UI.state!=='idle'){ drawDial(Breath.level()); drawTrace(); } });
 
 /* ---------- voice picker ---------- */
 // built from Audio.voices so the markup and the engine cannot drift apart

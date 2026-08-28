@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * dsp-harness.mjs — headless test for the breath tracker and pacer.
+ * dsp-harness.mjs — headless test for the breath tracker.
  *
  * There is no build step and no module system in index.html, so this file
- * slices sections 0-3 out of the single-file app and evaluates them in Node.
+ * slices sections 0-2 out of the single-file app and evaluates them in Node.
  * Section 1 (audio) comes along for the ride; it is inert because nothing
  * calls Audio.start(), which is the only place Web Audio is touched.
  *
@@ -25,15 +25,15 @@ const js = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 if (!js) fail('no <script> block found in ' + htmlPath);
 
 const START = 'const clamp';
-const END = '   4. SPEECH';
+const END = '   3. SPEECH';
 const a = js.indexOf(START);
 const b = js.indexOf(END);
 if (a < 0 || b < 0) fail('section markers moved — update START/END in this harness');
 
-// walk back to the start of the banner comment that precedes "4. APP"
+// walk back to the start of the banner comment that precedes "3. SPEECH"
 const core = js.slice(a, js.lastIndexOf('/* =====', b));
 
-const { Breath, Pacer } = new Function(core + '\nreturn { Breath, Pacer };')();
+const { Breath } = new Function(core + '\nreturn { Breath };')();
 
 // ---------------------------------------------------------------- utils
 const TAU = Math.PI * 2;
@@ -187,25 +187,52 @@ console.log('source: ' + htmlPath + '\n');
     `${(badSign * 100).toFixed(1)}% wrong sign`);
 }
 
-// 8. pacer ramp and envelope
+// 8. the learned stroke amplitude tracks the signal, and scales the hysteresis
 {
-  Pacer.begin(12, 6, 4);
-  const levels = [];
-  for (let i = 0; i < 60 * 60 * 5; i++) levels.push(Pacer.step(1 / 60, 0, false));
-  check('pacer reaches target', Math.abs(Pacer.bpm - 6) < 0.05, `${Pacer.bpm.toFixed(2)}/min`);
-  check('exhale ends up longer than inhale',
-    Pacer.outSec() > Pacer.inSec() * 1.2,
-    `${Pacer.inSec().toFixed(1)} s in / ${Pacer.outSec().toFixed(1)} s out`);
-  check('envelope spans 0..1',
-    Math.min(...levels) < 0.01 && Math.max(...levels) > 0.99);
+  session({ bpm: 10, secs: 120 });
+  const amp = Breath.strokeAmp;
+  // After the AGC the normalised stroke settles near 2; the interesting claim is
+  // that it lands in a range where H is well clear of both clamp ends, so the
+  // threshold is actually being driven by the measurement.
+  check('stroke amplitude is learned', amp > 1.2 && amp < 3.2, `strokeAmp = ${amp.toFixed(2)}`);
+  const H = Math.min(0.80, Math.max(0.30, amp * 0.30));
+  check('hysteresis scales off the clamp ends', H > 0.31 && H < 0.79, `H = ${H.toFixed(2)}`);
 }
 
-// 9. pacer start rate is clamped to a plausible range
+// 9. a held breath reads as rest, and an ordinary stroke does not
 {
-  Pacer.begin(40, 6, 4);
-  check('absurd measured rate is clamped', Pacer.startBpm <= 18, `${Pacer.startBpm}/min`);
-  Pacer.begin(2, 6, 4);
-  check('implausibly slow measured rate is clamped', Pacer.startBpm >= 7, `${Pacer.startBpm}/min`);
+  // Breathe normally, then hold still for 8 s at the bottom of an exhale — the
+  // case the first real recording is full of. `resting` must fire during the
+  // hold and the gate must fall; mid-stroke it must do neither.
+  const state = { t: 0, u: 0 };
+  Breath.beginCalibration(0);
+  feed(state, { bpm: 8, secs: 20 });
+  Breath.finishCalibration();
+  feed(state, { bpm: 8, secs: 60 });
+
+  // sample the gate through a normal stroke
+  let midGate = 1, midResting = false;
+  for (let i = 0; i < 60 * 2; i++) {
+    feed(state, { bpm: 8, secs: 1 / 60 });
+    if (Math.abs(Breath.vel()) > 0.25) { midGate = Math.min(midGate, Breath.restGate); midResting = midResting || Breath.resting; }
+  }
+
+  // now hold: freeze the phase and keep feeding the same tilt plus sensor noise
+  const held = state.u;
+  let restedAt = null, gateLow = 1;
+  for (let i = 0; i < 60 * 8; i++) {
+    state.t += 1 / 60;
+    state.u = held;
+    feed(state, { bpm: 8, secs: 1 / 60 });
+    state.u = held;
+    if (Breath.resting && restedAt === null) restedAt = i / 60;
+    gateLow = Math.min(gateLow, Breath.restGate);
+  }
+  check('a hold is detected as rest', restedAt !== null && restedAt < 3.0,
+    restedAt === null ? 'never fired' : `after ${restedAt.toFixed(1)} s`);
+  check('the gate closes on a hold', gateLow < 0.25, `gate fell to ${gateLow.toFixed(2)}`);
+  check('an ordinary stroke is not rest', midResting === false && midGate > 0.75,
+    `gate stayed ${midGate.toFixed(2)}`);
 }
 
 console.log('');

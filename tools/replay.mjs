@@ -77,19 +77,19 @@ const a = js.indexOf('const clamp');
 const pacer = js.indexOf('3. PACER');
 let b = pacer >= 0 ? js.indexOf('/* =====', pacer) : -1;
 if (b < 0) {                                    // fall back to the harness's markers
-  for (const marker of ['   4. SPEECH', '   4. APP', '   4. ', '   7. APP']) {
+  for (const marker of ['   3. SPEECH', '   4. SPEECH', '   4. APP', '   4. ', '   7. APP']) {
     const m = js.indexOf(marker);
     if (m > 0) { b = js.lastIndexOf('/* =====', m); break; }
   }
 }
 if (a < 0 || b < 0) die('section markers moved — update the slice in this file');
 
-let Breath, Pacer, clamp, lp;
+let Breath, clamp, lp;
 try {
-  ({ Breath, Pacer, clamp, lp } =
-    new Function(js.slice(a, b) + '\nreturn {Breath, Pacer, clamp, lp};')());
+  ({ Breath, clamp, lp } =
+    new Function(js.slice(a, b) + '\nreturn {Breath, clamp, lp};')());
 } catch (e) { die('sections 0-3 would not evaluate: ' + e.message); }
-if (!Breath || !Pacer) die('sliced code did not define Breath and Pacer');
+if (!Breath) die('sliced code did not define Breath');
 
 /* ---------------------------------------------------------------- session */
 let S;
@@ -196,10 +196,9 @@ const calibration = {
 
 /* ---------------------------------------------------------------- run */
 Breath.invert = !!app.invert;
-Pacer.begin(Breath.bpmSmooth || 12, Number(app.targetBpm) || 6, Number(app.rampMin) || 4);
 
 const HZ = 10;                                    // same snapshot rate the app records at
-const track = [];                                 // {t,s,level,phase,bpm,quality,rich,pLvl,pBpm}
+const track = [];                                 // {t,s,level,phase,bpm,quality,rich,restGate}
 const cycles = [];                                // {tSec, kind, periodSec, bpm}
 let prevPeak = Breath.lastPeakT, prevTrough = Breath.lastTroughT;
 // Snapshots start where the tracker starts producing output: during
@@ -216,12 +215,9 @@ for (; i < rows.length; i++) {
   let dt = t - lastT; lastT = t;
   if (!(dt > 0) || dt > 0.5) dt = medianDt;
 
-  // mirrors loop() in section 7 so the reward channel can be compared too
-  const locked = Breath.quality() > 0.35 && Breath.bpmSmooth > 0;
-  const pLvl = Pacer.step(dt, Breath.phase, locked);
+  // mirrors loop() in section 6 so the reward channel can be compared too
   const slow = clamp((14 - (Breath.bpmSmooth || 14)) / 8, 0, 1);
-  const diff = Math.atan2(Math.sin(Breath.phase - Pacer.phase), Math.cos(Breath.phase - Pacer.phase));
-  rich = lp(rich, clamp(0.28 + 0.72 * (0.6 * slow + 0.4 * (1 + Math.cos(diff)) / 2), 0, 1), dt, 3.0);
+  rich = lp(rich, clamp(0.28 + 0.72 * slow, 0, 1), dt, 3.0);
 
   if (Breath.lastPeakT !== prevPeak) {
     prevPeak = Breath.lastPeakT;
@@ -236,7 +232,7 @@ for (; i < rows.length; i++) {
     track.push({
       t: r3(nextSnap - t0), s: r3(Breath.s), level: r3(Breath.level()), phase: r3(Breath.phase),
       bpm: r2(Breath.bpmSmooth), quality: r3(Breath.quality()), rich: r3(rich),
-      pLvl: r3(pLvl), pBpm: r2(Pacer.bpm)
+      restGate: r3(Breath.restGate), strokeAmp: r2(Breath.strokeAmp)
     });
     nextSnap += 1 / HZ;
   }
@@ -304,7 +300,7 @@ const PW = W - GUT;
 hr();
 say(`session   ${S.id}`);
 say(`recorded  ${S.startedAt}   ${fmtDur(S.durationSec)}   ${(S.device && S.device.ua) || 'unknown device'}`);
-say(`settings  voice ${app.voice || '?'} · target ${app.targetBpm || '?'}/min · ramp ${app.rampMin || '?'} min` +
+say(`settings  sound ${app.voice || '?'}` +
     ` · flip ${app.invert ? 'on' : 'off'}${app.demo ? ' · DEMO (simulated motion)' : ''}`);
 say(`app       ${htmlPath}`);
 hr();
@@ -397,19 +393,18 @@ function plot() {
     let amp = 1.0;
     for (const v of win) amp = Math.max(amp, Math.abs(v.s));
     top = amp; bot = -amp; zeroVal = 0;
-    mainOf = v => v.s; guideOf = v => v.pLvl * 2 - 1;
+    mainOf = v => v.s; guideOf = v => v.restGate * 2 - 1;
   } else {
     let mn = Infinity, mx = -Infinity;
     for (const v of win) {
       if (v.bpm > 0) { mn = Math.min(mn, v.bpm); mx = Math.max(mx, v.bpm); }
-      if (v.pBpm > 0) { mn = Math.min(mn, v.pBpm); mx = Math.max(mx, v.pBpm); }
     }
     if (!isFinite(mn)) { mn = 4; mx = 16; }
     const padv = Math.max(0.4, (mx - mn) * 0.12);
     top = mx + padv; bot = Math.max(0, mn - padv);
-    zeroVal = Number(app.targetBpm) || 6;
+    zeroVal = 6;
     mainOf = v => (v.bpm > 0 ? v.bpm : null);
-    guideOf = v => (v.pBpm > 0 ? v.pBpm : null);
+    guideOf = () => null;
   }
   const rowOf = v => Math.min(H - 1, Math.max(0, Math.round((top - v) / (top - bot) * (H - 1))));
 
@@ -473,8 +468,8 @@ function plot() {
   console.log(pad('time', GUT) + ax.join(''));
 
   say('  ' + (waveform
-      ? '# your breath   . the guide   ^ peak   v trough   = calibrating (no output)'
-      : `# your rate   . the guide   - target ${zeroVal}/min   = calibrating (no output)`) +
+      ? '# your breath   . rest gate (low = held still)   ^ peak   v trough   = calibrating (no output)'
+      : '# your rate   = calibrating (no output)') +
     (marks.length ? '   ' + marks.map((l, k) => `${k + 1}=${l.kind}`).join(' ') : ''));
 }
 
@@ -488,7 +483,7 @@ function rateStrip() {
     cols.push({
       t: Math.round(t),
       you: bpm.length ? (bpm.reduce((x, y) => x + y, 0) / bpm.length) : 0,
-      guide: seg.length ? seg[seg.length - 1].pBpm : 0,
+      gate: seg.length ? seg[seg.length - 1].restGate : 1,
       q: seg.length ? seg.reduce((x, y) => x + y.quality, 0) / seg.length : null,
       n: seg.length
     });
@@ -498,7 +493,7 @@ function rateStrip() {
     const c = cols.slice(k, k + per);
     say('  ' + pad('t', 8) + c.map(v => pad(fmtDur(v.t), 7)).join(''));
     say('  ' + pad('you', 8) + c.map(v => pad(v.you ? v.you.toFixed(1) : '-', 7)).join(''));
-    say('  ' + pad('guide', 8) + c.map(v => pad(v.guide ? v.guide.toFixed(1) : '-', 7)).join(''));
+    say('  ' + pad('gate', 8) + c.map(v => pad(v.gate != null ? v.gate.toFixed(2) : '-', 7)).join(''));
     say('  ' + pad('signal', 8) + c.map(v => pad(v.n ? v.q.toFixed(2) : '-', 7)).join(''));
     if (k + per < cols.length) say('');
   }

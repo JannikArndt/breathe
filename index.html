@@ -3460,7 +3460,10 @@ const Review = {
     this.session = session || null;
     this.from = 'summary';
     d.title.textContent = 'This session';
-    d.tag.textContent = session ? this.when(session.startedAt) : '';
+    // No date or time here. You just finished it, and the phone puts the clock
+    // at the top of the screen anyway. The recordings list still shows it,
+    // because there it is how you tell one session from another.
+    d.tag.textContent = '';
     this.show('summary');
     if(!session){
       d.sumFlag.textContent = 'Nothing was recorded, so there is nothing to show here.';

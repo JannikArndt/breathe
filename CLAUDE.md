@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Operating notes for coding agents working on **Tide**. Read this before editing `index.html`.
+Operating notes for coding agents working on **breathe**. Read this before editing `index.html`.
 Design rationale and evidence live in `README.md`; this file is the contract.
 
 ---
@@ -18,8 +18,9 @@ Repository layout:
 index.html              the entire app — markup, styles, DSP, audio engine
 README.md               reasoning, decisions, evidence, limitations
 CLAUDE.md               this file
-tools/dsp-harness.mjs   headless Node test for the signal chain and pacer
+tools/dsp-harness.mjs   headless Node test for the signal chain
 tools/replay.mjs        replays an exported session through the real tracker
+tools/analyze.mjs       describes a recorded session: timing, depth, stillness
 ```
 
 ---
@@ -53,20 +54,24 @@ section, update the harness in the same commit.
 | `0. small helpers` | `clamp`, `lerp`, `TAU`, `lp()` one-pole filter, `notice()` toast |
 | `1. AUDIO ENGINE` | `Audio` — three voices (`tide`, `shore`, `harmonium`), crossfading, procedural noise and impulse responses, per-frame parameter updates, ducking |
 | `2. BREATH TRACKER` | `Breath` — filtering, calibration PCA, projection, AGC, cycle detection, phase |
-| `3. PACER` | `Pacer` — deceleration schedule and phase-coupled target envelope |
-| `4. SPEECH` | `Speech` — Web Speech API guidance, keyed copy table, iOS priming, duck and restore |
-| `5. RECORDER + STORE` | `Recorder` (typed-array capture) and `Store` (IndexedDB, eviction, export) |
-| `6. REVIEW UI` | `Review` — the summary End lands on, the session browser, labelling |
-| `7. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
+| `3. SPEECH` | `Speech` — Web Speech API guidance, keyed copy table, iOS priming, duck and restore |
+| `4. RECORDER + STORE` | `Recorder` (typed-array capture) and `Store` (IndexedDB, eviction, export) |
+| `5. REVIEW UI` | `Review` — the summary End lands on, the session browser, labelling |
+| `6. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
 
-Sections 4–6 sit between the DSP and APP so the harness's slice of 0–3 is unchanged.
+Sections 3–5 sit between the DSP and APP so the harness's slice of 0–2 is unchanged.
 **They must be inert at definition time** — no `document.getElementById`, `indexedDB`
 or `speechSynthesis` at the top level of the IIFE, only inside methods. The harness
-slices `const clamp` → the banner before `4. SPEECH`; renumbering means editing
+slices `const clamp` → the banner before `3. SPEECH`; renumbering means editing
 `END` in `tools/dsp-harness.mjs` in the same commit.
 
+There is no pacer. The app once led the user from their measured rate toward a target
+and rewarded them for staying phase-locked to a guide tone; that was removed because it
+competes for attention with the breathing itself. Nothing should reintroduce a target
+rate, a guide tone, or a sync reward.
+
 `Audio` is inert until `Audio.start()` runs, which is why the harness can evaluate
-sections 0–3 in Node without stubbing Web Audio.
+sections 0–2 in Node without stubbing Web Audio.
 
 ---
 
@@ -147,19 +152,20 @@ phase = ±π       bottom of the exhale
 phase ∈ (−π, 0)  inhaling
 ```
 
-`Pacer.phase` uses the identical convention so the two can be compared directly. **If you
-change one, change both** — the sync reward and the phase coupling both depend on it.
+Nothing else depends on this convention now that the pacer is gone, but every recorded
+session carries a `phase` channel that uses it, so replay and analysis still read it.
 
 ---
 
 ## 5. Audio invariants
 
 - **`Audio.frame(f)` takes an object, and it carries direction.** The old positional
-  `frame(level, speed, rich, pacerLvl)` passed only the *magnitude* of belly movement,
+  `frame(level, speed, rich, …)` passed only the *magnitude* of belly movement,
   so inhaling and exhaling at the same belly position produced identical parameters —
   no amount of mix tuning could make the two halves distinguishable. `f` now carries
-  `{level, vel, speed, inhaling, rich, pacerLvl, pacerVel, bpm, dt}`, where `vel` is
-  signed and positive while inhaling. **If a voice ever sounds directionless, check
+  `{level, vel, speed, inhaling, resting, rich, bpm, dt}`, where `vel` is signed and
+  positive while inhaling. There is no `pacerLvl` or `pacerVel` — the guide tone and its
+  two oscillators are gone from the graph. **If a voice ever sounds directionless, check
   that `vel` is actually being passed before touching the voice.**
 - **Velocity is normalised against the current rate.** Peak `|vel|` scales with
   breathing rate: at 6/min it is ~43 % of its 14/min value, because `ds/dt` peaks at
@@ -178,9 +184,8 @@ change one, change both** — the sync reward and the phase coupling both depend
   slow. Time constants in `Audio.frame()` are 0.09–0.5 s and are part of how the instrument
   feels.
 - **`rich` (0–1) is the reward channel.** It opens the drone low-pass, fades in the pad, and
-  raises reverb wet. It rises with slowness `(14 − bpm)/8` weighted 0.6 and phase sync
-  `(1 + cos Δφ)/2` weighted 0.4, then is low-passed at τ = 3 s so the reward arrives as a
-  gradual warming rather than a switch. Anything new that rewards the user should feed
+  raises reverb wet. It rises with slowness alone, `0.28 + 0.72·clamp((14 − bpm)/8)`, then
+  is low-passed at τ = 3 s so the reward arrives as a gradual warming rather than a switch. Anything new that rewards the user should feed
   `rich` rather than adding a parallel mechanism.
 - **The turnaround markers fire from `Breath.onExhaleStart`**, strength scaled by the
   preceding inhale duration. Keep them under ~0.16 gain — a cue, not a downbeat.
@@ -204,7 +209,9 @@ node tools/dsp-harness.mjs path/to/other.html
 
 18 checks: axis recovery, rate tracking at 12 and 6/min, inhale/exhale split, sign
 correction with the phone inverted, tolerance to 0.6 m/s² per minute of postural drift, the
-quality meter, the phase convention, and the pacer schedule. Exit code 0 on success.
+quality meter, the phase convention, the learned stroke amplitude, and rest detection —
+that a hold reads as rest and closes the gate while an ordinary stroke does neither.
+Exit code 0 on success.
 
 The harness synthesises tilt at 0.09 m/s² peak-to-peak, which is roughly what a relaxed
 adult belly produces. It uses random noise, so it is mildly stochastic — it passed five
@@ -219,7 +226,7 @@ node tools/replay.mjs bundle.json --session <id>     # an "Export all" file
 node tools/replay.mjs s.json --from 40 --to 200      # one labelled stretch
 ```
 
-It slices `Breath`/`Pacer` out of `index.html` the same way the harness does, so it
+It slices `Breath` out of `index.html` the same way the harness does, so it
 measures the code that actually ships. This is the point of recording: an algorithm
 change can be checked against real breathing instead of synthetic tilt.
 
@@ -229,8 +236,12 @@ Demo mode, tap Begin, wait out calibration, tap End, and assert the summary rend
 real numbers and the session appears under Recordings. This is what caught the demo
 calibration bug and the empty-summary bug during integration.
 
-**Run the harness after any change to sections 0–3.** It will not catch anything in
-sections 4–7, the audio graph, or the canvas.
+**Run the harness after any change to sections 0–2.** It will not catch anything in
+sections 3–6, the audio graph, or the canvas.
+
+`tools/analyze.mjs` describes a recording rather than re-running the tracker over it:
+cycle timing, stroke depth, how much of the session was spent held still, and how often
+the hysteresis would trip early. Use it to check a DSP change against real breathing.
 
 ### Manual checks the harness cannot do
 

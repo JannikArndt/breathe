@@ -1555,6 +1555,7 @@ const Breath = {
   s:0, sPrev:0, dsLp:0, rms:0.02,
   lastT:0, lastDt:1/60, samples:0, lastEventT:0,
   cal:[], calibrating:false, calStart:0, motionRms:0, breathRms:0,
+  lastProv:0, haveProv:false,     // provisional axis refresh while calibrating
 
   // cycle bookkeeping
   rising:true, extreme:0, extremeT:0,
@@ -1583,6 +1584,7 @@ const Breath = {
 
   beginCalibration(now){
     this.reset(); this.cal=[]; this.calibrating=true; this.calStart=now;
+    this.lastProv=0; this.haveProv=false; this.u=[0,0,1];
   },
 
   /** feed one sensor sample. t in seconds. */
@@ -1611,7 +1613,10 @@ const Breath = {
       if(this.cal.length>4000) this.cal.shift();
       let m=0; for(let i=0;i<3;i++) m+=d[i]*d[i];
       this.breathRms = lp(this.breathRms, Math.sqrt(m), dt, 2.0);
-      return;
+      this.provisionalAxis(t);
+      // and fall through: the trace and the sound follow the provisional axis
+      // rather than sitting flat for twenty seconds. Only detectCycle() is
+      // skipped below, so breaths taken while learning are not counted.
     }
 
     // ---- project onto the breath axis
@@ -1630,7 +1635,7 @@ const Breath = {
     this.s = sN;
 
     this.detectRest(dt);
-    this.detectCycle(sN, t);
+    if(!this.calibrating) this.detectCycle(sN, t);
 
     // ---- instantaneous phase from the signal and its derivative
     // s = sin(wt) => -ds/w = -cos(wt); atan2 gives 0 at the top of the inhale
@@ -1715,13 +1720,14 @@ const Breath = {
     if(amp > 0.35 && amp < 3.6) this.strokeAmp = lerp(this.strokeAmp, amp, 0.25);
   },
 
-  /** dominant axis of belly movement: power iteration on the 3x3 covariance */
-  finishCalibration(){
-    this.calibrating = false;
-    const n = this.cal.length;
-    if(n < 60) return false;
+  /** dominant axis of a set of deviation vectors: power iteration on the 3x3
+      covariance. Shared by the provisional estimate taken while calibration is
+      still running and the authoritative one taken at the end. */
+  axisFrom(samples){
+    const n = samples.length;
+    if(n < 12) return null;
     const C=[[0,0,0],[0,0,0],[0,0,0]];
-    for(const d of this.cal)
+    for(const d of samples)
       for(let i=0;i<3;i++) for(let j=0;j<3;j++) C[i][j]+=d[i]*d[j];
     for(let i=0;i<3;i++) for(let j=0;j<3;j++) C[i][j]/=n;
 
@@ -1733,21 +1739,59 @@ const Breath = {
         C[2][0]*v[0]+C[2][1]*v[1]+C[2][2]*v[2]
       ];
       const m=Math.hypot(w[0],w[1],w[2]);
-      if(m<1e-12) break;
+      if(m<1e-12) return null;
       v=[w[0]/m,w[1]/m,w[2]/m];
     }
-    this.u=v;
+    return v;
+  },
 
-    // Sign is ambiguous. Relaxed breathing usually has a longer exhale than
-    // inhale, so orient the axis to make the slower half the falling one.
-    let up=0, down=0;
-    const proj = this.cal.map(d=>d[0]*v[0]+d[1]*v[1]+d[2]*v[2]);
-    for(let i=1;i<proj.length;i++){ (proj[i]>proj[i-1]) ? up++ : down++; }
-    this.flipped = (up > down*1.12);   // recorded so an exported session can say so
-    if(this.flipped) this.u = [-v[0],-v[1],-v[2]];
+  /** The eigenvector's sign is arbitrary. Relaxed breathing usually exhales
+      more slowly than it inhales, so orient the axis to make the slower half
+      the falling one. */
+  wantsFlip(samples, v){
+    let up=0, down=0, prev=null;
+    for(const d of samples){
+      const p = d[0]*v[0]+d[1]*v[1]+d[2]*v[2];
+      if(prev!==null){ (p>prev) ? up++ : down++; }
+      prev = p;
+    }
+    return up > down*1.12;
+  },
 
-    let amp=0; for(const p of proj) amp+=p*p;
-    this.calAmplitude = Math.sqrt(amp/proj.length);
+  /** Refresh the axis while calibration is still collecting, at most twice a
+      second and only once there are three seconds to work with. Rough at first
+      and converging; finishCalibration() still does the authoritative pass. */
+  provisionalAxis(t){
+    if(this.cal.length < 180 || (t - this.lastProv) < 0.5) return;
+    this.lastProv = t;
+    const v = this.axisFrom(this.cal);
+    if(!v) return;
+    if(!this.haveProv){
+      // First estimate: pick the sign properly, so the trace is usually the
+      // right way up from the start and does not flip when calibration ends.
+      this.haveProv = true;
+      this.u = this.wantsFlip(this.cal, v) ? [-v[0],-v[1],-v[2]] : v;
+      return;
+    }
+    // After that, stay consistent with what is already on screen. Re-running
+    // the sign heuristic on a part-filled window makes the trace flip about.
+    const dot = v[0]*this.u[0] + v[1]*this.u[1] + v[2]*this.u[2];
+    this.u = dot < 0 ? [-v[0],-v[1],-v[2]] : v;
+  },
+
+  finishCalibration(){
+    this.calibrating = false;
+    const n = this.cal.length;
+    if(n < 60) return false;
+    const v = this.axisFrom(this.cal);
+    if(!v) return false;
+
+    this.flipped = this.wantsFlip(this.cal, v);   // recorded so an export can say so
+    this.u = this.flipped ? [-v[0],-v[1],-v[2]] : v;
+
+    let amp=0;
+    for(const d of this.cal){ const p = d[0]*v[0]+d[1]*v[1]+d[2]*v[2]; amp += p*p; }
+    this.calAmplitude = Math.sqrt(amp/n);
     this.rms = this.calAmplitude*this.calAmplitude;
     this.cal = [];
     return true;

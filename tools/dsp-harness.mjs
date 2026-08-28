@@ -187,6 +187,25 @@ console.log('source: ' + htmlPath + '\n');
     `${(badSign * 100).toFixed(1)}% wrong sign`);
 }
 
+// 7b. the signal moves while calibration is still running
+{
+  // The trace and the sound follow Breath.s. push() used to return early while
+  // calibrating, so s stayed 0 and the user watched a flat line for 20 seconds.
+  const state = { t: 0, u: 0 };
+  Breath.beginCalibration(0);
+  feed(state, { bpm: 10, secs: 4 });
+  const early = [];
+  for (let i = 0; i < 60 * 8; i++) { feed(state, { bpm: 10, secs: 1 / 60 }); early.push(Breath.s); }
+  const span = Math.max(...early) - Math.min(...early);
+  check('the signal moves during calibration', span > 0.5, `range ${span.toFixed(2)}`);
+  check('still calibrating while it does', Breath.calibrating === true);
+  // ...but breaths taken while learning must not be counted as cycles
+  const before = Breath.lastPeakT;
+  feed(state, { bpm: 10, secs: 8 });
+  check('no cycles are detected while calibrating', Breath.lastPeakT === before);
+  Breath.finishCalibration();
+}
+
 // 8. the learned stroke amplitude tracks the signal, and scales the hysteresis
 {
   session({ bpm: 10, secs: 120 });

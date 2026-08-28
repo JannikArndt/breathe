@@ -102,7 +102,14 @@ raw (accelerationIncludingGravity, m/s²)
   rate does. `dt` is clamped to 0.5 s and falls back to 1/60 on a stall.
 
 **Calibration.** 20 s, minimum 60 samples. Covariance of `d` over the window, 60 rounds of
-power iteration for the dominant eigenvector `u`. Sign is resolved by counting rising vs
+power iteration for the dominant eigenvector `u` (`axisFrom()`). The axis is **also
+estimated while calibration is still running** — `provisionalAxis()` re-solves at most
+twice a second once 3 s of samples exist — because `push()` used to return early and leave
+`Breath.s` at zero, so the trace was a flat line and the sound had nothing to follow for
+the whole twenty seconds. The first provisional estimate picks its sign properly; later
+ones stay consistent with it, since re-running the heuristic on a part-filled window makes
+the trace flip about. `detectCycle()` is skipped while calibrating, so breaths taken during
+setup are not counted. Sign is resolved by counting rising vs
 falling sample transitions and flipping when `up > down * 1.12`, on the assumption that
 relaxed breathing exhales more slowly than it inhales. The *Flip direction* toggle is the
 user-facing escape hatch — keep it.
@@ -244,9 +251,10 @@ node tools/dsp-harness.mjs                    # defaults to ./index.html
 node tools/dsp-harness.mjs path/to/other.html
 ```
 
-21 checks: axis recovery, rate tracking at 12 and 6/min, inhale/exhale split, sign
+24 checks: axis recovery, rate tracking at 12 and 6/min, inhale/exhale split, sign
 correction with the phone inverted, tolerance to 0.6 m/s² per minute of postural drift, the
-quality meter, the phase convention, the learned stroke amplitude, and rest detection —
+quality meter, the phase convention, that the signal moves during calibration without
+detecting cycles, the learned stroke amplitude, and rest detection —
 that a hold reads as rest and closes the gate while an ordinary stroke does neither.
 Three more cover the pulse estimator: it recovers a synthetic 62 bpm heartbeat, it
 reports nothing on noise alone, and it refuses to read while the body is moving.

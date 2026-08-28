@@ -19,6 +19,7 @@ index.html              the entire app — markup, styles, DSP, audio engine
 README.md               reasoning, decisions, evidence, limitations
 CLAUDE.md               this file
 tools/dsp-harness.mjs   headless Node test for the signal chain and pacer
+tools/replay.mjs        replays an exported session through the real tracker
 ```
 
 ---
@@ -30,7 +31,8 @@ These are not preferences. Breaking one breaks the product.
 | Constraint | Why |
 |---|---|
 | One file, zero dependencies, no build step | It has to run from a file:// copy, a phone, a gist, or a Pages branch with nothing installed. Do not add npm, bundlers, TypeScript compilation, or CDN imports. |
-| No `localStorage` / `sessionStorage` / IndexedDB / cookies | Blocked in the Claude artifact sandbox, and the app is deliberately stateless — nothing about a user's breathing is retained. |
+| IndexedDB is the **only** permitted store. No `localStorage`, `sessionStorage` or cookies | The ban on all persistence held until the owner lifted it explicitly, to collect real breathing data for algorithm work. A twenty-minute session is ~2.8 MB exported, far past localStorage's ~5 MB ceiling for even two recordings, so IndexedDB is a capacity requirement rather than a preference. `Store.available` must go false and every method resolve harmlessly when IndexedDB is blocked — a recording failure must never disturb a breathing session. |
+| Recordings never leave the device | Storage changed; the privacy claim did not. No upload, no sync, no analytics. Export is `Blob` → `URL.createObjectURL` → `<a download>`, and only the user starts it. |
 | No network calls of any kind | Privacy claim in the UI copy ("Motion never leaves the phone") must stay literally true. No fonts, no analytics, no error reporting. |
 | `DeviceMotionEvent.requestPermission()` is called synchronously inside the Begin tap handler, **with no `await` anywhere before it** | It requires transient activation and a secure context; without activation it rejects with `NotAllowedError` (https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent/requestPermission_static). WebKit is cruder than the spec — activation in practice only holds inside the same stack as the click handler, so one `await` before the call is enough to lose it (https://macwright.com/2022/07/11/activation). This shipped broken once: `await Audio.start()` sat above the call. See §9. |
 | `AudioContext` is created in the same tap | iOS starts it suspended otherwise and the session runs silently. `Audio.start()` is async but constructs the context before its first `await`, so calling it without awaiting is correct and deliberate. |
@@ -49,10 +51,19 @@ section, update the harness in the same commit.
 | Section | Contents |
 |---|---|
 | `0. small helpers` | `clamp`, `lerp`, `TAU`, `lp()` one-pole filter, `notice()` toast |
-| `1. AUDIO ENGINE` | `Audio` — graph construction, procedural impulse response, pink noise, per-frame parameter updates, exhale bell |
+| `1. AUDIO ENGINE` | `Audio` — three voices (`tide`, `shore`, `harmonium`), crossfading, procedural noise and impulse responses, per-frame parameter updates, ducking |
 | `2. BREATH TRACKER` | `Breath` — filtering, calibration PCA, projection, AGC, cycle detection, phase |
 | `3. PACER` | `Pacer` — deceleration schedule and phase-coupled target envelope |
-| `4. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
+| `4. SPEECH` | `Speech` — Web Speech API guidance, keyed copy table, iOS priming, duck and restore |
+| `5. RECORDER + STORE` | `Recorder` (typed-array capture) and `Store` (IndexedDB, eviction, export) |
+| `6. REVIEW UI` | `Review` — the summary End lands on, the session browser, labelling |
+| `7. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
+
+Sections 4–6 sit between the DSP and APP so the harness's slice of 0–3 is unchanged.
+**They must be inert at definition time** — no `document.getElementById`, `indexedDB`
+or `speechSynthesis` at the top level of the IIFE, only inside methods. The harness
+slices `const clamp` → the banner before `4. SPEECH`; renumbering means editing
+`END` in `tools/dsp-harness.mjs` in the same commit.
 
 `Audio` is inert until `Audio.start()` runs, which is why the harness can evaluate
 sections 0–3 in Node without stubbing Web Audio.
@@ -99,6 +110,11 @@ ones, so on asymmetric breathing the reported inhale runs ~0.4 s long and the ex
 short at a 7 s cycle. The total is unaffected. The harness asserts these bounds explicitly
 rather than the true values — if those checks start failing, the smoothing τ has moved.
 
+`finishCalibration()` also records `Breath.flipped` — whether the sign heuristic
+fired — purely so an exported session can say so. It changes no behaviour.
+`Breath.vel()` returns the *signed* velocity, −1..1, positive while inhaling. The
+audio engine needs direction; `speed()` only ever carried magnitude.
+
 **Cycle detection.** Peak/trough with hysteresis `H = 0.34` on the normalised signal.
 Periods outside 2–25 s are discarded. Period EMA α = 0.45, bpm EMA α = 0.4. Lowering `H`
 makes it double-count on noisy signals; raising it drops shallow breaths.
@@ -120,6 +136,25 @@ change one, change both** — the sync reward and the phase coupling both depend
 
 ## 5. Audio invariants
 
+- **`Audio.frame(f)` takes an object, and it carries direction.** The old positional
+  `frame(level, speed, rich, pacerLvl)` passed only the *magnitude* of belly movement,
+  so inhaling and exhaling at the same belly position produced identical parameters —
+  no amount of mix tuning could make the two halves distinguishable. `f` now carries
+  `{level, vel, speed, inhaling, rich, pacerLvl, pacerVel, bpm, dt}`, where `vel` is
+  signed and positive while inhaling. **If a voice ever sounds directionless, check
+  that `vel` is actually being passed before touching the voice.**
+- **Velocity is normalised against the current rate.** Peak `|vel|` scales with
+  breathing rate: at 6/min it is ~43 % of its 14/min value, because `ds/dt` peaks at
+  `ω = 2π·bpm/60`. Dividing by a fixed constant made every velocity-fed layer quieter
+  exactly as the user slowed down — the app rewarded slowness with `rich` while fading
+  out its most breath-like layer. `frame()` divides by the peak the current rate
+  implies. Do not replace that with a constant.
+- **Three voices, one interface.** `Audio.voices` drives the picker, `setVoice(id)`
+  crossfades over ~1.5 s and is safe before `start()` and mid-session. All three graphs
+  are built at startup and crossfaded rather than rebuilt, which costs 24 oscillators
+  and 99 nodes but cannot click. Each voice carries a `trim` (all 1.0) as the one
+  number to move after a listening test — peak levels match within 1.0 dB, but peak is
+  not loudness.
 - **Everything is a `setTargetAtTime` on a smoothed parameter.** Never set an
   `AudioParam.value` directly in the render loop; it produces zipper noise on a signal this
   slow. Time constants in `Audio.frame()` are 0.09–0.5 s and are part of how the instrument
@@ -129,8 +164,10 @@ change one, change both** — the sync reward and the phase coupling both depend
   `(1 + cos Δφ)/2` weighted 0.4, then is low-passed at τ = 3 s so the reward arrives as a
   gradual warming rather than a switch. Anything new that rewards the user should feed
   `rich` rather than adding a parallel mechanism.
-- **The exhale bell fires from `Breath.onExhaleStart`**, strength scaled by the preceding
-  inhale duration. Keep it under ~0.16 gain — it is a cue, not a downbeat.
+- **The turnaround markers fire from `Breath.onExhaleStart`**, strength scaled by the
+  preceding inhale duration. Keep them under ~0.16 gain — a cue, not a downbeat.
+  `bell()` dispatches to the current voice, and each voice times its *bottom* marker
+  from the top one, so removing this call silences both.
 - **`DynamicsCompressor` at threshold −10 dB, ratio 12 is the output limiter.** Layers can
   sum unpredictably when a user breathes hard; do not remove it.
 - **iOS silent switch:** `primeSilentChannel()` starts a silent looping `<audio>` element so
@@ -156,8 +193,26 @@ adult belly produces. It uses random noise, so it is mildly stochastic — it pa
 consecutive runs at the current thresholds. A single flake is worth re-running once; two
 is a regression.
 
-**Run it after any change to sections 0–3.** It will not catch anything in section 4, the
-audio graph, or the canvas.
+Replay a real recording through the tracker:
+
+```bash
+node tools/replay.mjs recordings/some-session.json
+node tools/replay.mjs bundle.json --session <id>     # an "Export all" file
+node tools/replay.mjs s.json --from 40 --to 200      # one labelled stretch
+```
+
+It slices `Breath`/`Pacer` out of `index.html` the same way the harness does, so it
+measures the code that actually ships. This is the point of recording: an algorithm
+change can be checked against real breathing instead of synthetic tilt.
+
+End-to-end smoke test, which needs no phone because Demo mode simulates the sensor:
+serve the repo over `http://localhost`, drive `index.html` with Playwright, turn on
+Demo mode, tap Begin, wait out calibration, tap End, and assert the summary renders
+real numbers and the session appears under Recordings. This is what caught the demo
+calibration bug and the empty-summary bug during integration.
+
+**Run the harness after any change to sections 0–3.** It will not catch anything in
+sections 4–7, the audio graph, or the canvas.
 
 ### Manual checks the harness cannot do
 
@@ -213,8 +268,16 @@ the app already surfaces a notice after 5 s of silence.
 
 ## 9. Do not
 
-- Add persistence, accounts, or session history. The statelessness is the privacy story.
-- Add a countdown, streaks, scores, or any gamification. The reward is the sound opening up.
+- Add accounts, sync, or any network call. Recording is now permitted and on by
+  default — that ban was lifted deliberately — but "it never leaves the phone" is
+  still the privacy story, and it is now the *only* one. Anything that would move a
+  recording off the device breaks the claim the intro makes.
+- Let a storage failure touch a breathing session. `Store` degrades to unavailable and
+  reports afterwards; it never interrupts, and it never blocks the audio path.
+- Add a countdown, streaks, scores, or any gamification. The reward is the sound
+  opening up. **The summary screen is where this will break first** — it reports
+  measurements with units and nothing else. No grading, no congratulation, no arrow
+  joining the first and last rate into a progress claim.
 - Replace the peak/trough detector with FFT-based rate estimation without a plan for the
   latency: at 6 breaths/min a usable window is 60 s+, and the app needs a rate estimate
   within two breaths.

@@ -88,7 +88,28 @@ between peaks, which is what the sound and the guide tone both need.
 
 ### The sound
 
-Five layers, all fed from the breath signal:
+Three voices — **Tide**, **Shore** and **Harmonium** — chosen under Adjust and crossfaded
+over ~1.5 s, so you can change one mid-session without a gap.
+
+The first version of this app had a real problem: you could not hear whether you were
+breathing in or out. Three things caused it, and only one was mixing.
+
+The engine could not tell. Its per-frame call carried the *magnitude* of belly movement
+and not its sign, so inhaling and exhaling at the same belly position produced identical
+parameters. No amount of tuning would have fixed that.
+
+The filter sweep was 2.3 octaves driven by position alone, so both halves of the breath
+retraced one curve rather than tracing two. It is now 4.2 octaves driven by position *and*
+direction, and every voice does something on the inhale that it does not do on the exhale.
+
+And velocity scales with rate. Peak belly velocity at 6 breaths a minute is about 43 % of
+what it is at 14, because the derivative of a sinusoid peaks at `ω = 2π·bpm/60`. Dividing
+by a fixed constant meant every velocity-fed layer got quieter exactly as you did what the
+app was asking. The app rewarded slowness with one hand and faded out its most breath-like
+layer with the other. Velocity is now normalised against the rate you are actually
+breathing at.
+
+Tide's five layers, as an example of the shape all three share:
 
 | Layer | Driven by |
 |---|---|
@@ -107,6 +128,41 @@ atmosphere rather than as feedback.
 
 Pink noise rather than white, because white noise is fatiguing over a ten-minute session and
 this is meant to be listened to with eyes closed.
+
+### Spoken guidance
+
+The phone is on your belly, so the screen is unreadable and reaching for it corrupts the
+signal you are trying to record. The app speaks the stages instead, through the Web Speech
+API — on-device synthesis, so the no-network claim survives.
+
+It talks during setup and then stops. About twelve seconds of speech is front-loaded into
+the twenty-second calibration window, which is the right half of it: the τ = 12 s baseline
+filter is still converging early on, so the covariance that picks the breath axis takes
+most of its information from the last ten seconds anyway. After that it is silent except
+for two pace markers across the whole ramp, a signal-lost warning, and errors.
+
+Speech and Web Audio share one audio session on iOS, so the instrument is ducked
+deliberately rather than left to fight the synthesiser. iOS drops the `end` event often
+enough that four independent paths converge on the unduck — a missed one would leave the
+session quiet for the rest of the sitting.
+
+### Recording
+
+Every session is recorded to the phone and nothing is uploaded. The reason is narrow: the
+tracker was tuned against synthetic tilt, and `tools/replay.mjs` feeds a real recording
+back through the same `Breath` and `Pacer` code the app runs, so a change can be measured
+against real breathing.
+
+Storage is IndexedDB, not localStorage — twenty minutes at 60 Hz is ~2.8 MB exported, so
+two sessions would blow past localStorage's ceiling. On disk it is columnar typed arrays
+(1.59 MB for the same session); the verbose row-per-sample JSON exists only in the export,
+where being readable matters more than being small. Raw motion is never thinned: `Float32`
+at 4 dp is finer than the accelerometer's own step. The newest 48 MB is kept and the oldest
+whole recording is dropped to make room.
+
+Sessions can be labelled after the fact — the first thirty seconds of any recording are you
+getting settled, which pollutes calibration, so marking where you actually lay down makes
+the data usable.
 
 ### The pacer
 
@@ -190,6 +246,18 @@ accumulating a record of how well you did.
 
 ## Known limitations
 
+- **Cross-voice loudness is matched on peak, not loudness.** The three voices sit within
+  1.0 dB of each other by peak level, but peak is not loudness and the usual RMS proxy
+  ignores filtering — which is exactly where these voices differ. Each carries a `trim`,
+  all currently 1.0, as the one number to move per voice after a listening test.
+- **Turnaround cues lag by about a second.** `inhaling` comes from the tracker's
+  hysteresis detector, which cannot know a peak has happened until the signal has fallen
+  past it. The one-shot marker fires from the same detector at the same instant, so it
+  covers the transition, but the sustained direction cues arrive late.
+- **Spoken guidance on iOS is the least verified part of this app.** Whether the
+  zero-volume priming utterance genuinely lifts the gesture restriction, and whether the
+  silent switch mutes speech while Web Audio survives it, both need a real phone. Guidance
+  degrades to on-screen notices when speech does not start.
 - **Embedded frames.** Motion access is commonly blocked in cross-origin iframes. Opened
   inside another app's webview, the app may receive no sensor data at all. It says so after
   5 s. Serve it from its own origin.

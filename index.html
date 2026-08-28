@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#08171E">
-<title>Tide — breath instrument</title>
+<title>breathe — a breath instrument</title>
 <style>
   :root{
     --abyss:#08171E;
@@ -145,9 +145,15 @@
     background:var(--shelf);border-left:2px solid var(--sand);
     padding:14px 16px;border-radius:2px;font-size:13.5px;line-height:1.55;
     box-shadow:0 12px 40px rgba(0,0,0,.5);
-    transform:translateY(140%);transition:transform .32s cubic-bezier(.3,.7,.3,1);
+    /* Travel the notice's own height *plus* the gap it sits above the bottom
+       edge. A bare 140% is not enough: with an empty body the box is ~44 px
+       tall, 140% of that is 62 px, and the box starts 48 px up — so 30 px of
+       it, the padding and the "NOTE" label, stayed on screen at rest. */
+    transform:translateY(calc(100% + env(safe-area-inset-bottom) + 30px));
+    visibility:hidden;
+    transition:transform .32s cubic-bezier(.3,.7,.3,1), visibility 0s linear .32s;
   }
-  .notice.show{transform:translateY(0)}
+  .notice.show{transform:translateY(0);visibility:visible;transition-delay:0s,0s}
   .notice b{font-family:var(--display);letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:var(--sand);display:block;margin-bottom:5px;font-weight:500}
 
   /* ---------- intro ---------- */
@@ -503,7 +509,7 @@
 
 <div id="app">
   <header>
-    <h1 class="wordmark">Tide</h1>
+    <h1 class="wordmark">breathe</h1>
     <span class="depth" id="statusTag">standby</span>
   </header>
 
@@ -520,7 +526,7 @@
       <p class="fineprint">Motion never leaves the phone. Every session is recorded and kept here on
       this device, so you can look back at one — delete any recording, or all of them, whenever you
       like. Nothing goes anywhere unless you export it yourself.<br>
-      Tide keeps the newest 48 MB of recordings, about thirty long sessions, and deletes the oldest
+      breathe keeps the newest 48 MB of recordings, about thirty long sessions, and deletes the oldest
       to make room.<br>
       A relaxation tool, not a medical device.</p>
     </div>
@@ -559,7 +565,7 @@
   <h2>Adjust</h2>
 
 <div class="row">
-  <label for="voice">Voice
+  <label for="voice">Sound
     <span class="hint" id="voiceHint">deep water, a bell as you let go</span>
   </label>
   <select id="voice">
@@ -621,7 +627,7 @@
 </div>
 
 <div class="row hidden" id="rowVoicePick">
-  <label for="voicePick">Voice
+  <label for="voicePick">Speaking voice
     <span class="hint">the English voices on this phone</span>
   </label>
   <select id="voicePick">
@@ -2226,7 +2232,7 @@ const Speech = {
      stored     columnar typed arrays in IndexedDB.
                 motion   4 B uint32 ms + 3 x 4 B float32  = 16 B/sample
                 derived  4 B uint32 ms + 8 x 4 B float32  = 36 B/row
-     exported   the `tide-session/1` JSON in the contract: rows as
+     exported   the `breathe-session/1` JSON in the contract: rows as
                 arrays of rounded numbers, roughly 2x the stored size.
 
    Store.put() packs, Store.get() unpacks, and nothing outside this
@@ -2263,7 +2269,7 @@ const Store = {
      quota is smaller than that; see _fitBudget(). */
   budgetBytes: 48*1024*1024,
 
-  FORMAT:'tide-session/1',
+  FORMAT:'breathe-session/1',
   MOTION_COLUMNS:['t','x','y','z'],
   DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich','pacerLevel','pacerBpm'],
   DERIVED_HZ:10,
@@ -2710,7 +2716,7 @@ const Store = {
   exportAllBlob(){
     const self = this;
     return this.list().then(function(metas){
-      const parts = ['{\n"format": "tide-sessions/1",\n"sessions": [\n'];
+      const parts = ['{\n"format": "breathe-sessions/1",\n"sessions": [\n'];
       let chain = Promise.resolve();
       metas.forEach(function(meta, i){
         chain = chain.then(function(){
@@ -2730,10 +2736,10 @@ const Store = {
   },
 
   exportName(session){
-    // 20260827T180411Z-a3f1 -> tide-20260827-1804.json
+    // 20260827T180411Z-a3f1 -> breathe-20260827-1804.json
     const id = String(session.id || '');
     const m = id.match(/^(\d{8})T(\d{4})/);
-    return m ? ('tide-' + m[1] + '-' + m[2] + '.json') : ('tide-' + id + '.json');
+    return m ? ('breathe-' + m[1] + '-' + m[2] + '.json') : ('breathe-' + id + '.json');
   },
 
   /* ---------- presentation helpers ---------- */
@@ -3981,14 +3987,14 @@ const Review = {
     if(!sessions.length){ notice('Nothing to export','There are no recordings on this phone yet.',5000); return; }
     const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
     // one file, because a phone browser will not accept a burst of downloads
-    this.save('tide-sessions-'+stamp+'.json', JSON.stringify({
-      format:'tide-sessions/1', exportedAt:new Date().toISOString(), sessions:sessions
+    this.save('breathe-sessions-'+stamp+'.json', JSON.stringify({
+      format:'breathe-sessions/1', exportedAt:new Date().toISOString(), sessions:sessions
     }));
   },
 
   filename(session){
     const t = (session.startedAt||'').replace(/[-:]/g,'').slice(0,15) || 'session';
-    return 'tide-' + t + '.json';
+    return 'breathe-' + t + '.json';
   },
 
   /** Blob -> share sheet if the phone takes files, otherwise a download anchor.
@@ -4339,7 +4345,7 @@ function reportSaveTrouble(){
   if(UI.toldSaveTrouble) return;
   if(!Store.available){
     UI.toldSaveTrouble = true;
-    notice('Not recorded', 'This browser will not let Tide store anything, so that session '
+    notice('Not recorded', 'This browser will not let breathe store anything, so that session '
       + 'was not kept. Your breathing was unaffected. Open the page in Safari directly, or '
       + 'leave private browsing, if you want recordings.', 8000);
   }else if(Recorder.saveError){

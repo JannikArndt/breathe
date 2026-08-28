@@ -36,7 +36,7 @@ try { S = JSON.parse(readFileSync(file, 'utf8')); }
 catch (e) { die(`could not read ${file}: ${e.message}`); }
 
 // "Export all" writes a bundle; pick one session out of it.
-if (String(S.format || '').startsWith('tide-sessions/')) {
+if (/^(breathe|tide)-sessions\//.test(String(S.format || ''))) {
   const all = Array.isArray(S.sessions) ? S.sessions : [];
   if (!all.length) die('bundle contains no sessions');
   const chosen = wantSession ? all.find(x => x && x.id === wantSession) : all[0];

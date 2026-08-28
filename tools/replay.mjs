@@ -99,7 +99,7 @@ if (!S || typeof S !== 'object') die('not a session object');
 
 // "Export all" writes a bundle, because phone browsers refuse a burst of
 // downloads. Unwrap it here rather than making the phone export one at a time.
-if (String(S.format || '').startsWith('tide-sessions/')) {
+if (/^(breathe|tide)-sessions\//.test(String(S.format || ''))) {
   const all = Array.isArray(S.sessions) ? S.sessions : [];
   if (!all.length) die('bundle contains no sessions');
   const want = opt.session || null;

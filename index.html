@@ -157,19 +157,52 @@
   .notice b{font-family:var(--display);letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:var(--sand);display:block;margin-bottom:5px;font-weight:500}
 
   /* ---------- intro ---------- */
-  .intro{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:24px;padding:0 4px}
-  .intro h1{
-    font-family:var(--display);font-weight:500;
-    font-size:clamp(30px,10vw,46px);line-height:1.06;letter-spacing:.01em;margin:0;
+  /* The intro is absolutely positioned inside .stage, so anything taller than
+     the stage spills off the bottom of a fixed, unscrollable #app with no way
+     to reach it. Everything here is sized to fit a small phone: three prep
+     lines, one instruction, two controls, three lines of fineprint. */
+  .intro{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    justify-content:center;gap:clamp(14px,3.2vh,26px);padding:0 4px;overflow:hidden;
   }
-  .intro h1 em{font-style:normal;color:var(--glass)}
-  .steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:14px}
-  .steps li{display:flex;gap:14px;align-items:flex-start;font-size:14.5px;line-height:1.5;color:#C7D8D4}
-  .steps .n{
-    font-family:var(--data);font-size:10px;color:var(--sand);letter-spacing:.1em;
-    padding-top:3px;flex:0 0 22px;
+  .prep{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px}
+  .prep li{display:flex;gap:12px;align-items:center;font-size:14.5px;line-height:1.4;color:#C7D8D4}
+  .prep-i{
+    font-size:15px;color:var(--sand);flex:0 0 22px;text-align:center;
   }
-  .fineprint{font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute);line-height:1.75}
+  /* The ringer switch is on the phone's left edge, so the arrow runs off the
+     left of the screen towards it rather than sitting in a tidy icon column. */
+  .prep-mute{margin-left:-22px}
+  .prep-arrow{
+    flex:0 0 44px;height:12px;color:var(--sand);
+  }
+  .prep-arrow path{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+  .lede{margin:0;font-size:16px;line-height:1.5;color:var(--foam)}
+
+  .set{display:flex;flex-direction:column;gap:9px}
+  .set-row{display:flex;align-items:center;justify-content:space-between;gap:14px}
+  .set-row label{font-size:14.5px;color:#C7D8D4}
+  .set-v{font-family:var(--data);font-size:13px;color:var(--sand);letter-spacing:.06em}
+  .set-hint{margin:-3px 0 0;font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute)}
+  .set select{min-width:9.5em}
+  .set input[type=range]{width:100%}
+
+  .fineprint{font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute);line-height:1.7;margin:0}
+
+  /* Navigation: Back is top-left on every screen that has one, and the bottom
+     bar holds only actions. Buttons that merely returned ("Done", "Close") are
+     gone, so there is one way back and it is always in the same place. */
+  .subbar{display:flex;gap:18px;justify-content:center;margin-top:12px}
+  .link{
+    background:none;border:0;padding:6px 4px;font-family:var(--body);font-size:13px;
+    color:var(--mute);letter-spacing:.02em;cursor:pointer;
+  }
+  .link:hover,.link:focus-visible{color:var(--glass)}
+  .sheet-head{
+    display:flex;align-items:center;gap:10px;margin-bottom:10px;
+    padding-bottom:10px;border-bottom:1px solid var(--rev-rule);
+  }
+  .sheet-head h2{margin:0;flex:1 1 auto}
 
   .hidden{display:none !important}
 
@@ -297,12 +330,13 @@
   flex:0 0 auto;display:flex;align-items:center;gap:10px;
   padding-bottom:10px;border-bottom:1px solid var(--rev-rule);
 }
-.rev-back{
+.back{
   flex:0 0 auto;min-width:44px;min-height:44px;padding:0 8px 0 0;
-  display:flex;align-items:center;
+  display:flex;align-items:center;gap:7px;cursor:pointer;
   border:0;background:transparent;color:var(--mute);
   font-family:var(--display);font-size:11px;letter-spacing:.20em;text-transform:uppercase;
 }
+.back::before{content:'\2190';font-size:14px;letter-spacing:0}
 .rev-title{
   flex:1 1 auto;min-width:0;margin:0;font-weight:500;
   font-family:var(--display);font-size:12px;letter-spacing:.28em;text-transform:uppercase;
@@ -516,19 +550,40 @@
   <div class="stage" id="stage">
     <!-- intro -->
     <div class="intro" id="intro">
-      <h1>Your belly<br>moves the <em>water</em>.</h1>
-      <ul class="steps">
-        <li><span class="n">01</span><span>Lie on your back. Phone face-up on your belly, just below the navel.</span></li>
-        <li><span class="n">02</span><span>Headphones, or turn the ringer switch off silent. Volume low to start.</span></li>
-        <li><span class="n">03</span><span>Twenty seconds of ordinary breathing while it learns your movement.</span></li>
-        <li><span class="n">04</span><span>Then close your eyes. The sound follows you, and slowly asks for less.</span></li>
+      <ul class="prep">
+        <li class="prep-mute">
+          <svg class="prep-arrow" viewBox="0 0 40 12" aria-hidden="true">
+            <path d="M39 6 H3 M3 6 l6.5 -5 M3 6 l6.5 5"/>
+          </svg>
+          <span>Ringer switch off silent</span>
+        </li>
+        <li><span class="prep-i" aria-hidden="true">◑</span><span>Notifications off</span></li>
+        <li><span class="prep-i" aria-hidden="true">◎</span><span>Headphones, volume low</span></li>
       </ul>
-      <p class="fineprint">Motion never leaves the phone. Every session is recorded and kept here on
-      this device, so you can look back at one — delete any recording, or all of them, whenever you
-      like. Nothing goes anywhere unless you export it yourself.<br>
-      breathe keeps the newest 48 MB of recordings, about thirty long sessions, and deletes the oldest
-      to make room.<br>
-      A relaxation tool, not a medical device.</p>
+
+      <p class="lede">Lie on your back. Phone face-up on your belly, just below the navel.</p>
+
+      <div class="set">
+        <div class="set-row">
+          <label for="dur">Length</label>
+          <output class="set-v" id="durOut" for="dur">10 min</output>
+        </div>
+        <input type="range" id="dur" min="1" max="20" step="1" value="10"
+               aria-label="Session length in minutes">
+
+        <div class="set-row">
+          <label for="voice">Sound</label>
+          <select id="voice">
+            <option value="tide">Tide</option>
+            <option value="shore" selected>Shore</option>
+            <option value="harmonium">Harmonium</option>
+          </select>
+        </div>
+        <p class="set-hint" id="voiceHint">a wave gathers, breaks and drains</p>
+      </div>
+
+      <p class="fineprint">Motion never leaves the phone. Sessions are recorded and kept here, and
+      go nowhere unless you export them. A relaxation tool, not a medical device.</p>
     </div>
 
     <!-- live dial -->
@@ -554,24 +609,19 @@
 
   <div class="bar">
     <button id="mainBtn" class="primary">Begin</button>
-    <button id="panelBtn" class="ghost" aria-label="Settings">Adjust</button>
+  </div>
+  <div class="subbar" id="homeSub">
+    <button class="link" id="recBtn">Recordings</button>
+    <button class="link" id="panelBtn">Adjust</button>
   </div>
 </div>
 
 <!-- settings -->
 <div class="panel" id="panel" role="dialog" aria-label="Settings">
-  <h2>Adjust</h2>
-
-<div class="row">
-  <label for="voice">Sound
-    <span class="hint" id="voiceHint">deep water, a bell as you let go</span>
-  </label>
-  <select id="voice">
-    <option value="tide" selected>Tide</option>
-    <option value="shore">Shore</option>
-    <option value="harmonium">Harmonium</option>
-  </select>
-</div>
+  <header class="sheet-head">
+    <button class="back" id="closePanel">Back</button>
+    <h2>Adjust</h2>
+  </header>
 
   <div class="row">
     <label for="vol">Volume</label>
@@ -617,7 +667,7 @@
   </div>
 
   <div class="row">
-    <label>Recordings
+    <label>Storage
       <span class="hint" id="recCount">checking storage</span>
       <span class="meter" id="storeMeter" aria-hidden="true"><i id="storeMeterFill"></i></span>
     </label>
@@ -631,16 +681,15 @@
     <button class="ghost rowbtn danger" id="clearRecBtn">Delete all</button>
   </div>
 
-  <div class="bar" style="margin-top:18px">
-    <button id="recalBtn">Recalibrate</button>
-    <button id="closePanel" class="ghost">Done</button>
+  <div class="bar hidden" id="recalBar" style="margin-top:18px">
+    <button id="recalBtn">Measure my breathing again</button>
   </div>
 </div>
 
 <div class="review hidden" id="review" role="dialog" aria-modal="true" aria-labelledby="revTitle">
 
   <header class="rev-head">
-    <button class="rev-back hidden" id="revBack">Back</button>
+    <button class="back" id="revBack">Back</button>
     <h2 class="rev-title" id="revTitle" tabindex="-1">This session</h2>
     <span class="depth rev-tag" id="revTag"></span>
   </header>
@@ -728,11 +777,9 @@
     <div class="bar hidden" id="revSumBar">
       <button id="revLabelBtn">Label</button>
       <button id="revSumExport">Export</button>
-      <button id="revDone" class="primary">Done</button>
     </div>
     <div class="bar hidden" id="revListBar">
       <button id="revExportAll">Export all</button>
-      <button id="revListClose" class="primary">Done</button>
     </div>
     <div class="bar hidden" id="revDetBar">
       <button id="revDetExport">Export</button>
@@ -810,7 +857,7 @@ const fin = (x,d) => (typeof x === 'number' && x-x === 0) ? x : d;
 const Audio = {
   ctx:null, ready:false, vol:0.55,
 
-  voiceId:'tide',
+  voiceId:'shore',
   voices:[
     {id:'tide',      name:'Tide',      blurb:'deep water, a bell as you let go'},
     {id:'shore',     name:'Shore',     blurb:'a wave gathers, breaks and drains'},
@@ -1472,12 +1519,13 @@ const Audio = {
     }catch(e){}
   },
 
-  async stop(){
+  async stop(fadeSec){
     if(!this.ready) return;
-    this.fade(0, 1.4);
+    const f = clamp(fin(fadeSec, 1.4), 0.2, 12);
+    this.fade(0, f);
     const ctx=this.ctx;
     this.ready=false; this.v=null; this.m=null; this.fadeFrom=null;
-    setTimeout(()=>{ try{ ctx.close(); }catch(e){} }, 1700);
+    setTimeout(()=>{ try{ ctx.close(); }catch(e){} }, f*1000 + 300);
     this.ctx=null;
   }
 };
@@ -1786,6 +1834,7 @@ const Speech = {
     calibrateFailed: 'The phone did not pick up your breathing. Move it lower on your belly.',
     running        : 'Close your eyes. The sound follows your breathing.',
     ending         : 'That is the end of the session. The sound is fading out.',
+    timeUp         : 'That is your {min} minutes. Stay as long as you like.',
     summaryReady   : 'Your session summary is on the screen.',
     recalibrate    : 'Learning your movement again. Breathe as you normally would.',
     signalLost     : 'The signal has gone quiet. Rest the phone flat on your belly.',
@@ -3111,12 +3160,10 @@ const Review = {
     const d = this._dom;
 
     d.back.addEventListener('click', ()=>this.back());
-    $('revDone').addEventListener('click', ()=>{ this.hide(); if(this.onDone) this.onDone(); });
     $('revLabelBtn').addEventListener('click', ()=>{
       if(this.session) this.showDetail(this.session.id, 'summary');
     });
     $('revSumExport').addEventListener('click', ()=>this.exportOne(this.session));
-    $('revListClose').addEventListener('click', ()=>this.hide());
     $('revExportAll').addEventListener('click', ()=>this.exportAll());
     $('revDetExport').addEventListener('click', ()=>this.exportOne(this.session));
     $('revDetDelete').addEventListener('click', ()=>this.deleteCurrent());
@@ -3162,10 +3209,15 @@ const Review = {
     this.confirmId = null;
   },
 
+  /** The only way out of any review screen. Detail steps back to wherever it
+      was opened from; everything else closes, and leaving the summary is what
+      returns the app to the intro. */
   back(){
     if(this.screen==='detail' && this.from==='summary'){ this.showSummary(this.session); return; }
     if(this.screen==='detail'){ this.showList(); return; }
+    const wasSummary = this.screen === 'summary';
     this.hide();
+    if(wasSummary && this.onDone) this.onDone();
   },
 
   /* ---------- 1. summary ---------- */
@@ -3999,13 +4051,15 @@ const UI = {
   demo:false, demoPhase:0,
   wakeLock:null, silentEl:null,
   rich:0.4, lastFrame:0, sensorSeen:false, calTimer:null,
-  voiceTimer:null, recal:false, paceSaid:0, nearSaid:false, toldSaveTrouble:false,
+  voiceTimer:null, recal:false, toldSaveTrouble:false,
+  durationMin:10, runUntil:0, ending:false,
   trace:[], traceAcc:0,
   sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
 };
 
 const el = {
   main:$('mainBtn'), panelBtn:$('panelBtn'), panel:$('panel'), intro:$('intro'),
+  homeSub:$('homeSub'),
   dial:$('dial'), centerRead:$('centerRead'), cue:$('cue'), sub:$('sub'),
   traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
   vRate:$('vRate'), vRatio:$('vRatio'),
@@ -4094,6 +4148,8 @@ function requestSensor(){
 /* ---------- session control ---------- */
 /** Both promises are started inside the tap handler; begin() only awaits them. */
 async function begin(sensorP, audioP){
+  UI.ending = false;
+  el.homeSub.classList.add('hidden');
   const audioOk = await audioP;
   const sensor  = await sensorP;
   UI.sensorPerm = sensor;
@@ -4181,11 +4237,14 @@ function finishCalibration(){
     amplitude: Breath.calAmplitude || 0, flipped: !!Breath.flipped
   });
   if(!ok){
-    notice('Too little movement', 'The phone did not pick up your breathing. Move it lower on your belly, lie flatter, and tap Recalibrate.', 0);
+    notice('Too little movement', 'The phone did not pick up your breathing. Move it lower on your belly, lie flatter, and measure again under Adjust.', 0);
     Breath.calibrating = false;
   }
   UI.state = 'running';
   el.statusTag.textContent = 'listening';
+  // The length the user picked is breathing time. Calibration is setup, and
+  // charging it against a 1-minute session would leave 40 seconds.
+  UI.runUntil = performance.now()/1000 + UI.durationMin*60;
 
   el.cue.textContent = 'Breathe';
   el.sub.textContent = 'Eyes closed. Let the sound do the counting.';
@@ -4199,13 +4258,16 @@ function finishCalibration(){
   };
 }
 
-async function end(){
+async function end(timeUp){
   UI.state='idle';
+  UI.runUntil = 0;
   clearTimeout(UI.calTimer); clearTimeout(UI.voiceTimer);
   window.removeEventListener('devicemotion', onMotion);
   Breath.onExhaleStart = null;
-  Speech.say('ending');
-  await Audio.stop();
+  if(!timeUp) Speech.say('ending');
+  // A session that ran its length gets a long fade; one you ended by hand
+  // should stop close to when you meant it to.
+  await Audio.stop(timeUp ? 6.0 : 1.4);
   if(UI.silentEl){ try{ UI.silentEl.pause(); }catch(e){} UI.silentEl=null; }
   if(UI.wakeLock){ try{ UI.wakeLock.release(); }catch(e){} UI.wakeLock=null; }
   [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.add('hidden'));
@@ -4234,6 +4296,7 @@ async function end(){
     reachable mid-session, so closing those must return you to the session. */
 function toIntro(){
   el.intro.classList.remove('hidden');
+  el.homeSub.classList.remove('hidden');
   el.statusTag.textContent = 'standby';
 }
 
@@ -4287,7 +4350,15 @@ function loop(now){
     level, vel:Breath.vel(), speed, inhaling:Breath.rising, resting:Breath.resting,
     rich:UI.rich, bpm:Breath.bpmSmooth||0, dt
   });
-  if(UI.state==='running') updateReadout();
+  if(UI.state==='running'){
+    updateReadout();
+    // Guarded: end() is async and the loop keeps turning until it lands.
+    if(!UI.ending && UI.runUntil && now/1000 >= UI.runUntil){
+      UI.ending = true;
+      Speech.say('timeUp', {min: String(UI.durationMin)});
+      end(true);
+    }
+  }
 
   // live sample rate in the header: 0 Hz means no events are arriving at all
   UI.hzAcc += dt;
@@ -4390,14 +4461,25 @@ el.main.addEventListener('click', ()=>{
 });
 el.panelBtn.addEventListener('click', ()=>{
   el.panel.classList.add('open');
+  // Recalibrating only means something while a session is running.
+  $('recalBar').classList.toggle('hidden', UI.state === 'idle');
   Review.refreshCount(); refreshStorageRow();
 });
+$('recBtn').addEventListener('click', ()=>Review.showList());
 $('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
 $('recalBtn').addEventListener('click', ()=>{
   el.panel.classList.remove('open');
   if(UI.state!=='idle'){ UI.recal = true; startCalibration(); }
 });
 $('vol').addEventListener('input', e=>Audio.setVolume(parseInt(e.target.value,10)/100));
+
+const durSlider = $('dur'), durOut = $('durOut');
+function showDuration(){
+  UI.durationMin = clamp(parseInt(durSlider.value, 10) || 10, 1, 20);
+  durOut.textContent = UI.durationMin + ' min';
+}
+durSlider.addEventListener('input', showDuration);
+showDuration();
 
 function bindToggle(id, fn){
   const b=$(id);

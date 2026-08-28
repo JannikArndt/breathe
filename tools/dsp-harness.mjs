@@ -25,7 +25,7 @@ const js = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 if (!js) fail('no <script> block found in ' + htmlPath);
 
 const START = 'const clamp';
-const END = '   4. APP';
+const END = '   4. SPEECH';
 const a = js.indexOf(START);
 const b = js.indexOf(END);
 if (a < 0 || b < 0) fail('section markers moved — update START/END in this harness');

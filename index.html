@@ -170,6 +170,333 @@
   @media (prefers-reduced-motion:reduce){
     *{transition-duration:.01ms !important}
   }
+
+/* ============================================================
+   Voice picker. No new colours and no new custom properties —
+   the row, the label, the hint and the select are all existing
+   patterns; these two rules only stop the longest voice name and
+   the longest hint from fighting each other for the same line.
+
+   Goes with the other .row rules in the panel block. Note the
+   .panel prefix: it keeps this below .bar in specificity, which
+   is where margins have collided before.
+   ============================================================ */
+
+.panel .row select{flex:0 0 auto;max-width:52%}
+.panel .row label{min-width:0}
+
+/* ============================================================
+     SPEECH — panel rows (section 4 lives in the script below)
+   Goes in the <style> block after the ".toggle" rules and before
+   the "notice" section. No new custom properties are needed: these
+   rows reuse .row, .hint, .toggle, input[type=range] and select.
+   ============================================================ */
+
+/* A long voice name ("Samantha (Enhanced)") would otherwise push the label off
+   a narrow phone. The select clips instead of wrapping the row. */
+#voicePick{max-width:52vw}
+
+/* Speed and voice only take effect while guidance is on. Dimming says so
+   without hiding them, so nothing jumps around when the toggle is flipped;
+   both stay operable, because a change made here is what the next spoken line
+   will use. Scoped to .panel so it wins over the bare .row rule. */
+.panel .row[data-off="true"]{opacity:.42}
+
+/* ============================================================
+   DATA — styles for the Adjust-panel recording rows.
+
+   Appended after the ".panel" block in index.html's <style>, before
+   the ".notice" block. No new custom properties are needed: the two
+   states use --glass (normal) and --sand (attention), which is the
+   same pairing .trace-key and .notice already use.
+   ============================================================ */
+
+/* Buttons living inside a .row rather than a .bar. The base rule gives
+   every button flex:1 and 15px padding, which makes a row control tower
+   over the label; .ghost already un-flexes it, this trims the height to
+   match the 30px .toggle sitting in the neighbouring rows. */
+.row .rowbtn{
+  padding:9px 13px;
+  font-size:11px;
+  letter-spacing:.18em;
+  min-width:88px;
+}
+
+/* Destructive action: the same sand the notice bar uses for attention,
+   never a fill, so it cannot be mistaken for the primary button. */
+.row .rowbtn.danger{
+  color:var(--sand);
+  border-color:rgba(217,168,91,.45);
+}
+.row .rowbtn.danger[data-armed="true"]{
+  background:rgba(217,168,91,.14);
+}
+
+/* How full the 48 MB budget is. Sits under the hint inside the label,
+   so it inherits the label's width rather than fighting the row's
+   space-between. */
+.meter{
+  display:block;
+  width:132px;max-width:100%;
+  height:2px;margin-top:7px;
+  background:rgba(124,154,161,.28);
+  border-radius:2px;overflow:hidden;
+}
+.meter i{
+  display:block;height:100%;width:0;
+  background:var(--glass);
+  transition:width .3s ease;
+}
+/* Over ~85% the next session starts deleting the oldest one. */
+.meter[data-full="true"] i{ background:var(--sand); }
+
+/* The hint doubles as the storage readout; it turns sand when a
+   recording failed or the store is unavailable. */
+.row .hint.warn{ color:var(--sand); }
+
+/* ============================================================
+   REVIEW UI — summary, recordings, detail
+   Append to the existing <style> block. Every colour below comes
+   from the :root block; the additions are declared once, here.
+   ============================================================ */
+
+:root{
+  /* Hairlines and washes reused from the live screens, named so no rule
+     below carries a raw colour. The values match what the app already
+     draws with: --rev-lane is the same ground the live trace paints. */
+  --rev-rule:      rgba(124,154,161,.16);
+  --rev-rule-firm: rgba(124,154,161,.30);
+  --rev-lane:      rgba(14,39,50,.55);
+  --rev-tint:      rgba(127,191,174,.14);
+  --rev-press:     rgba(227,237,233,.10);
+  --rev-haze:      #C7D8D4;            /* the body colour the intro steps use */
+
+  /* Destructive only. Warm enough to read as "careful" beside --sand,
+     dim enough not to glare on an OLED screen in a dark room. */
+  --ember:         #C4715A;
+  --ember-tint:    rgba(196,113,90,.16);
+}
+
+/* ---------- overlay shell ---------- */
+.review{
+  position:fixed;inset:0;z-index:25;          /* over the panel (20), under the notice (30) */
+  display:flex;flex-direction:column;
+  background:var(--abyss);
+  padding:calc(env(safe-area-inset-top) + 12px) 18px calc(env(safe-area-inset-bottom) + 12px);
+  animation:revIn .26s cubic-bezier(.3,.7,.3,1);
+}
+@keyframes revIn{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+
+.rev-head{
+  flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  padding-bottom:10px;border-bottom:1px solid var(--rev-rule);
+}
+.rev-back{
+  flex:0 0 auto;min-width:44px;min-height:44px;padding:0 8px 0 0;
+  display:flex;align-items:center;
+  border:0;background:transparent;color:var(--mute);
+  font-family:var(--display);font-size:11px;letter-spacing:.20em;text-transform:uppercase;
+}
+.rev-title{
+  flex:1 1 auto;min-width:0;margin:0;font-weight:500;
+  font-family:var(--display);font-size:12px;letter-spacing:.28em;text-transform:uppercase;
+  color:var(--foam);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rev-title:focus-visible{outline:2px solid var(--sand);outline-offset:4px;border-radius:2px}
+.rev-tag{flex:0 0 auto;font-size:9.5px;letter-spacing:.10em}
+
+.rev-scroll{
+  flex:1 1 auto;min-height:0;padding-top:14px;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+}
+.rev-foot{flex:0 0 auto}
+.rev-foot .bar{margin-top:12px}
+
+/* ---------- shared text bits ---------- */
+.rev-cap{
+  margin:10px 0 0;
+  font-family:var(--data);font-size:10.5px;line-height:1.7;letter-spacing:.04em;
+  color:var(--mute);
+}
+.rev-flag{
+  margin:12px 0 0;padding:11px 13px;border-radius:2px;
+  background:var(--shelf);border-left:2px solid var(--sand);
+  font-size:13px;line-height:1.55;color:var(--rev-haze);
+}
+.rev-sub{
+  margin:24px 0 6px;font-weight:500;
+  font-family:var(--display);font-size:11px;letter-spacing:.30em;text-transform:uppercase;
+  color:var(--mute);
+}
+.rev-none,.rev-foot-note{
+  margin:0;
+  font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
+  color:var(--mute);
+}
+.rev-foot-note{margin-top:16px}
+
+/* ---------- 1. summary ---------- */
+.spark{
+  display:block;width:100%;height:168px;border-radius:2px;background:var(--rev-lane);
+}
+.rev-key{margin-top:8px}
+.key-you{background:var(--glass)}
+.key-pace{background:var(--sand)}
+
+/* two columns, not the live screen's three: the keys here are longer */
+.readout.rev-grid{grid-template-columns:repeat(2,1fr);margin-top:16px}
+.readout.rev-grid .cell{padding:14px 10px}
+.readout.rev-grid .v{font-size:19px}
+
+/* ---------- 2. recordings ---------- */
+.recs{display:flex;flex-direction:column}
+.rec{
+  display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;
+  border-bottom:1px solid var(--rev-rule);
+}
+.rec-open{
+  flex:1 1 auto;min-width:0;min-height:64px;
+  display:flex;flex-direction:column;justify-content:center;gap:5px;
+  padding:12px 0;border:0;border-radius:0;background:transparent;text-align:left;
+  font-family:var(--body);font-size:14.5px;font-weight:400;
+  letter-spacing:normal;text-transform:none;color:var(--foam);
+}
+.rec-open:active{background:var(--rev-press)}
+.rec-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.rec-when{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec-len{
+  flex:0 0 auto;
+  font-family:var(--data);font-size:13px;color:var(--foam);font-variant-numeric:tabular-nums;
+}
+.rec-sub{
+  font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
+  color:var(--mute);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rec-del{
+  flex:0 0 auto;align-self:center;min-width:44px;min-height:44px;padding:0 11px;
+  border:1px solid var(--rev-rule);border-radius:2px;background:transparent;
+  font-family:var(--data);font-size:10px;letter-spacing:.10em;text-transform:uppercase;
+  color:var(--mute);
+}
+.rec-del:active{background:var(--ember-tint);color:var(--ember)}
+
+.rec-ask{
+  flex:1 1 100%;display:flex;align-items:center;gap:8px;padding:0 0 12px;
+}
+.rec-ask-q{flex:1 1 auto;min-width:0;font-size:13px;line-height:1.4;color:var(--rev-haze)}
+.rec-ask button{
+  flex:0 0 auto;min-height:44px;padding:0 14px;
+  font-size:11px;letter-spacing:.16em;
+}
+.danger{color:var(--ember);border-color:var(--ember)}
+.danger:active{background:var(--ember-tint)}
+
+.rev-empty{padding:24px 0 8px}
+.rev-empty h3{
+  margin:0 0 10px;font-weight:500;
+  font-family:var(--display);font-size:16px;letter-spacing:.04em;color:var(--foam);
+}
+.rev-empty p{margin:0;font-size:14px;line-height:1.6;color:var(--rev-haze)}
+
+/* ---------- 3. detail ---------- */
+/* The waveform and its readout stay pinned while the kinds scroll under,
+   so you never lose the moment you just scrubbed to. The negative margin
+   cancels .rev-scroll's padding so the sticky edge sits flush. */
+.scrub{
+  position:sticky;top:0;z-index:2;
+  margin-top:-14px;padding:14px 0 12px;
+  background:var(--abyss);
+}
+.lane{
+  display:block;width:100%;border-radius:2px;background:var(--rev-lane);
+  touch-action:none;                 /* the lanes own horizontal drags */
+}
+.lane-over{height:54px;cursor:pointer}
+.lane-fine{height:146px;margin-top:6px;cursor:ew-resize}
+.lane-fine:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
+
+.readout.rev-read{grid-template-columns:repeat(3,1fr);margin-top:10px}
+.readout.rev-read .v{font-size:19px}
+
+.zoomrow{display:flex;align-items:stretch;gap:12px;margin-top:10px}
+.step{
+  flex:0 0 auto;min-width:60px;min-height:44px;padding:0;
+  border:0;border-radius:2px;background:var(--rev-lane);
+  font-family:var(--data);font-size:12px;letter-spacing:.01em;text-transform:none;
+  color:var(--foam);
+}
+.step:active{background:var(--rev-tint)}
+.seg{
+  flex:1 1 auto;display:flex;gap:1px;
+  background:var(--rev-rule-firm);border-radius:2px;overflow:hidden;
+}
+.seg button{
+  flex:1 1 0;min-width:0;min-height:44px;padding:0 2px;
+  border:0;border-radius:0;background:var(--abyss);
+  font-family:var(--data);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--mute);
+}
+/* The steppers either side are filled blocks too, so the chosen span needs
+   more than a tint to tell it apart: the glass underline does that. */
+.seg button[aria-pressed=true]{
+  background:var(--rev-tint);color:var(--foam);
+  box-shadow:inset 0 -2px 0 var(--glass);
+}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.chip{
+  flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:22px;
+  border:1px solid var(--rev-rule-firm);background:transparent;
+  font-family:var(--body);font-size:13px;font-weight:400;
+  letter-spacing:normal;text-transform:none;color:var(--rev-haze);
+}
+.chip[aria-pressed=true]{background:var(--rev-tint);border-color:var(--glass);color:var(--foam)}
+
+.rev-note{
+  width:100%;min-height:48px;margin-top:14px;padding:13px 12px;
+  border:1px solid var(--rev-rule-firm);border-radius:2px;
+  background:var(--shelf);color:var(--foam);
+  font-family:var(--body);font-size:16px;   /* 16px keeps iOS from zooming the field */
+  user-select:text;-webkit-user-select:text;
+}
+.rev-note::placeholder{color:var(--mute)}
+.rev-note:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
+
+.rev-add{width:100%;margin-top:10px;font-size:12px;letter-spacing:.18em}
+
+.labs{display:flex;flex-direction:column}
+.lab{display:flex;align-items:stretch;gap:8px;border-bottom:1px solid var(--rev-rule)}
+.lab-go{
+  flex:1 1 auto;min-width:0;min-height:52px;
+  display:flex;align-items:center;gap:12px;padding:8px 0;
+  border:0;border-radius:0;background:transparent;text-align:left;
+  font-family:var(--body);font-weight:400;letter-spacing:normal;text-transform:none;
+  color:var(--foam);
+}
+.lab-go:active{background:var(--rev-press)}
+.lab-t{
+  flex:0 0 auto;min-width:42px;
+  font-family:var(--data);font-size:12px;color:var(--sand);font-variant-numeric:tabular-nums;
+}
+.lab-txt{display:flex;flex-direction:column;gap:3px;min-width:0}
+.lab-kind{font-size:14px}
+.lab-note{
+  font-family:var(--data);font-size:10.5px;letter-spacing:.04em;color:var(--mute);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.lab-del{
+  flex:0 0 auto;align-self:center;min-width:44px;min-height:44px;padding:0 11px;
+  border:1px solid var(--rev-rule);border-radius:2px;background:transparent;
+  font-family:var(--data);font-size:10px;letter-spacing:.10em;text-transform:uppercase;
+  color:var(--mute);
+}
+.lab-del:active{background:var(--ember-tint);color:var(--ember)}
+
+@media (prefers-reduced-motion:reduce){
+  .review{animation:none}
+}
 </style>
 </head>
 <body>
@@ -190,7 +517,12 @@
         <li><span class="n">03</span><span>Twenty seconds of ordinary breathing while it learns your movement.</span></li>
         <li><span class="n">04</span><span>Then close your eyes. The sound follows you, and slowly asks for less.</span></li>
       </ul>
-      <p class="fineprint">Motion never leaves the phone. Nothing is recorded or sent anywhere.<br>A relaxation tool, not a medical device.</p>
+      <p class="fineprint">Motion never leaves the phone. Every session is recorded and kept here on
+      this device, so you can look back at one — delete any recording, or all of them, whenever you
+      like. Nothing goes anywhere unless you export it yourself.<br>
+      Tide keeps the newest 48 MB of recordings, about thirty long sessions, and deletes the oldest
+      to make room.<br>
+      A relaxation tool, not a medical device.</p>
     </div>
 
     <!-- live dial -->
@@ -225,6 +557,17 @@
 <!-- settings -->
 <div class="panel" id="panel" role="dialog" aria-label="Settings">
   <h2>Adjust</h2>
+
+<div class="row">
+  <label for="voice">Voice
+    <span class="hint" id="voiceHint">deep water, a bell as you let go</span>
+  </label>
+  <select id="voice">
+    <option value="tide" selected>Tide</option>
+    <option value="shore">Shore</option>
+    <option value="harmonium">Harmonium</option>
+  </select>
+</div>
 
   <div class="row">
     <label for="vol">Volume</label>
@@ -262,6 +605,30 @@
     <button class="toggle" id="tglPacer" role="switch" aria-checked="true" aria-label="Guide tone"></button>
   </div>
 
+<div class="row">
+  <label>Spoken guidance
+    <span class="hint">says the stages and any problems out loud</span>
+  </label>
+  <button class="toggle" id="tglVoice" role="switch" aria-checked="true" aria-label="Spoken guidance"></button>
+</div>
+
+<div class="row" id="rowVoiceRate">
+  <label for="voiceRate">Speaking speed
+    <span class="hint">slower to faster</span>
+  </label>
+  <input type="range" id="voiceRate" min="70" max="110" value="86"
+         aria-label="Speaking speed">
+</div>
+
+<div class="row hidden" id="rowVoicePick">
+  <label for="voicePick">Voice
+    <span class="hint">the English voices on this phone</span>
+  </label>
+  <select id="voicePick">
+    <option value="">System default</option>
+  </select>
+</div>
+
   <div class="row">
     <label>Flip direction
       <span class="hint">use if sound falls when you breathe in</span>
@@ -276,10 +643,130 @@
     <button class="toggle" id="tglDemo" role="switch" aria-checked="false" aria-label="Demo mode"></button>
   </div>
 
+  <div class="row">
+    <label>Recordings
+      <span class="hint" id="recCount">checking storage</span>
+      <span class="meter" id="storeMeter" aria-hidden="true"><i id="storeMeterFill"></i></span>
+    </label>
+    <button class="ghost rowbtn" id="openRecordings">Open</button>
+  </div>
+
+  <div class="row">
+    <label>Delete every recording
+      <span class="hint">cannot be undone</span>
+    </label>
+    <button class="ghost rowbtn danger" id="clearRecBtn">Delete all</button>
+  </div>
+
   <div class="bar" style="margin-top:18px">
     <button id="recalBtn">Recalibrate</button>
     <button id="closePanel" class="ghost">Done</button>
   </div>
+</div>
+
+<div class="review hidden" id="review" role="dialog" aria-modal="true" aria-labelledby="revTitle">
+
+  <header class="rev-head">
+    <button class="rev-back hidden" id="revBack">Back</button>
+    <h2 class="rev-title" id="revTitle" tabindex="-1">This session</h2>
+    <span class="depth rev-tag" id="revTag"></span>
+  </header>
+
+  <div class="rev-scroll">
+
+    <!-- ---------- 1. summary: where End lands ---------- -->
+    <section class="rev-screen hidden" id="revSummary">
+      <canvas class="spark" id="revSpark"></canvas>
+      <div class="trace-key rev-key">
+        <span><i class="key-dot key-you"></i>You</span>
+        <span><i class="key-dot key-pace"></i>Pace</span>
+      </div>
+      <p class="rev-cap">Rate over the whole session, in breaths per minute.
+         The shading behind it is how deep each breath was.</p>
+      <p class="rev-flag hidden" id="revSumFlag"></p>
+      <div class="readout rev-grid" id="revSumGrid"></div>
+    </section>
+
+    <!-- ---------- 2. recordings ---------- -->
+    <section class="rev-screen hidden" id="revList">
+      <div class="rev-empty hidden" id="revListEmpty"></div>
+      <div class="recs" id="revRows"></div>
+      <p class="rev-foot-note" id="revListFoot"></p>
+    </section>
+
+    <!-- ---------- 3. detail: scrub and label ---------- -->
+    <section class="rev-screen hidden" id="revDetail">
+
+      <!-- sticky: the waveform stays put while the kind chips scroll under it -->
+      <div class="scrub">
+        <canvas class="lane lane-over" id="revOver"></canvas>
+        <canvas class="lane lane-fine" id="revFine"
+                tabindex="0" role="slider"
+                aria-label="Position in the recording"
+                aria-valuemin="0" aria-valuenow="0" aria-valuetext="0:00"></canvas>
+
+        <div class="readout rev-read">
+          <div class="cell"><div class="k">At</div><div class="v" id="revVAt">0:00</div></div>
+          <div class="cell"><div class="k">You</div><div class="v" id="revVSig">—</div></div>
+          <div class="cell"><div class="k">Your rate</div><div class="v" id="revVRate">—<small>/min</small></div></div>
+        </div>
+
+        <div class="zoomrow">
+          <button class="step" id="revBack05" aria-label="Move the marker back half a second">&minus;0.5 s</button>
+          <div class="seg" id="revSpans" role="group" aria-label="How much of the recording the lower lane shows">
+            <button type="button" data-span="0"   aria-pressed="false">Whole</button>
+            <button type="button" data-span="120" aria-pressed="false">2 min</button>
+            <button type="button" data-span="30"  aria-pressed="true">30 s</button>
+            <button type="button" data-span="8"   aria-pressed="false">8 s</button>
+          </div>
+          <button class="step" id="revFwd05" aria-label="Move the marker forward half a second">+0.5 s</button>
+        </div>
+      </div>
+
+      <p class="rev-cap">Tap the top lane to jump. Drag the lower lane to slide
+         the recording past the marker.</p>
+
+      <div class="chips" id="revKinds" role="group" aria-label="What happened">
+        <button type="button" class="chip" data-kind="lay-down"      aria-pressed="true">Lay down</button>
+        <button type="button" class="chip" data-kind="settled"       aria-pressed="false">Settled</button>
+        <button type="button" class="chip" data-kind="sat-up"        aria-pressed="false">Sat up</button>
+        <button type="button" class="chip" data-kind="phone-moved"   aria-pressed="false">Phone moved</button>
+        <button type="button" class="chip" data-kind="talking"       aria-pressed="false">Talking</button>
+        <button type="button" class="chip" data-kind="drifted-off"   aria-pressed="false">Drifted off</button>
+        <button type="button" class="chip" data-kind="bad-detection" aria-pressed="false">Bad detection</button>
+        <button type="button" class="chip" data-kind="good-stretch"  aria-pressed="false">Good stretch</button>
+        <button type="button" class="chip" data-kind="other"         aria-pressed="false">Other</button>
+      </div>
+
+      <input class="rev-note" id="revNote" type="text" maxlength="140"
+             placeholder="Optional note" aria-label="Optional note"
+             autocomplete="off" autocorrect="off" spellcheck="false">
+
+      <button class="primary rev-add" id="revAdd">Add label at 0:00</button>
+
+      <h3 class="rev-sub">Labels</h3>
+      <p class="rev-none" id="revLabelsNone">No labels on this recording yet.</p>
+      <div class="labs" id="revLabels"></div>
+    </section>
+
+  </div>
+
+  <div class="rev-foot">
+    <div class="bar hidden" id="revSumBar">
+      <button id="revLabelBtn">Label</button>
+      <button id="revSumExport">Export</button>
+      <button id="revDone" class="primary">Done</button>
+    </div>
+    <div class="bar hidden" id="revListBar">
+      <button id="revExportAll">Export all</button>
+      <button id="revListClose" class="primary">Done</button>
+    </div>
+    <div class="bar hidden" id="revDetBar">
+      <button id="revDetExport">Export</button>
+      <button id="revDetDelete" class="danger" data-armed="0">Delete</button>
+    </div>
+  </div>
+
 </div>
 
 <div class="notice" id="notice"><b id="noticeTitle">Note</b><span id="noticeBody"></span></div>
@@ -315,172 +802,727 @@ function notice(title, body, ms){
 /* ============================================================
    1. AUDIO ENGINE
    ------------------------------------------------------------
-   Layers, all fed by the breath signal:
-     drone  low sustained tone; its low-pass opens as you inhale
-     air    band-passed noise driven by how fast the belly moves
-     pad    open sus2 chord that swells in only when breathing is slow
-     bell   soft low strike at the top of each exhale
-     guide  quiet sine following the target pace
+   Three voices. One sounds at a time; setVoice() crossfades.
+
+     tide        deep water: drone, air, a bell as you begin to let go
+     shore       a wave: surf gathers, breaks at the top, drains
+     harmonium   a reed drone box, bellows worked by your belly
+
+   Direction is the whole point of this rewrite. The old engine only
+   ever saw |velocity|, so filling and emptying sounded identical.
+   frame() now takes signed velocity, and every voice says which way
+   the belly is going on three channels at once:
+
+     brightness   rises through the inhale, falls through the exhale,
+                  across about four octaves rather than the old two
+     texture      one layer belongs to the inhale and a different one
+                  to the exhale; neither sounds during the other half
+     turnarounds  a one-shot at the top and a deliberately unlike one
+                  at the bottom, so the two ends never blur together
+
+   The exhale is the half the app is trying to lengthen, so in all
+   three voices it is the wider, warmer, more rewarding of the two.
+
+   Shared and built once: two looping noise buffers, one convolution
+   room, one limiter. 24 oscillators and 3 buffer sources run for the
+   whole session; a silent voice keeps playing into a gain of 0, which
+   is what makes a crossfade free of both clicks and dropouts.
    ============================================================ */
+
+/** finite-or-fallback. Nothing from the tracker reaches an AudioParam without
+    passing through this: one NaN would poison a param for the rest of the
+    session, and there is no way to recover a param short of a new context. */
+const fin = (x,d) => (typeof x === 'number' && x-x === 0) ? x : d;
+
 const Audio = {
   ctx:null, ready:false, pacerOn:true, vol:0.55,
+
+  voiceId:'tide',
+  voices:[
+    {id:'tide',      name:'Tide',      blurb:'deep water, a bell as you let go'},
+    {id:'shore',     name:'Shore',     blurb:'a wave gathers, breaks and drains'},
+    {id:'harmonium', name:'Harmonium', blurb:'a reed box your belly works'}
+  ],
+
+  v:null,                       // built voices, keyed by id
+  m:null,                       // the per-frame bundle, allocated once
+  dir:-1, pdir:-1, wasIn:false, // held breath / guide direction
+  lastTop:0, lastBottom:0,
+  fadeFrom:null, fadeUntil:0,
 
   async start(){
     const AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) throw new Error('no-webaudio');
+    // Constructed before the first await, deliberately: iOS only lets the
+    // context leave the suspended state if it was made inside the tap.
     const ctx = this.ctx = new AC({latencyHint:'playback'});
     if(ctx.state === 'suspended') await ctx.resume();
 
     const t = ctx.currentTime;
 
-    // ---- output chain: bus -> (dry | reverb) -> master -> limiter -> out
-    const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = -10; limiter.knee.value = 18;
-    limiter.ratio.value = 12; limiter.attack.value = 0.008; limiter.release.value = 0.3;
-    limiter.connect(ctx.destination);
-
-    const master = this.master = ctx.createGain();
-    master.gain.value = 0;
-    master.connect(limiter);
-
-    const conv = ctx.createConvolver();
-    conv.buffer = this.impulse(ctx, 5.0, 2.4);
-    const wet = this.wet = ctx.createGain(); wet.gain.value = 0.34;
-    const dry = ctx.createGain();            dry.gain.value = 0.80;
-    const bus = this.bus = ctx.createGain(); bus.gain.value = 1;
-    bus.connect(dry); dry.connect(master);
-    bus.connect(conv); conv.connect(wet); wet.connect(master);
-
-    // ---- drone
-    const droneFilter = this.droneFilter = ctx.createBiquadFilter();
-    droneFilter.type='lowpass'; droneFilter.frequency.value=240; droneFilter.Q.value=0.8;
-    const droneGain = ctx.createGain(); droneGain.gain.value=0.30;
-    droneFilter.connect(droneGain); droneGain.connect(bus);
-
-    const mkOsc = (freq, type, gain, dest) => {
-      const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
-      const g = ctx.createGain(); g.gain.value = gain;
-      o.connect(g); g.connect(dest); o.start(t);
+    // ---- construction helpers. Setting .value here is construction, not the
+    //      render loop, so it is fine; frame() never does it.
+    const G = v => { const g=ctx.createGain(); g.gain.value=v; return g; };
+    const F = (type,f,q) => {
+      const b=ctx.createBiquadFilter(); b.type=type; b.frequency.value=f;
+      if(q!=null) b.Q.value=q; return b;
+    };
+    // StereoPannerNode is not on every WebKit build the app can land on; the
+    // fallback is a plain unity gain, which costs the stereo movement and
+    // nothing else.
+    const P = p => { if(!ctx.createStereoPanner) return G(1);
+                     const n=ctx.createStereoPanner(); n.pan.value=p; return n; };
+    const O = (freq,type,gain,dest,detune) => {
+      const o=ctx.createOscillator(); o.type=type; o.frequency.value=freq;
+      if(detune) o.detune.value=detune;
+      const g=G(gain); o.connect(g); g.connect(dest); o.start(t);
       return {o,g};
     };
-    const F = 110;                                  // A2
-    mkOsc(F/2,       'sine',     0.42, droneFilter); // sub
-    mkOsc(F,         'sine',     0.50, droneFilter);
-    const fifth = mkOsc(F*1.5,   'sine',     0.24, droneFilter);
-    mkOsc(F*2,       'triangle', 0.10, droneFilter);
+    const LOOP = buf => {
+      const s=ctx.createBufferSource(); s.buffer=buf; s.loop=true; s.start(t); return s;
+    };
 
-    // slow detune drift so the drone never sits perfectly still
-    const drift = ctx.createOscillator(); drift.type='sine'; drift.frequency.value=0.055;
-    const driftAmt = ctx.createGain(); driftAmt.gain.value=5;   // cents
-    drift.connect(driftAmt); driftAmt.connect(fifth.o.detune); drift.start(t);
+    // ---- output chain: voices -> (dry | room) -> mix -> duck -> master -> limiter
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value=-10; limiter.knee.value=18;
+    limiter.ratio.value=12; limiter.attack.value=0.008; limiter.release.value=0.3;
+    limiter.connect(ctx.destination);
 
-    // ---- air (breath noise)
-    const noiseFilter = this.noiseFilter = ctx.createBiquadFilter();
-    noiseFilter.type='bandpass'; noiseFilter.frequency.value=500; noiseFilter.Q.value=1.1;
-    const noiseGain = this.noiseGain = ctx.createGain(); noiseGain.gain.value=0;
-    noiseFilter.connect(noiseGain); noiseGain.connect(bus);
-    const nsrc = ctx.createBufferSource();
-    nsrc.buffer = this.pinkNoise(ctx, 6); nsrc.loop = true;
-    nsrc.connect(noiseFilter); nsrc.start(t);
+    const master = this.master = G(0);   master.connect(limiter);
+    const duckG  = this.duckG  = G(1);   duckG.connect(master);
+    const mix    = G(1);                 mix.connect(duckG);
+    const dry    = G(0.85);              dry.connect(mix);
 
-    // ---- pad (Asus2: A B E A)
-    const padFilter = ctx.createBiquadFilter();
-    padFilter.type='lowpass'; padFilter.frequency.value=1500; padFilter.Q.value=0.6;
-    const padGain = this.padGain = ctx.createGain(); padGain.gain.value=0;
-    padFilter.connect(padGain); padGain.connect(bus);
-    [[220,0.26,-4],[246.94,0.16,3],[329.63,0.20,-2],[440,0.10,5]].forEach(([f,g,d])=>{
-      const v = mkOsc(f,'sine',g,padFilter); v.o.detune.value = d;
-    });
+    // One room for all three voices. Per-voice convolvers would suit them
+    // better — shore wants a longer tail than harmonium — but a convolver is
+    // by far the most expensive node here and this runs with the screen
+    // locked, so each voice trims its own send instead.
+    const conv = ctx.createConvolver();
+    conv.buffer = this.impulse(ctx, 4.0, 2.5);
+    const wetTrim = G(0.9);
+    conv.connect(wetTrim); wetTrim.connect(mix);
 
-    // ---- guide tone
-    const pacerGain = this.pacerGain = ctx.createGain(); pacerGain.gain.value=0;
-    const pacerFilter = ctx.createBiquadFilter();
-    pacerFilter.type='lowpass'; pacerFilter.frequency.value=2200;
-    pacerGain.connect(pacerFilter); pacerFilter.connect(bus);
-    mkOsc(659.25,'sine',0.55,pacerGain);   // E5
-    mkOsc(987.77,'sine',0.10,pacerGain);   // B5, adds a little shimmer
+    // ---- shared sources. Buffers are generated here, in JS: nothing is
+    //      fetched, and nothing is stored as data anywhere in the file.
+    this.pinkBuf = this.noiseBuffer(ctx, 6, 1);
+    // two independent channels: all of shore's stereo, and the width of tide's
+    // exhale, comes from that decorrelation rather than from a panner
+    this.surfBuf = this.noiseBuffer(ctx, 8, 2);
+    const pink = LOOP(this.pinkBuf);
+    const surf = LOOP(this.surfBuf);
+    const dc   = LOOP(this.dcBuffer(ctx));
+
+    const kit = {ctx, t, G, F, P, O, pink, surf, dc,
+                 pinkBuf:this.pinkBuf, surfBuf:this.surfBuf};
+
+    this.v = {
+      tide:      this.buildTide(kit),
+      shore:     this.buildShore(kit),
+      harmonium: this.buildHarmonium(kit)
+    };
+    for(const id in this.v){
+      const V = this.v[id];
+      V.out.connect(dry);
+      V.out.connect(V.send); V.send.connect(conv);
+      V.out.gain.value = (id === this.voiceId) ? V.trim : 0;
+    }
+
+    // ---- guide tone, shared by all three voices so that changing voice does
+    //      not change what the pace sounds like.
+    const guideCut = this.guideCut = F('lowpass', 1400, 0.7);
+    const guideOut = this.guideOut = G(0);
+    guideCut.connect(guideOut);
+    guideOut.connect(dry);
+    const guideSend = G(0.30); guideOut.connect(guideSend); guideSend.connect(conv);
+    O(659.25,'sine',0.55,guideCut);                        // E5, the pace itself
+    this.guideShim = O(987.77,'sine',0,guideCut).g;        // B5, only on the guide's inhale
+
+    // Built once: frame() runs 60 times a second for as long as the session
+    // lasts, and allocating a bundle plus four closures each time is the one
+    // avoidable piece of garbage in the render path.
+    this.m = {
+      t:0, dt:1/60, lvl:0.5, vel:0, up:0, dn:0, spd:0,
+      rich:0, inG:0, outG:1, bpm:10,
+      // Every render-loop write goes through one of these four: setTargetAtTime
+      // only, and clamped into a range the node can actually accept, so no
+      // arithmetic slip can park a filter at 0 Hz or a gain below zero.
+      stF(p,v,tc){ p.setTargetAtTime(clamp(v, 25, 16000),   this.t, tc); },
+      stG(p,v,tc){ p.setTargetAtTime(clamp(v, 0, 1.4),      this.t, tc); },
+      stQ(p,v,tc){ p.setTargetAtTime(clamp(v, 0.05, 12),    this.t, tc); },
+      stC(p,v,tc){ p.setTargetAtTime(clamp(v, -1200, 1200), this.t, tc); }
+    };
+
+    this.dir=-1; this.pdir=-1; this.wasIn=false;
+    this.lastTop=0; this.lastBottom=t;
+    this.fadeFrom=null; this.fadeUntil=0;
 
     this.ready = true;
     this.fade(this.vol, 2.5);
   },
 
-  /** procedural room: exponential-decay noise, slightly different per channel */
+  /* ---------- procedural buffers ---------- */
+
+  /** Crossfade the generator's overhang back over the head of the buffer, so the
+      wrap is an ordinary sample-to-sample step instead of a jump between two
+      uncorrelated points. On this pink source that is a small win — measured, it
+      takes the seam from roughly 1.4 to 1.0 times the ordinary step — but it is
+      what keeps the lap inaudible if the noise is ever given more low end. */
+  seal(ext, out, n, f){
+    for(let i=0;i<f;i++){ const k=i/f; out[i] = ext[i]*k + ext[n+i]*(1-k); }
+    for(let i=f;i<n;i++) out[i] = ext[i];
+  },
+
+  /** Procedural room. Normalised to unit energy so a send gain means what it
+      says: at 0.35 the reverb comes back at roughly 35% of the source, whatever
+      sample rate the device runs at. */
   impulse(ctx, seconds, decay){
-    const rate = ctx.sampleRate, n = Math.floor(rate*seconds);
-    const buf = ctx.createBuffer(2, n, rate);
+    const rate=ctx.sampleRate, n=Math.floor(rate*seconds);
+    const buf=ctx.createBuffer(2,n,rate);
+    const atk=Math.max(1, rate*0.012);
     for(let c=0;c<2;c++){
-      const d = buf.getChannelData(c);
+      const d=buf.getChannelData(c);
+      let e=0;
       for(let i=0;i<n;i++){
-        const env = Math.pow(1 - i/n, decay);
-        d[i] = (Math.random()*2-1) * env * (i < rate*0.01 ? i/(rate*0.01) : 1);
+        const env=Math.pow(1-i/n, decay);
+        const v=(Math.random()*2-1)*env*(i<atk ? i/atk : 1);
+        d[i]=v; e+=v*v;
       }
+      const g = e>0 ? 1/Math.sqrt(e) : 1;
+      for(let i=0;i<n;i++) d[i]*=g;
     }
     return buf;
   },
 
-  /** Voss-McCartney-ish pink noise; gentler on the ear than white */
-  pinkNoise(ctx, seconds){
-    const n = Math.floor(ctx.sampleRate*seconds);
-    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-    const d = buf.getChannelData(0);
+  /** Voss-McCartney-ish pink noise. Gentler on the ear than white, and unlike
+      brown it still has real energy at 4 kHz — shore's foam is a high-pass that
+      climbs to 4.5 kHz and would be silent on a browner source. */
+  pinkFill(out, n, f){
+    const ext=new Float32Array(n+f);
     let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
-    for(let i=0;i<n;i++){
-      const w = Math.random()*2-1;
+    for(let i=0;i<n+f;i++){
+      const w=Math.random()*2-1;
       b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759;
       b2=0.96900*b2+w*0.1538520; b3=0.86650*b3+w*0.3104856;
       b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
-      d[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11;
+      ext[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11;
       b6=w*0.115926;
     }
+    this.seal(ext, out, n, f);
+  },
+
+  /** One generator for both noise buffers, so the layers fed from each are
+      level-matched — tide's inhale air comes off the mono buffer and its exhale
+      air off the stereo one, and they have to sound like one instrument. */
+  noiseBuffer(ctx, seconds, channels){
+    const n=Math.floor(ctx.sampleRate*seconds);
+    const f=Math.min(Math.floor(ctx.sampleRate*0.05), n>>2);
+    const buf=ctx.createBuffer(channels,n,ctx.sampleRate);
+    for(let c=0;c<channels;c++) this.pinkFill(buf.getChannelData(c), n, f);
     return buf;
+  },
+
+  /** Constant 1.0. A looped DC buffer works on every build the app can reach,
+      where ConstantSourceNode only arrived in Safari 14. */
+  dcBuffer(ctx){
+    const b=ctx.createBuffer(1,512,ctx.sampleRate);
+    b.getChannelData(0).fill(1);
+    return b;
+  },
+
+  /* ============================================================
+     VOICE: tide — today's identity, with the direction made plain
+     ============================================================ */
+  /* Each voice ends in `out`, and `trim` is the level that gain crossfades to.
+     Measured peak levels are within 1.1 dB of each other across the three, but
+     peak is not loudness: tide is filtered sines, shore is broadband noise and
+     harmonium is filtered sawtooths, and noise reads louder than a drone at the
+     same peak. Nothing here has been heard yet, so these are all 1.0 — this is
+     the one number to move per voice after a listening test, and moving it
+     changes nothing else. */
+  buildTide(k){
+    const {ctx,G,F,P,O,pink,surf} = k;
+    const out=G(0), send=G(0.30), trim=1.0;
+    let lastRich=0;
+
+    // Drone: A2 with the octave below, a just fifth and the octave above. The
+    // stack is deliberately harmonic-rich above the fundamental so the
+    // low-pass has something to take away — the cutoff carries the direction,
+    // and a pure sine gives it nothing to work on.
+    const cut  = F('lowpass', 300, 0.9);
+    const dGain= G(0.20);
+    cut.connect(dGain); dGain.connect(out);
+    O(55,  'sine',     0.38, cut);
+    O(110, 'sine',     0.46, cut);
+    const fifth = O(165, 'sine', 0.20, cut);
+    O(220, 'triangle', 0.08, cut);
+    // 0.055 Hz is slower than any breath, so the drift never reads as a pulse
+    O(0.055,'sine',5,fifth.o.detune);                      // +/- 5 cents
+
+    // Inhale air: narrow, centred, rising. Silent on the exhale.
+    const inF=F('bandpass',700,1.6), inG_=G(0), inPan=P(0);
+    pink.connect(inF); inF.connect(inG_); inG_.connect(inPan); inPan.connect(out);
+
+    // Exhale air: wide, falling, resonant. Fed from the stereo noise with no
+    // panner, so it opens across the whole field exactly where the inhale
+    // narrowed to a point. Width is the cue; level is only the carrier.
+    const outF=F('lowpass',900,0.7), outG_=G(0);
+    surf.connect(outF); outF.connect(outG_); outG_.connect(out);
+
+    // Pad: Asus2, the reward layer. Arrives as you fill, blooms as you let go.
+    const padF=F('lowpass',900,0.6), padG=G(0);
+    padF.connect(padG); padG.connect(out);
+    [[220,0.26,-4],[246.94,0.16,3],[329.63,0.20,-2],[440,0.10,5]]
+      .forEach(a => O(a[0],'sine',a[1],padF,a[2]));
+
+    return {
+      out, send, trim,
+      frame(m){
+        lastRich = m.rich;
+        // Brightness carries position and direction together, so the two halves
+        // trace different curves through the same range instead of retracing
+        // one. At mid-belly the inhale sits about 1.4 octaves above the exhale,
+        // which is the single loudest statement of direction in this voice.
+        const bri = clamp(0.10 + 0.60*m.lvl + 0.30*m.inG + 0.14*m.up, 0, 1);
+        m.stF(cut.frequency, 150*Math.pow(2, 4.2*bri*(0.55+0.45*m.rich)), 0.11);
+        m.stG(dGain.gain,    0.185 + 0.055*m.lvl, 0.30);
+
+        m.stF(inF.frequency, 420*Math.pow(2, 2.6*m.lvl), 0.09);
+        // the effortful half recedes as the room warms: at rich = 1 the drawn
+        // breath is 40% quieter than it was at the start of the session
+        m.stG(inG_.gain,     0.105*m.up*m.inG*(0.6+0.4*(1-m.rich)), 0.09);
+
+        m.stF(outF.frequency, 1500*Math.pow(2, -2.3*(1-m.lvl)), 0.12);
+        m.stQ(outF.Q,         0.6 + 1.0*m.rich, 0.40);       // a soft vowel, not a whistle
+        m.stG(outG_.gain,     0.100*m.dn*m.outG*(0.7+0.3*m.rich), 0.10);
+
+        m.stG(padG.gain,      0.115*m.rich*(0.22+0.78*m.lvl)*(0.72+0.52*m.outG), 0.22);
+        m.stF(padF.frequency, 620*Math.pow(2, 1.9*(0.35+0.65*m.rich)*(0.40+0.60*m.outG)), 0.30);
+        m.stG(send.gain,      0.28+0.30*m.rich, 0.50);
+      },
+
+      /** top of the inhale: the release. A low bell that sags 18 cents over its
+          first second and a half, which is what makes it read as a sigh rather
+          than a chime. Peak into the bus is 0.116 — a cue, not a downbeat. */
+      top(s){
+        const t0=ctx.currentTime, tail=3.6+2.4*lastRich;
+        const g=G(0.0001); g.connect(out);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.linearRampToValueAtTime(0.075*s, t0+0.035);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0+tail);
+        [[146.83,1],[220.0,0.22],[293.66,0.26],[440.0,0.07]].forEach(a=>{
+          const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=a[0];
+          o.detune.setValueAtTime(0,t0);
+          o.detune.linearRampToValueAtTime(-18,t0+1.6);
+          const og=G(a[1]); o.connect(og); og.connect(g);
+          o.start(t0); o.stop(t0+tail+0.2);
+        });
+      },
+
+      /** bottom of the exhale: short, high, breathy. Deliberately nothing like
+          the bell — two unlike sounds at the two turnarounds is the clearest
+          statement of direction available. */
+      bottom(s){
+        const t0=ctx.currentTime;
+        const src=ctx.createBufferSource(); src.buffer=k.pinkBuf;
+        const bp=F('bandpass',700,2.4), g=G(0);
+        src.connect(bp); bp.connect(g); g.connect(out);
+        bp.frequency.setValueAtTime(700,t0);
+        bp.frequency.exponentialRampToValueAtTime(2100,t0+0.55);
+        g.gain.setValueAtTime(0,t0);
+        g.gain.linearRampToValueAtTime(0.075*s,t0+0.09);
+        g.gain.linearRampToValueAtTime(0,t0+0.70);
+        src.start(t0, Math.random()*4); src.stop(t0+0.75);
+      }
+    };
+  },
+
+  /* ============================================================
+     VOICE: shore — a wave, told literally
+     ============================================================ */
+  buildShore(k){
+    const {ctx,G,F,P,O,surf} = k;
+    const out=G(0), send=G(0.45), trim=1.0;
+    let lastRich=0;
+
+    // Swell: the body of the wave. A resonant low-pass on brown noise tightens
+    // as you draw in, which is what makes it gather rather than merely get
+    // louder — a wave has pitch just before it breaks.
+    const swF=F('lowpass',300,2.0), swG=G(0);
+    surf.connect(swF); swF.connect(swG); swG.connect(out);
+
+    // Foam: hiss that falls in pitch through the exhale. Stereo straight
+    // through with no panner — the two noise channels are independent, so this
+    // is the widest thing in the voice for free.
+    const foF=F('highpass',1200,0.7), foG=G(0);
+    surf.connect(foF); foF.connect(foG); foG.connect(out);
+
+    // Spray: a narrow band that drifts across the field. 0.055 Hz is slower
+    // than the slowest breath the app accepts, so the movement never counts time.
+    const spF=F('bandpass',2200,1.2), spG=G(0), spPan=P(0);
+    surf.connect(spF); spF.connect(spG); spG.connect(spPan); spPan.connect(out);
+    if(spPan.pan) O(0.055,'sine',0.55,spPan.pan);
+
+    // Undertow: the drag back down the beach, strongest at the very bottom.
+    const unF=F('lowpass',90,1.1), unG=G(0);
+    surf.connect(unF); unF.connect(unG); unG.connect(out);
+
+    // The only pitch in the voice: A1 and A2 under the water, and a pair of
+    // quiet upper tones that appear only once rich is high. Same tonal centre
+    // as the other two voices, so changing voice is not a change of key.
+    const subG=G(0);
+    O(55,'sine',0.62,subG); O(110,'sine',0.32,subG);
+    subG.connect(out);
+    const waF=F('lowpass',700,0.6), waG=G(0);
+    O(164.81,'sine',0.55,waF); O(220,'sine',0.45,waF,7);
+    waF.connect(waG); waG.connect(out);
+
+    return {
+      out, send, trim,
+      frame(m){
+        lastRich = m.rich;
+        // 170 Hz to 1.6 kHz. The swell is the loudest thing at the top of the
+        // inhale and drops by nearly half the moment you turn.
+        m.stF(swF.frequency, 170*Math.pow(2, 3.2*m.lvl), 0.10);
+        m.stQ(swF.Q,         2.0 + 3.0*m.up*m.inG, 0.20);
+        // the resonance is worth up to ~10 dB at the corner, so take it back
+        // out of the level or the wave stabs every time it gathers
+        m.stG(swG.gain, 0.167*(0.15+0.85*m.lvl)*(0.55+0.45*m.inG)/(1+0.55*m.up*m.inG), 0.12);
+
+        m.stF(foF.frequency, 900*Math.pow(2, 2.32*m.lvl), 0.13);
+        m.stG(foG.gain,      0.123*m.dn*m.outG*(0.65+0.35*m.rich), 0.10);
+
+        m.stF(spF.frequency, 1400*Math.pow(2, 1.6*m.lvl), 0.15);
+        m.stG(spG.gain,      0.065*m.dn*m.outG, 0.14);
+
+        m.stF(unF.frequency, 60 + 70*(1-m.lvl), 0.30);
+        m.stG(unG.gain,      0.130*m.outG*(0.30+0.70*(1-m.lvl)), 0.20);
+
+        m.stG(subG.gain,     0.058*(0.25+0.75*m.rich)*(0.35+0.65*m.outG), 0.35);
+        m.stG(waG.gain,      0.030*m.rich*m.rich*(0.40+0.60*m.outG), 0.45);
+        m.stF(waF.frequency, 500*Math.pow(2, 1.4*m.rich), 0.50);
+        m.stG(send.gain,     0.34+0.26*m.rich, 0.50);
+      },
+
+      /** top of the inhale: the break. The loudest event in the app, and the
+          only one allowed to be — a wave that gathers and then does not break
+          is a worse cue than no wave at all. Tail lengthens with rich. */
+      top(s){
+        const t0=ctx.currentTime, dec=1.9+1.6*lastRich;
+        const src=ctx.createBufferSource(); src.buffer=k.surfBuf;
+        const bp=F('bandpass',2600,0.8), bg=G(0);
+        src.connect(bp); bp.connect(bg); bg.connect(out);
+        bp.frequency.setValueAtTime(2600,t0);
+        bp.frequency.exponentialRampToValueAtTime(420,t0+dec);
+        bg.gain.setValueAtTime(0,t0);
+        bg.gain.linearRampToValueAtTime(0.200*s,t0+0.12);
+        bg.gain.exponentialRampToValueAtTime(0.0001,t0+dec);
+        // crest hiss: shorter and brighter, so the break has an edge on it
+        const hp=F('highpass',5000,0.7), hg=G(0);
+        src.connect(hp); hp.connect(hg); hg.connect(out);
+        hp.frequency.setValueAtTime(5000,t0);
+        hp.frequency.exponentialRampToValueAtTime(1200,t0+1.3);
+        hg.gain.setValueAtTime(0,t0);
+        hg.gain.linearRampToValueAtTime(0.080*s,t0+0.10);
+        hg.gain.exponentialRampToValueAtTime(0.0001,t0+1.4);
+        src.start(t0, Math.random()*6); src.stop(t0+dec+0.2);
+      },
+
+      /** bottom of the exhale: the draw. Slow attack, rising band, low and
+          soft — the opposite envelope to the break, which is the point. */
+      bottom(s){
+        const t0=ctx.currentTime;
+        const src=ctx.createBufferSource(); src.buffer=k.surfBuf;
+        const bp=F('bandpass',240,1.0), g=G(0);
+        src.connect(bp); bp.connect(g); g.connect(out);
+        bp.frequency.setValueAtTime(240,t0);
+        bp.frequency.exponentialRampToValueAtTime(900,t0+0.9);
+        g.gain.setValueAtTime(0,t0);
+        g.gain.linearRampToValueAtTime(0.110*s,t0+0.55);
+        g.gain.linearRampToValueAtTime(0,t0+1.15);
+        src.start(t0, Math.random()*6); src.stop(t0+1.2);
+      }
+    };
+  },
+
+  /* ============================================================
+     VOICE: harmonium — a reed drone box worked by the belly
+     ============================================================ */
+  buildHarmonium(k){
+    const {ctx,G,F,O,pink,dc} = k;
+    const out=G(0), send=G(0.26), trim=1.0;
+    let lastRich=0;
+
+    // reeds -> nasal peak -> low-pass -> level -> tremolo -> out
+    const trem  = G(1);              trem.connect(out);
+    const rGain = G(0.10);           rGain.connect(trem);
+    const rCut  = F('lowpass',700,0.9); rCut.connect(rGain);
+    // Real reeds ring around a kilohertz. This one peaking section is most of
+    // why the stack reads as a harmonium rather than an organ.
+    const rPeak = F('peaking',1100,1.2); rPeak.gain.value=5; rPeak.connect(rCut);
+
+    // Sa at A2, with the octave below, a just fifth (3:2) and the octave above.
+    // The twins sit 9 and -7 cents off, beating at 0.57 and 0.67 Hz — about
+    // what a well-kept box does, and slow enough never to read as vibrato.
+    const reeds=[
+      O(55,    'sine',     0.22, rPeak),
+      O(110,   'sawtooth', 0.22, rPeak),
+      O(110,   'sawtooth', 0.18, rPeak, 9),
+      O(164.81,'sawtooth', 0.15, rPeak),
+      O(164.81,'sawtooth', 0.12, rPeak, -7),
+      O(220,   'triangle', 0.11, rPeak)
+    ];
+
+    // The upper reed sits behind two gains on purpose. upRide belongs to
+    // frame(), upHit belongs to top(): one node, one owner, so a scheduled
+    // envelope and the render loop can never fight over the same parameter.
+    const upHit  = G(0.25); upHit.connect(rPeak);
+    const upRide = G(0.06); upRide.connect(upHit);
+    reeds.push(O(329.63,'triangle',0.42,upRide));
+
+    // Bellows pressure. Reeds go sharp when you lean on them; -9 to +10 cents
+    // is small enough to stay musical and wide enough that the beat rates
+    // audibly tighten as you fill. One automated gain moves the whole stack.
+    const press=G(0); dc.connect(press);
+    reeds.forEach(r => press.connect(r.o.detune));
+
+    // 4.6 Hz is the flutter of a reed under moving air, far clear of the
+    // breath band (0.08-0.33 Hz) so it can never be mistaken for the pace.
+    const tDepth=G(0.012);
+    O(4.6,'sine',1,tDepth);
+    tDepth.connect(trem.gain);
+
+    // Bellows air under the reed. Barely there, but it is the difference
+    // between an instrument and an oscillator bank.
+    const bF=F('lowpass',400,0.8), bG=G(0);
+    pink.connect(bF); bF.connect(bG); bG.connect(out);
+
+    /** short filtered-noise event; the mechanical half of this voice */
+    const burst=(t0,hz,q,peak,atk,dec,sweepTo,sweepSec)=>{
+      const src=ctx.createBufferSource(); src.buffer=k.pinkBuf;
+      const bp=F('bandpass',hz,q), g=G(0);
+      src.connect(bp); bp.connect(g); g.connect(out);
+      if(sweepTo){
+        bp.frequency.setValueAtTime(hz,t0);
+        bp.frequency.exponentialRampToValueAtTime(sweepTo,t0+sweepSec);
+      }
+      g.gain.setValueAtTime(0,t0);
+      g.gain.linearRampToValueAtTime(peak,t0+atk);
+      g.gain.linearRampToValueAtTime(0,t0+atk+dec);
+      src.start(t0, Math.random()*4); src.stop(t0+atk+dec+0.05);
+    };
+
+    return {
+      out, send, trim,
+      frame(m){
+        lastRich = m.rich;
+        const p   = clamp(0.12 + 0.88*m.lvl, 0, 1);          // bellows pressure
+        const bri = clamp(0.12 + 0.58*m.lvl + 0.26*m.inG + 0.12*m.up, 0, 1);
+        m.stF(rCut.frequency, 260*Math.pow(2, 3.6*bri*(0.55+0.45*m.rich)), 0.12);
+        // Never silent: a harmonium drone does not stop between breaths, it
+        // only leans. 0.085 is the floor you still clearly hear under the room.
+        m.stG(rGain.gain,  0.085 + 0.155*p*(0.75+0.25*m.rich), 0.16);
+        m.stC(press.gain,  -9 + 19*p, 0.25);
+        m.stG(tDepth.gain, 0.012 + 0.030*p, 0.30);
+        m.stG(upRide.gain, 0.06 + 0.16*m.rich*(0.40+0.60*m.outG), 0.35);
+        m.stF(bF.frequency, 180*Math.pow(2, 2.2*m.lvl), 0.14);
+        m.stG(bG.gain,      0.070*(0.25+0.75*m.spd)*(0.55+0.45*m.inG), 0.10);
+        m.stG(send.gain,    0.20+0.22*m.rich, 0.50);
+      },
+
+      /** top of the inhale: the key goes down. The upper reed opens fourfold in
+          100 ms and then rides back down over the whole exhale — that decay is
+          the sigh, and it is the longest gesture in the voice. */
+      top(s){
+        const t0=ctx.currentTime;
+        try{
+          upHit.gain.cancelScheduledValues(t0);
+          upHit.gain.setValueAtTime(clamp(fin(upHit.gain.value,0.25),0.05,1), t0);
+          upHit.gain.linearRampToValueAtTime(0.25+0.75*s, t0+0.10);
+          // 0.9 s constant: down again by the end of any exhale the app accepts
+          upHit.gain.setTargetAtTime(0.25, t0+0.12, 0.9);
+        }catch(e){}
+        burst(t0, 150, 3.5, 0.075*s, 0.012, 0.30);           // wooden action thunk
+      },
+
+      /** bottom of the exhale: the bellows drawn open. Wood and leather, higher
+          and rougher than the key thunk, so the two ends never blur. */
+      bottom(s){
+        const t0=ctx.currentTime;
+        burst(t0,      230, 6.0, 0.080*s, 0.10, 0.42, 340, 0.45);
+        burst(t0+0.05, 620, 9.0, 0.030*s, 0.06, 0.26);
+      }
+    };
+  },
+
+  /* ============================================================
+     per-frame update
+     ============================================================ */
+  /**
+   * @param f {level, vel, speed, inhaling, rich, pacerLvl, pacerVel, bpm, dt}
+   *          level 0..1 (1 = fullest inhale), vel -1..1 (positive inhaling).
+   */
+  frame(f){
+    if(!this.ready || !this.v || !this.m) return;
+    const t = this.ctx.currentTime;
+    if(!f) f = {};
+
+    const dt   = clamp(fin(f.dt, 1/60), 0.001, 0.25);
+    const lvl  = clamp(fin(f.level, 0.5), 0, 1);
+    const vel  = clamp(fin(f.vel, 0), -1, 1);
+    const sp   = clamp(fin(f.speed, 0), 0, 1);
+    const rich = clamp(fin(f.rich, 0), 0, 1);
+    const bpmR = fin(f.bpm, 0);
+    const bpm  = clamp(bpmR > 0 ? bpmR : 10, 4, 22);
+    const inh  = !!f.inhaling;
+
+    // |vel| scales with breathing rate: at 6/min a clean sinusoid produces only
+    // about 40% of the velocity it does at 14/min, so a raw velocity channel
+    // would fade every layer it feeds exactly when the user does the one thing
+    // the app is asking for. Divide out the peak the rate implies —
+    // |v|max = wA/2.4 with w = 2*pi*bpm/60 and A ~ 0.91 after the AGC, so
+    // roughly 0.040*bpm.
+    const vRef = clamp(0.040*bpm, 0.10, 0.90);
+    const up   = clamp( vel/vRef, 0, 1.25);
+    const dn   = clamp(-vel/vRef, 0, 1.25);
+    const spd  = clamp(   sp/vRef, 0, 1.25);
+
+    // Held direction. tau = 0.30 s swings it over about a second at each
+    // turnaround and holds it flat through the stroke, so the layers that
+    // belong to one half do not flicker while velocity crosses zero.
+    this.dir = lp(this.dir, inh ? 1 : -1, dt, 0.30);
+    const inG = clamp((this.dir+1)/2, 0, 1), outG = 1-inG;
+
+    // The top of the breath arrives through bell(), fired by the cycle
+    // detector. The bottom has no such hook, so watch the flip here. 1.6 s is
+    // below the shortest period the tracker will accept (2 s), so this
+    // debounces jitter without ever swallowing a real turn.
+    if(inh && !this.wasIn && (t - this.lastBottom) > 1.6){
+      this.lastBottom = t;
+      const outDur = this.lastTop ? (t - this.lastTop) : 0;
+      this.dispatch('bottom', 0.35 + 0.65*clamp((outDur-2.5)/4.0, 0, 1));
+    }
+    this.wasIn = inh;
+
+    const m = this.m;
+    m.t=t; m.dt=dt; m.lvl=lvl; m.vel=vel; m.up=up; m.dn=dn; m.spd=spd;
+    m.rich=rich; m.inG=inG; m.outG=outG; m.bpm=bpm;
+
+    const cur = this.v[this.voiceId];
+    if(cur) cur.frame(m);
+    // While a crossfade is in flight the outgoing voice is still audible, so it
+    // keeps being driven; otherwise it would freeze mid-breath as it faded.
+    if(this.fadeFrom){
+      if(t < this.fadeUntil){ const p=this.v[this.fadeFrom]; if(p) p.frame(m); }
+      else this.fadeFrom = null;
+    }
+
+    // ---- guide tone. It states its own direction too: brightness follows the
+    //      envelope, and the upper partial sounds only on the guide's inhale.
+    const pl = clamp(fin(f.pacerLvl, 0), 0, 1);
+    const pv = clamp(fin(f.pacerVel, 0), -1, 1);
+    this.pdir = lp(this.pdir, pv > 0 ? 1 : -1, dt, 0.25);
+    const pin = clamp((this.pdir+1)/2, 0, 1);
+    m.stG(this.guideOut.gain,      this.pacerOn ? 0.055*pl : 0, 0.10);
+    m.stF(this.guideCut.frequency, 850*Math.pow(2, 1.7*pl), 0.12);
+    m.stG(this.guideShim.gain,     this.pacerOn ? 0.11*pin*pl : 0, 0.15);
+  },
+
+  /* ============================================================
+     turnaround markers, voice switching, level
+     ============================================================ */
+
+  /** Top of the breath, fired from Breath.onExhaleStart. Each voice supplies
+      its own sound; this only routes it and remembers when it happened, so the
+      bottom marker can scale itself by how long the exhale actually ran. */
+  bell(strength){
+    if(!this.ready) return;
+    this.lastTop = this.ctx.currentTime;
+    this.dispatch('top', strength);
+  },
+
+  dispatch(which, strength){
+    if(!this.ready || !this.v) return;
+    const s = clamp(fin(strength, 0.5), 0, 1);
+    if(s <= 0.02) return;
+    const cur = this.v[this.voiceId];
+    if(cur && cur[which]) cur[which](s);
+    // mid-crossfade the outgoing voice is still audible; let it finish the
+    // breath rather than dropping its markers halfway through a cycle
+    if(this.fadeFrom && this.ctx.currentTime < this.fadeUntil){
+      const p = this.v[this.fadeFrom];
+      if(p && p[which]) p[which](s);
+    }
+  },
+
+  /** Safe before start() — then it only records the choice — and safe while
+      running, where it crossfades over 1.5 s. */
+  setVoice(id){
+    let known=false;
+    for(let i=0;i<this.voices.length;i++) if(this.voices[i].id===id) known=true;
+    if(!known) return;
+    const prev = this.voiceId;
+    this.voiceId = id;
+    if(!this.ready || !this.v || prev === id) return;
+    const secs = 1.5;                 // long enough to read as a change of scene,
+    this.xfade(this.v[prev].out.gain, 0, secs);   // short enough not to feel broken
+    this.xfade(this.v[id].out.gain, this.v[id].trim, secs);
+    this.fadeFrom  = prev;
+    this.fadeUntil = this.ctx.currentTime + secs + 0.15;
+  },
+
+  /** Equal-power ramp. Two voices are uncorrelated, so a pair of linear ramps
+      loses about 3 dB in the middle of the crossfade and reads as a dropout.
+      48 points over 1.5 s is one step per 31 ms, well under anything audible. */
+  xfade(param, to, secs){
+    const t = this.ctx.currentTime;
+    const from = clamp(fin(param.value, 0), 0, 2);
+    try{
+      const n=48, curve=new Float32Array(n);
+      for(let i=0;i<n;i++){
+        const k=i/(n-1);
+        curve[i]=Math.sqrt(clamp(from*from*(1-k) + to*to*k, 0, 4));
+      }
+      param.cancelScheduledValues(t);
+      param.setValueCurveAtTime(curve, t, secs);
+      return;
+    }catch(e){ /* a curve already running here: fall through to a plain ramp */ }
+    try{
+      param.cancelScheduledValues(t);
+      param.setValueAtTime(from, t);
+      param.linearRampToValueAtTime(to, t+secs);
+    }catch(e){}
   },
 
   fade(to, secs){
     if(!this.ready) return;
     const t=this.ctx.currentTime;
     this.master.gain.cancelScheduledValues(t);
-    this.master.gain.setValueAtTime(this.master.gain.value, t);
-    this.master.gain.linearRampToValueAtTime(to, t+secs);
+    this.master.gain.setValueAtTime(clamp(fin(this.master.gain.value,0),0,1), t);
+    this.master.gain.linearRampToValueAtTime(clamp(fin(to,0),0,1), t+secs);
   },
 
-  setVolume(v){ this.vol=v; if(this.ready) this.fade(v, 0.25); },
+  setVolume(v){ this.vol = clamp(fin(v,0.55),0,1); if(this.ready) this.fade(this.vol, 0.25); },
 
-  /**
-   * @param level    0..1  belly position (1 = fullest inhale)
-   * @param speed    0..1  how fast the belly is moving right now
-   * @param rich     0..1  reward: rises as breathing slows and locks to the pace
-   * @param pacerLvl 0..1  target envelope
-   */
-  frame(level, speed, rich, pacerLvl){
-    if(!this.ready) return;
-    const c=this.ctx, t=c.currentTime, st=(p,v,tc)=>p.setTargetAtTime(v,t,tc);
-    st(this.droneFilter.frequency, 165 + 640*level*(0.45+0.55*rich), 0.12);
-    st(this.noiseFilter.frequency, 300 + 1250*level, 0.09);
-    st(this.noiseGain.gain,        clamp(0.012 + 0.115*speed, 0, 0.14), 0.09);
-    st(this.padGain.gain,          0.15*level*rich, 0.18);
-    st(this.wet.gain,              0.26 + 0.34*rich, 0.5);
-    st(this.pacerGain.gain,        this.pacerOn ? 0.05*pacerLvl : 0, 0.10);
-  },
-
-  /** soft low strike at the moment the exhale begins */
-  bell(strength){
-    if(!this.ready || strength<=0.02) return;
-    const c=this.ctx, t=c.currentTime;
-    const g=c.createGain(); g.gain.setValueAtTime(0,t);
-    g.gain.linearRampToValueAtTime(0.16*strength, t+0.03);
-    g.gain.exponentialRampToValueAtTime(0.0001, t+5.0);
-    g.connect(this.bus);
-    [[146.83,1],[293.66,0.30],[440.0,0.08]].forEach(([f,a])=>{
-      const o=c.createOscillator(); o.type='sine'; o.frequency.value=f;
-      const og=c.createGain(); og.gain.value=a;
-      o.connect(og); og.connect(g); o.start(t); o.stop(t+5.2);
-    });
+  /** Speech ducking. `amount` is the fraction of the current level to keep, so
+      duck(0.25, 0.3) drops the instrument to a quarter over 300 ms. Sits on its
+      own node so the volume slider and a duck cannot overwrite each other. */
+  duck(amount, secs){ this.rampDuck(clamp(fin(amount,0.3),0,1), Math.max(fin(secs,0.3),0.02)); },
+  unduck(secs){       this.rampDuck(1, Math.max(fin(secs,0.6),0.02)); },
+  rampDuck(to, secs){
+    if(!this.ready || !this.duckG) return;
+    const t=this.ctx.currentTime, p=this.duckG.gain;
+    try{
+      p.cancelScheduledValues(t);
+      p.setValueAtTime(clamp(fin(p.value,1),0,1), t);
+      p.linearRampToValueAtTime(to, t+secs);
+    }catch(e){}
   },
 
   async stop(){
     if(!this.ready) return;
     this.fade(0, 1.4);
-    const ctx=this.ctx; this.ready=false;
+    const ctx=this.ctx;
+    this.ready=false; this.v=null; this.m=null; this.fadeFrom=null;
     setTimeout(()=>{ try{ ctx.close(); }catch(e){} }, 1700);
     this.ctx=null;
   }
@@ -631,7 +1673,8 @@ const Breath = {
     let up=0, down=0;
     const proj = this.cal.map(d=>d[0]*v[0]+d[1]*v[1]+d[2]*v[2]);
     for(let i=1;i<proj.length;i++){ (proj[i]>proj[i-1]) ? up++ : down++; }
-    if(up > down*1.12) this.u = [-v[0],-v[1],-v[2]];
+    this.flipped = (up > down*1.12);   // recorded so an exported session can say so
+    if(this.flipped) this.u = [-v[0],-v[1],-v[2]];
 
     let amp=0; for(const p of proj) amp+=p*p;
     this.calAmplitude = Math.sqrt(amp/proj.length);
@@ -644,6 +1687,8 @@ const Breath = {
   level(){ return clamp((this.s+1)/2, 0, 1); },
   /** 0..1 how quickly the belly is moving */
   speed(){ return clamp(Math.abs(this.dsLp)/2.4, 0, 1); },
+  /** signed belly velocity, -1..1; positive while inhaling */
+  vel(){ return clamp(this.dsLp/2.4, -1, 1); },
   quality(){
     const b=this.breathRms, m=this.motionRms;
     if(b<=0) return 0;
@@ -686,6 +1731,8 @@ const Pacer = {
     if(this.t < Ti){ u = this.t/Ti;            rising = true; }
     else           { u = (this.t-Ti)/(1-Ti);   rising = false; }
     this.level = rising ? (1-Math.cos(Math.PI*u))/2 : (1+Math.cos(Math.PI*u))/2;
+    this.rising = rising;                            // the guide is asking for an inhale
+    this.vel = (rising ? 1 : -1) * Math.sin(Math.PI*u);   // -1..1, peaks mid-stroke
 
     // match Breath.phase convention: 0 at the top of the inhale
     this.phase = rising ? (u-1)*Math.PI : u*Math.PI;
@@ -697,13 +1744,2285 @@ const Pacer = {
 };
 
 /* ============================================================
-   4. APP
+   4. SPEECH
+   ------------------------------------------------------------
+   The phone is on the user's belly, so the screen cannot be read
+   without a movement that ruins the signal. Anything the app has
+   to tell them has to arrive as sound.
+
+   window.speechSynthesis only. It renders on the device, so the
+   "motion never leaves the phone" claim stays literally true —
+   no fetched audio, no service, no samples.
+
+   Budget: stages and errors. Nothing is spoken between the start
+   of the breathing and the end of the session except a pace step,
+   signal loss and recovery, and errors.
+
+   iOS makes four things hard; all four are handled here.
+     - the voice list is empty until it loads, and voiceschanged
+       is unreliable                            -> _collect() + polling
+     - speech only starts from a user gesture   -> prime()
+     - 'end' often never fires, and Safari never fires it for a
+       cancelled utterance                      -> the watch in _pump()
+     - speech and Web Audio share the system audio session, so the
+       context can come back suspended          -> _restoreAudio()
+
+   The 'end' problem is the dangerous one. onStart ducks the
+   instrument and onEnd brings it back, so a missing 'end' would
+   leave the session quiet for the rest of the sitting. Every path
+   out of a spoken line runs through _settle(), and _settle() is
+   the only place onEnd is called.
+   ============================================================ */
+
+/* Engines read "5.5" as "five point five", which lands as a measurement
+   rather than a pace. These are the only values the target selector
+   offers, plus the range a measured rate realistically starts in. */
+const SPOKEN_NUM = {
+  '5':'five', '5.5':'five and a half', '6':'six', '6.5':'six and a half',
+  '7':'seven', '7.5':'seven and a half', '8':'eight', '8.5':'eight and a half',
+  '9':'nine', '10':'ten', '11':'eleven', '12':'twelve', '13':'thirteen',
+  '14':'fourteen', '15':'fifteen', '16':'sixteen', '17':'seventeen', '18':'eighteen'
+};
+
+/* macOS ships joke voices in the same list as the real ones. A voice called
+   Bubbles reading "close your eyes" is not the instrument we are building, so
+   they are kept out of the picker. Delete this to get them back. */
+const NOVELTY = /^(albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|jester|junior|kathy|organ|superstar|trinoids|whisper|wobble|zarvox)\b/i;
+
+const Speech = {
+
+  /* ---------- state the app reads ---------- */
+  available : false,   // set by init(); false when the API is missing entirely
+  enabled   : true,    // Adjust > Spoken guidance
+  primed    : false,   // true once an utterance has been dispatched from a tap
+  rate      : 0.86,    // slower than conversation, short of sluggish
+  voiceName : '',      // '' = let the system choose an English voice
+
+  /* ---------- hooks the app wires (see NOTES.md) ---------- */
+  onStart : null,      // ({key})          -> Audio.duck(...)
+  onEnd   : null,      // ({key, reason})  -> Audio.unduck(...)
+  onVoices: null,      // ()               -> repopulate the picker
+  onUnavailable: null, // (reason)         -> notice(...), reason 'unsupported' | 'silent'
+  gate    : null,      // () => bool; false holds an at-rest line back
+  audio   : null,      // the Audio object, so the context can be checked after speech
+
+  /* ---------- copy ----------
+     Sentence case, second person, no exclamation marks. Errors say what went
+     wrong and what to do. Nothing here describes what the body will do.
+     Every line is short on purpose: some builds truncate long utterances, and
+     a long line spoken over a slow breath is worse than no line at all. */
+  lines: {
+    begin          : 'Lie back, and rest the phone flat on your belly.',
+    calibrateStart : 'Breathe as you normally would while it learns your movement.',
+    calibrateHalf  : 'Keep breathing the same way.',
+    calibrateDone  : 'That is enough to work with.',
+    calibrateFailed: 'The phone did not pick up your breathing. Move it lower on your belly.',
+    running        : 'Close your eyes. The sound follows your breathing.',
+    paceStep       : 'The pace is easing to {bpm} breaths a minute.',
+    nearTarget     : 'That is as slow as it will ask. It stays here now.',
+    ending         : 'That is the end of the session. The sound is fading out.',
+    summaryReady   : 'Your session summary is on the screen.',
+    recalibrate    : 'Learning your movement again. Breathe as you normally would.',
+    signalLost     : 'The signal has gone quiet. Rest the phone flat on your belly.',
+    signalBack     : 'The signal is back.',
+
+    errDenied      : 'Motion access was declined. Reload the page to be asked again.',
+    errUnsupported : 'This device has no motion sensor. Demo mode under adjust still works.',
+    errNotAllowed  : 'Safari did not read that as a direct tap. Reload, then tap begin first.',
+    errSensorSilent: 'Motion is allowed, but nothing is arriving. Lock and unlock the screen.',
+    errNoAudio     : 'The browser blocked the sound. Reload the page and tap begin again.',
+    errInsecure    : 'This page is not secure, so the sensor stays off. Try a secure address.',
+    // never spoken — this is the line the app shows on screen when speech itself
+    // is what failed. It lives here so the copy has one home.
+    errNoSpeech    : 'Spoken guidance did not start. Check the ringer switch, or turn guidance off under Adjust.'
+  },
+
+  /* ---------- internals ---------- */
+  _q:[], _active:null, _ducked:false, _lastKey:'',
+  _voices:[], _sig:'', _bound:false, _watch:null, _hold:null,
+  _primeU:null, _spokeEver:false, _told:'',
+
+  _now(){
+    return (typeof performance !== 'undefined' && performance.now
+      ? performance.now() : Date.now()) / 1000;
+  },
+
+  _syn(){
+    return (typeof window !== 'undefined' && window.speechSynthesis) || null;
+  },
+
+  /* ---------- setup ---------- */
+
+  /** Feature-detect and start the voice list loading. Safe to call repeatedly. */
+  init(){
+    const ss = this._syn();
+    const U  = (typeof window !== 'undefined') && window.SpeechSynthesisUtterance;
+    this.available = !!(ss && typeof ss.speak === 'function' && typeof U === 'function');
+    if(!this.available){ this._tell('unsupported'); return false; }
+
+    this._collect();
+    if(this._bound) return true;
+    this._bound = true;
+
+    const onchg = () => this._collect();
+    // Safari has no addEventListener on speechSynthesis, so the property handler
+    // is the only portable way to hear about the list; register both.
+    try{ if(typeof ss.addEventListener === 'function') ss.addEventListener('voiceschanged', onchg); }catch(e){}
+    try{ ss.onvoiceschanged = onchg; }catch(e){}
+    // voiceschanged does not fire on every build. The list normally appears
+    // within a few hundred milliseconds, so give up polling after 3 s.
+    [120, 350, 800, 1600, 3000].forEach(ms => setTimeout(onchg, ms));
+    return true;
+  },
+
+  _collect(){
+    const ss = this._syn();
+    if(!ss) return;
+    let list = [];
+    try{ list = ss.getVoices() || []; }catch(e){ list = []; }
+    if(!list.length) return;                     // empty means "not loaded yet"
+    let sig = '';
+    for(let i=0;i<list.length;i++) sig += (list[i] && list[i].name) + '|';
+    if(sig === this._sig) return;
+    this._sig = sig;
+    this._voices = list;
+    if(this.onVoices){ try{ this.onVoices(); }catch(e){} }
+  },
+
+  /**
+   * MUST be called synchronously from inside a tap handler, and MUST NOT be
+   * awaited. iOS only lets speech start from a user gesture; once one utterance
+   * has been dispatched inside a gesture, the rest of the page's life is
+   * allowed. Community-reported, like primeSilentChannel() — not documented.
+   *
+   * Everything is wrapped, because a throw here would abort the rest of the tap
+   * handler, and DeviceMotionEvent.requestPermission() shares that stack.
+   */
+  prime(){
+    try{
+      if(!this.available) this.init();
+      const ss = this._syn();
+      if(!ss || !window.SpeechSynthesisUtterance) return false;
+      // A single space at zero volume: inaudible, but not empty — WebKit
+      // completes an empty utterance without speaking it, which would not
+      // lift the gesture restriction.
+      const u = new window.SpeechSynthesisUtterance(' ');
+      u.volume = 0; u.rate = 1; u.lang = 'en-US';
+      this._primeU = u;          // utterances get collected mid-flight; hold it
+      ss.speak(u);
+      this.primed = true;
+      return true;
+    }catch(e){ return false; }
+  },
+
+  /* ---------- voices ---------- */
+
+  /** English voices only: the page is lang="en" and a Spanish voice reading
+      English text is unusable. Returns [] when none are loaded yet. */
+  systemVoices(){
+    this._collect();
+    const seen = {}, out = [];
+    for(let i=0;i<this._voices.length;i++){
+      const v = this._voices[i];
+      if(!v) continue;
+      const lang = String(v.lang || '').replace('_','-');
+      if(lang.slice(0,2).toLowerCase() !== 'en') continue;
+      const name = String(v.name || '');
+      if(!name || seen[name]) continue;          // Safari repeats names
+      if(NOVELTY.test(name)) continue;
+      seen[name] = 1;
+      out.push({name:name, lang:lang, local:v.localService !== false, def:!!v.default});
+    }
+    out.sort((a,b) => (b.def?1:0)-(a.def?1:0) || a.name.localeCompare(b.name));
+    return out;
+  },
+
+  setSystemVoice(name){ this.voiceName = name || ''; },
+
+  _pick(){
+    if(!this.voiceName) return null;
+    for(let i=0;i<this._voices.length;i++){
+      const v = this._voices[i];
+      if(v && v.name === this.voiceName) return v;
+    }
+    return null;
+  },
+
+  setRate(r){
+    const n = Number(r);
+    this.rate = clamp(isFinite(n) ? n : 0.86, 0.7, 1.1);
+  },
+
+  /* ---------- copy rendering ---------- */
+
+  words(n){
+    const half = Math.round(Number(n)*2)/2;
+    return SPOKEN_NUM[String(half)] || String(half);
+  },
+
+  /** A missing variable is dropped rather than left as "{bpm}", which the
+      engine would read out brace and all. */
+  render(key, vars){
+    const t = this.lines[key];
+    if(!t) return '';
+    if(!vars) return t;
+    const self = this;
+    return t.replace(/\{(\w+)\}/g, function(m, k){
+      if(!(k in vars)) return '';
+      const raw = vars[k];
+      return (k === 'bpm' && typeof raw === 'number') ? self.words(raw) : String(raw);
+    }).replace(/\s{2,}/g, ' ').trim();
+  },
+
+  /* ---------- speaking ---------- */
+
+  /**
+   * @param key   a key of Speech.lines
+   * @param vars  optional {name: value} for {placeholders}; a numeric bpm is
+   *              spoken as a word
+   * @param opts  {atRest:true} holds the line until Speech.gate() opens, so it
+   *              lands in the pause at the bottom of an exhale rather than over
+   *              an inhale. Never held longer than opts.maxWait (default 6 s).
+   */
+  say(key, vars, opts){
+    if(!this.enabled || !this.available) return false;
+    const text = this.render(key, vars);
+    if(!text) return false;
+    // a repeat of the line already in flight is noise; sayNow() clears _active
+    // first, so an error can still interrupt a copy of itself
+    if(this._active && this._active.key === key) return false;
+    for(let i=0;i<this._q.length;i++) if(this._q[i].key === key) return false;
+    opts = opts || {};
+    this._q.push({
+      key:key, text:text,
+      atRest: !!opts.atRest,
+      maxWait: opts.maxWait || 6,
+      at: this._now()
+    });
+    this._pump();
+    return true;
+  },
+
+  /** For errors: drop whatever is queued and say this instead. The duck is held
+      across the swap so the instrument does not bob up for a frame. */
+  sayNow(key, vars){
+    if(!this.enabled || !this.available) return false;
+    this._clear(true);
+    const ok = this.say(key, vars);
+    if(!ok) this._settle();
+    return ok;
+  },
+
+  cancel(){ this._clear(false); },
+
+  _clear(keepDuck){
+    this._q.length = 0;
+    if(this._hold){ clearTimeout(this._hold); this._hold = null; }
+    if(this._watch){ clearInterval(this._watch); this._watch = null; }
+    const a = this._active;
+    this._active = null;
+    if(a){
+      a.done = true;
+      try{ a.u.onend = a.u.onerror = a.u.onstart = null; }catch(e){}
+      const ss = this._syn();
+      // Safari does not fire 'end' for a cancelled utterance, so the duck has to
+      // be released from here rather than from the utterance.
+      try{ if(ss && (ss.speaking || ss.pending)) ss.cancel(); }catch(e){}
+    }
+    if(!keepDuck) this._settle();
+  },
+
+  /** The only place onEnd is called, and the only place the duck is released. */
+  _settle(){
+    if(this._active || this._q.length) return;
+    if(!this._ducked) return;
+    this._ducked = false;
+    const key = this._lastKey;
+    this._lastKey = '';
+    if(this.onEnd){ try{ this.onEnd({key:key}); }catch(e){} }
+    this._restoreAudio();
+  },
+
+  /** iOS routes speech through the system audio session and can hand the page
+      back a context that is no longer running. 'interrupted' is a Safari-only
+      state whose resume() rejects, so the rejection is swallowed and the app's
+      visibilitychange handler gets the next attempt. */
+  _restoreAudio(){
+    const A = this.audio;
+    if(!A || !A.ctx) return;
+    try{
+      if(A.ctx.state !== 'running'){
+        const p = A.ctx.resume();
+        if(p && p.catch) p.catch(function(){});
+      }
+    }catch(e){}
+  },
+
+  _pump(){
+    if(this._active) return;
+    if(!this.enabled){ this._q.length = 0; this._settle(); return; }
+    if(!this._q.length){ this._settle(); return; }
+
+    const ss = this._syn();
+    if(!ss){ this._q.length = 0; this._settle(); return; }
+
+    const item = this._q[0];
+
+    // hold an at-rest line until the breath is at the bottom, but not for long
+    if(item.atRest && this.gate && (this._now() - item.at) < item.maxWait){
+      let open = true;
+      try{ open = !!this.gate(); }catch(e){ open = true; }
+      if(!open){
+        if(!this._hold){
+          const self = this;
+          this._hold = setTimeout(function(){ self._hold = null; self._pump(); }, 200);
+        }
+        return;
+      }
+    }
+    this._q.shift();
+
+    if(!this._ducked){
+      this._ducked = true;
+      if(this.onStart){ try{ this.onStart({key:item.key}); }catch(e){} }
+    }
+    this._lastKey = item.key;
+
+    let u;
+    try{ u = new window.SpeechSynthesisUtterance(item.text); }
+    catch(e){ this._pump(); return; }
+
+    const v = this._pick();
+    if(v){ try{ u.voice = v; u.lang = v.lang; }catch(e){} }
+    else  { try{ u.lang = 'en-US'; }catch(e){} }
+    u.rate = this.rate; u.pitch = 1; u.volume = 1;
+
+    const self = this;
+    const rec = {u:u, key:item.key, done:false, at:this._now(), seen:false, lastSeen:0};
+    this._active = rec;
+
+    function finish(reason){
+      if(rec.done) return;
+      rec.done = true;
+      if(self._active === rec) self._active = null;
+      if(self._watch){ clearInterval(self._watch); self._watch = null; }
+      try{ u.onend = u.onerror = u.onstart = null; }catch(e){}
+      // nothing ever came out of the speaker on the first line we tried
+      if(reason === 'no-start' && !self._spokeEver) self._tell('silent');
+      self._pump();
+    }
+
+    u.onstart = function(){ rec.seen = true; self._spokeEver = true; };
+    u.onend   = function(){ finish('end'); };
+    u.onerror = function(){ finish('error'); };
+
+    // The guard. 'end' is dropped often enough on iOS that trusting it would
+    // leave the instrument ducked for the rest of the session, so the poll below
+    // decides when a line is over whatever the utterance reports. speaking flips
+    // true within about 100 ms when the engine accepts a line; 1.2 s of silence
+    // before that means it never started at all.
+    const cap = this._cap(item.text);
+
+    let spoke = false;
+    try{ ss.speak(u); spoke = true; }catch(e){}
+    if(!spoke){ finish('throw'); return; }
+
+    this._watch = setInterval(function(){
+      if(rec.done) return;
+      const age = self._now() - rec.at;
+      let sp = false;
+      try{ sp = !!(ss.speaking || ss.pending); }catch(e){ sp = false; }
+      if(sp){ rec.seen = true; rec.lastSeen = self._now(); self._spokeEver = true; }
+      if(age > cap){ finish('cap'); return; }
+      if(sp) return;
+      if(rec.seen){ if(self._now() - (rec.lastSeen || rec.at) > 0.5) finish('quiet'); }
+      else if(age > 1.2) finish('no-start');
+    }, 200);
+  },
+
+  /** Ceiling for one line. English synthesis runs near 13 characters a second
+      at rate 1; the slack covers a voice slower than that without leaving the
+      instrument ducked for long if the engine has simply stopped answering. */
+  _cap(text){
+    const secs = 0.4 + text.length / (13 * clamp(this.rate, 0.7, 1.1));
+    return clamp(secs*1.8 + 2.5, 4, 16);
+  },
+
+  _tell(reason){
+    if(this._told === reason) return;
+    this._told = reason;
+    if(this.onUnavailable){ try{ this.onUnavailable(reason); }catch(e){} }
+  }
+};
+
+/* ============================================================
+   5. RECORDER + STORE
+   ------------------------------------------------------------
+   Every session records, with no toggle, so the breath detector can
+   later be tested against real breathing instead of synthetic tilt.
+
+   Two shapes are involved and they are deliberately not the same:
+
+     stored     columnar typed arrays in IndexedDB.
+                motion   4 B uint32 ms + 3 x 4 B float32  = 16 B/sample
+                derived  4 B uint32 ms + 8 x 4 B float32  = 36 B/row
+     exported   the `tide-session/1` JSON in the contract: rows as
+                arrays of rounded numbers, roughly 2x the stored size.
+
+   Store.put() packs, Store.get() unpacks, and nothing outside this
+   section ever has to know the columnar form exists.
+
+   Sizing for the longest session we expect, 20 min at 60 Hz:
+     motion    72 000 samples x 16 B = 1.15 MB
+     derived   12 000 rows    x 36 B = 0.43 MB
+                                       ~1.6 MB stored, ~3 MB exported
+   At the 48 MB budget below that is about thirty full-length sessions.
+   When the budget is exceeded the oldest whole recording is deleted.
+   The raw motion channel is never thinned, because the raw signal is
+   the only reason any of this is worth keeping.
+
+   Float32 for the axes is not a compromise: its relative precision at
+   9.8 m/s^2 is ~6e-7 m/s^2, and the iPhone accelerometer's own
+   quantisation step is ~1e-3 m/s^2. The 4 dp export rounding is
+   likewise finer than the hardware, so the export is lossless with
+   respect to the sensor.
+
+   Nothing here touches indexedDB, navigator or document at definition
+   time — same rule as Audio.
+   ============================================================ */
+
+const Store = {
+  DB_NAME:'tide', DB_VER:1,
+
+  /* Optimistic until open() has actually decided. */
+  available:true,
+  opened:false,
+  lastError:null,
+
+  /* 48 MB ~= 30 sessions of 20 min. Lowered in open() if the origin's
+     quota is smaller than that; see _fitBudget(). */
+  budgetBytes: 48*1024*1024,
+
+  FORMAT:'tide-session/1',
+  MOTION_COLUMNS:['t','x','y','z'],
+  DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich','pacerLevel','pacerBpm'],
+  DERIVED_HZ:10,
+
+  /* Fixed vocabulary. A label also carries a free `note`. */
+  LABEL_KINDS:['lay-down','settled','sat-up','phone-moved','talking',
+               'drifted-off','bad-detection','good-stretch','other'],
+
+  _db:null, _openP:null,
+
+  /* ---------- lifecycle ---------- */
+
+  /** Safe to call repeatedly; resolves whether or not the store works. */
+  open(){
+    if(this._openP) return this._openP;
+    const self = this;
+    this._openP = new Promise(function(resolve){
+      let settled = false;
+      const giveUp = function(why){
+        if(settled) return; settled = true;
+        self.available = false; self.opened = false; self.lastError = why;
+        resolve();
+      };
+
+      let idb = null;
+      // Accessing indexedDB itself throws in Firefox private browsing.
+      try{ idb = (typeof indexedDB !== 'undefined') ? indexedDB : null; }
+      catch(e){ giveUp('blocked:' + ((e && e.name) || 'unknown')); return; }
+      if(!idb){ giveUp('unsupported'); return; }
+
+      let req;
+      try{ req = idb.open(self.DB_NAME, self.DB_VER); }
+      catch(e){ giveUp('blocked:' + ((e && e.name) || 'unknown')); return; }
+
+      // Sandboxed frames sometimes never settle the request at all, so the
+      // app must not wait on it forever.
+      const timer = setTimeout(function(){ giveUp('timeout'); }, 8000);
+
+      req.onupgradeneeded = function(ev){
+        const db = ev.target.result;
+        // meta holds everything except the sample arrays, so the session
+        // browser and a label edit never read a megabyte off disk.
+        if(!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', {keyPath:'id'});
+        if(!db.objectStoreNames.contains('data')) db.createObjectStore('data', {keyPath:'id'});
+      };
+      req.onsuccess = function(){
+        clearTimeout(timer);
+        if(settled){ try{ req.result.close(); }catch(e){} return; }
+        settled = true;
+        self._db = req.result;
+        self.available = true; self.opened = true; self.lastError = null;
+        self._db.onclose = function(){ self._db = null; self.opened = false; self._openP = null; };
+        self._db.onversionchange = function(){ try{ self._db.close(); }catch(e){} };
+        self._fitBudget();
+        resolve();
+      };
+      req.onerror = function(){
+        clearTimeout(timer);
+        giveUp('open:' + ((req.error && req.error.name) || 'unknown'));
+      };
+      req.onblocked = function(){ clearTimeout(timer); giveUp('blocked'); };
+    });
+    return this._openP;
+  },
+
+  /** Never claim more of the origin's quota than a quarter of it. */
+  _fitBudget(){
+    try{
+      if(typeof navigator === 'undefined') return;
+      if(!navigator.storage || !navigator.storage.estimate) return;
+      const self = this;
+      navigator.storage.estimate().then(function(est){
+        if(!est || !est.quota) return;
+        const fit = Math.max(8*1024*1024, Math.floor(est.quota*0.25));
+        if(fit < self.budgetBytes) self.budgetBytes = fit;
+      }, function(){});
+    }catch(e){}
+  },
+
+  /**
+   * Run one transaction. `body(stores, tx)` may return a thunk; its value
+   * becomes the resolution once the transaction commits. Resolves null on
+   * any failure — this never throws, because a storage problem must not be
+   * able to interrupt a breathing session.
+   */
+  _run(names, mode, body){
+    const self = this;
+    return this.open().then(function(){
+      if(!self.available || !self._db) return null;
+      return new Promise(function(resolve){
+        let tx;
+        try{ tx = self._db.transaction(names, mode); }
+        catch(e){ self.lastError = 'tx:' + ((e && e.name) || 'unknown'); resolve(null); return; }
+
+        const st = {};
+        for(let i=0;i<names.length;i++) st[names[i]] = tx.objectStore(names[i]);
+
+        let fin = null;
+        tx.oncomplete = function(){ resolve(fin ? fin() : null); };
+        tx.onabort = tx.onerror = function(){
+          self.lastError = 'tx:' + ((tx.error && tx.error.name) || 'aborted');
+          resolve(null);
+        };
+        try{ fin = body(st, tx) || null; }
+        catch(e){
+          self.lastError = 'tx:' + ((e && e.name) || 'unknown');
+          try{ tx.abort(); }catch(e2){}
+        }
+      });
+    });
+  },
+
+  /* ---------- reads ---------- */
+
+  /** Meta only, newest first. No sample arrays are touched. */
+  list(){
+    return this._run(['meta'],'readonly', function(st){
+      const r = st.meta.getAll();
+      let out = [];
+      r.onsuccess = function(){ out = r.result || []; };
+      return function(){
+        out.sort(function(a,b){
+          return a.startedAt < b.startedAt ? 1 : (a.startedAt > b.startedAt ? -1 : 0);
+        });
+        return out;
+      };
+    }).then(function(v){ return v || []; });
+  },
+
+  /**
+   * Full session in export shape.
+   * @param opts.motion   false to leave motion.rows empty (the session
+   *                      browser plots `derived`, so it should pass this)
+   * @param opts.derived  false to leave derived.rows empty
+   * @param opts.cols     true to return typed-array columns instead of rows
+   */
+  get(id, opts){
+    const o = opts || {};
+    const wantM = o.motion !== false, wantD = o.derived !== false, asCols = o.cols === true;
+    return this._run(['meta','data'],'readonly', function(st){
+      const rm = st.meta.get(id), rd = st.data.get(id);
+      let meta = null, data = null;
+      rm.onsuccess = function(){ meta = rm.result || null; };
+      rd.onsuccess = function(){ data = rd.result || null; };
+      return function(){
+        if(!meta) return null;
+        return Store._assemble(meta, data, wantM, wantD, asCols);
+      };
+    });
+  },
+
+  usage(){
+    const self = this;
+    return this.list().then(function(metas){
+      let bytes = 0;
+      for(let i=0;i<metas.length;i++) bytes += metas[i].bytes || 0;
+      return {count:metas.length, bytes:bytes, budget:self.budgetBytes,
+              pct: self.budgetBytes ? bytes/self.budgetBytes : 0};
+    });
+  },
+
+  /* ---------- writes ---------- */
+
+  /**
+   * Persist a session. Accepts either shape for motion/derived: `rows`
+   * (export shape) or `cols` (what Recorder produces).
+   * @returns Promise<boolean> — false means it was not saved, and
+   *          Store.lastError says why. Callers must not treat that as fatal.
+   */
+  put(session){
+    const self = this;
+    if(!session || !session.id){ this.lastError = 'no-session'; return Promise.resolve(false); }
+
+    let packed;
+    try{ packed = this._pack(session); }
+    catch(e){ this.lastError = 'pack:' + ((e && e.name) || 'unknown'); return Promise.resolve(false); }
+
+    return this.open().then(function(){
+      if(!self.available) return false;
+      return self._evictFor(packed.meta.bytes, packed.meta.id).then(function(){
+        return self._write(packed);
+      }).then(function(ok){
+        if(ok) return true;
+        // A quota rejection can still happen after eviction if something else
+        // on the origin grew. Drop one more recording and try once more.
+        if(String(self.lastError).indexOf('QuotaExceeded') < 0) return false;
+        return self._evictOldest(1, packed.meta.id).then(function(dropped){
+          if(!dropped) return false;
+          return self._write(packed);
+        });
+      });
+    });
+  },
+
+  _write(packed){
+    const self = this;
+    return this._run(['meta','data'],'readwrite', function(st){
+      st.meta.put(packed.meta);
+      st.data.put(packed.data);
+      return function(){ return true; };
+    }).then(function(v){ return v === true; });
+  },
+
+  delete(id){
+    return this._run(['meta','data'],'readwrite', function(st){
+      st.meta.delete(id);
+      st.data.delete(id);
+      return function(){ return true; };
+    }).then(function(){ return undefined; });
+  },
+
+  clear(){
+    return this._run(['meta','data'],'readwrite', function(st){
+      st.meta.clear();
+      st.data.clear();
+      return function(){ return true; };
+    }).then(function(){ return undefined; });
+  },
+
+  /* ---------- labels ----------
+     Labels live in the meta record, never in the sample arrays, so adding
+     one is a read-modify-write of a few hundred bytes rather than of the
+     whole recording. This is the path the labelling UI uses. */
+
+  /** @returns Promise<labels[]|null> — null when the session is gone. */
+  addLabel(id, label){
+    const clean = this._cleanLabel(label);
+    if(!clean) return Promise.resolve(null);
+    return this._editMeta(id, function(meta){
+      if(!meta.labels) meta.labels = [];
+      meta.labels.push(clean);
+      meta.labels.sort(function(a,b){ return a.tSec - b.tSec; });
+    });
+  },
+
+  removeLabel(id, index){
+    return this._editMeta(id, function(meta){
+      if(meta.labels && index >= 0 && index < meta.labels.length) meta.labels.splice(index, 1);
+    });
+  },
+
+  setLabels(id, labels){
+    const self = this;
+    return this._editMeta(id, function(meta){
+      const out = [];
+      for(let i=0;i<(labels||[]).length;i++){
+        const c = self._cleanLabel(labels[i]);
+        if(c) out.push(c);
+      }
+      out.sort(function(a,b){ return a.tSec - b.tSec; });
+      meta.labels = out;
+    });
+  },
+
+  _editMeta(id, mutate){
+    const self = this;
+    return this._run(['meta'],'readwrite', function(st){
+      const r = st.meta.get(id);
+      let meta = null;
+      r.onsuccess = function(){
+        meta = r.result || null;
+        if(!meta) return;
+        mutate(meta);
+        meta.bytes = (meta.bytes || 0) - (meta.metaBytes || 0);
+        meta.metaBytes = self._metaBytes(meta);
+        meta.bytes += meta.metaBytes;
+        st.meta.put(meta);
+      };
+      return function(){ return meta ? (meta.labels || []) : null; };
+    });
+  },
+
+  _cleanLabel(l){
+    if(!l || typeof l.tSec !== 'number' || !isFinite(l.tSec)) return null;
+    const kind = this.LABEL_KINDS.indexOf(l.kind) >= 0 ? l.kind : 'other';
+    let note = l.note == null ? '' : String(l.note);
+    if(note.length > 200) note = note.slice(0, 200);   // a note, not a diary
+    return {tSec: rnd(Math.max(0, l.tSec), 3), kind: kind, note: note};
+  },
+
+  /* ---------- eviction ----------
+     One rule, so it can be stated in the interface: keep the newest
+     `budgetBytes`, delete whole recordings oldest-first to make room.
+     Never evict the recording being written. */
+
+  _evictFor(incomingBytes, keepId){
+    const self = this;
+    return this.list().then(function(metas){
+      let total = incomingBytes;
+      const others = [];
+      for(let i=0;i<metas.length;i++){
+        if(metas[i].id === keepId) continue;      // an overwrite, not an addition
+        total += metas[i].bytes || 0;
+        others.push(metas[i]);
+      }
+      if(total <= self.budgetBytes) return 0;
+      others.sort(function(a,b){ return a.startedAt < b.startedAt ? -1 : 1; });   // oldest first
+      const doomed = [];
+      for(let i=0;i<others.length && total > self.budgetBytes;i++){
+        doomed.push(others[i].id);
+        total -= others[i].bytes || 0;
+      }
+      return self._deleteMany(doomed);
+    });
+  },
+
+  _evictOldest(n, keepId){
+    const self = this;
+    return this.list().then(function(metas){
+      const others = metas.filter(function(m){ return m.id !== keepId; });
+      others.sort(function(a,b){ return a.startedAt < b.startedAt ? -1 : 1; });
+      return self._deleteMany(others.slice(0, n).map(function(m){ return m.id; }));
+    });
+  },
+
+  _deleteMany(ids){
+    if(!ids.length) return Promise.resolve(0);
+    const self = this;
+    return this._run(['meta','data'],'readwrite', function(st){
+      for(let i=0;i<ids.length;i++){ st.meta.delete(ids[i]); st.data.delete(ids[i]); }
+      return function(){ return ids.length; };
+    }).then(function(n){
+      self.evicted = (self.evicted || 0) + (n || 0);
+      return n || 0;
+    });
+  },
+
+  /* ---------- packing ---------- */
+
+  _pack(session){
+    const m = colsOf(session.motion,  4);
+    const d = colsOf(session.derived, 9);
+    const data = {
+      id: session.id,
+      mT: m.t, mX: m.v[0], mY: m.v[1], mZ: m.v[2],
+      dT: d.t, dV: d.v
+    };
+    const meta = {
+      id: session.id,
+      format: this.FORMAT,
+      startedAt: session.startedAt,
+      durationSec: rnd(session.durationSec, 3),
+      app: session.app || {},
+      device: session.device || {},
+      calibration: session.calibration || null,
+      labels: session.labels || [],
+      events: session.events || [],
+      summary: session.summary || null,
+      motionUnits:  (session.motion  && session.motion.units)  || 'm/s^2',
+      motionSource: (session.motion  && session.motion.source) || 'accelerationIncludingGravity',
+      motionCount: m.n,
+      derivedHz:   (session.derived && session.derived.hz) || this.DERIVED_HZ,
+      derivedCount: d.n
+    };
+    let bytes = 0;
+    bytes += data.mT.byteLength + data.mX.byteLength + data.mY.byteLength + data.mZ.byteLength;
+    bytes += data.dT.byteLength;
+    for(let i=0;i<data.dV.length;i++) bytes += data.dV[i].byteLength;
+    meta.metaBytes = this._metaBytes(meta);
+    meta.bytes = bytes + meta.metaBytes;
+    return {meta:meta, data:data};
+  },
+
+  _metaBytes(meta){
+    try{ return JSON.stringify(meta).length; }catch(e){ return 512; }
+  },
+
+  _assemble(meta, data, wantM, wantD, asCols){
+    const s = {
+      format: this.FORMAT,
+      id: meta.id,
+      startedAt: meta.startedAt,
+      durationSec: meta.durationSec,
+      app: meta.app || {},
+      device: meta.device || {},
+      calibration: meta.calibration || null,
+      labels: meta.labels || [],
+      events: meta.events || [],
+      motion: {units: meta.motionUnits, source: meta.motionSource,
+               columns: this.MOTION_COLUMNS.slice(), count: meta.motionCount || 0, rows: []},
+      derived:{hz: meta.derivedHz, columns: this.DERIVED_COLUMNS.slice(),
+               count: meta.derivedCount || 0, rows: []},
+      summary: meta.summary || null,
+      bytes: meta.bytes || 0
+    };
+    if(!data) return s;
+    if(asCols){
+      s.motion.cols  = {t:data.mT, v:[data.mX, data.mY, data.mZ], n: meta.motionCount || 0};
+      s.derived.cols = {t:data.dT, v:data.dV, n: meta.derivedCount || 0};
+      return s;
+    }
+    if(wantM) s.motion.rows  = unpack(data.mT, [data.mX,data.mY,data.mZ], meta.motionCount, 4);
+    if(wantD) s.derived.rows = unpack(data.dT, data.dV, meta.derivedCount, 3);
+    return s;
+  },
+
+  /* ---------- export ----------
+     Built as an array of string chunks so a 20-minute session never has to
+     exist as one 3 MB concatenation before it reaches the Blob. */
+
+  exportParts(session){
+    const p = [];
+    p.push('{\n"format": "' + this.FORMAT + '",\n');
+    p.push('"id": ' + JSON.stringify(session.id) + ',\n');
+    p.push('"startedAt": ' + JSON.stringify(session.startedAt) + ',\n');
+    p.push('"durationSec": ' + num(session.durationSec, 3) + ',\n');
+    p.push('"app": '         + JSON.stringify(session.app || {}) + ',\n');
+    p.push('"device": '      + JSON.stringify(session.device || {}) + ',\n');
+    p.push('"calibration": ' + JSON.stringify(session.calibration || null) + ',\n');
+    p.push('"labels": '      + JSON.stringify(session.labels || []) + ',\n');
+    p.push('"events": '      + JSON.stringify(session.events || []) + ',\n');
+    p.push('"summary": '     + JSON.stringify(session.summary || null) + ',\n');
+
+    const m = colsOf(session.motion, 4);
+    p.push('"motion": {"units": ' + JSON.stringify(session.motion.units || 'm/s^2') +
+           ', "source": ' + JSON.stringify(session.motion.source || 'accelerationIncludingGravity') +
+           ', "columns": ' + JSON.stringify(this.MOTION_COLUMNS) +
+           ', "count": ' + m.n + ',\n  "rows": [');
+    rowText(p, m, 4, 3);
+    p.push(']},\n');
+
+    const d = colsOf(session.derived, 9);
+    p.push('"derived": {"hz": ' + ((session.derived && session.derived.hz) || this.DERIVED_HZ) +
+           ', "columns": ' + JSON.stringify(this.DERIVED_COLUMNS) +
+           ', "count": ' + d.n + ',\n  "rows": [');
+    rowText(p, d, 3, 3);
+    p.push(']}\n}\n');
+    return p;
+  },
+
+  exportJson(session){ return this.exportParts(session).join(''); },
+
+  /** @param idOrSession  an id reads the full session back out of the store */
+  exportBlob(idOrSession){
+    const self = this;
+    const one = function(s){
+      return new Blob(self.exportParts(s), {type:'application/json'});
+    };
+    if(typeof idOrSession !== 'string') return Promise.resolve(one(idOrSession));
+    return this.get(idOrSession).then(function(s){ return s ? one(s) : null; });
+  },
+
+  /** Every recording in one file. Can be tens of MB — warn before offering it. */
+  exportAllBlob(){
+    const self = this;
+    return this.list().then(function(metas){
+      const parts = ['{\n"format": "tide-sessions/1",\n"sessions": [\n'];
+      let chain = Promise.resolve();
+      metas.forEach(function(meta, i){
+        chain = chain.then(function(){
+          return self.get(meta.id).then(function(s){
+            if(!s) return;
+            if(i) parts.push(',\n');
+            const sub = self.exportParts(s);
+            for(let k=0;k<sub.length;k++) parts.push(sub[k]);
+          });
+        });
+      });
+      return chain.then(function(){
+        parts.push('\n]}\n');
+        return new Blob(parts, {type:'application/json'});
+      });
+    });
+  },
+
+  exportName(session){
+    // 20260827T180411Z-a3f1 -> tide-20260827-1804.json
+    const id = String(session.id || '');
+    const m = id.match(/^(\d{8})T(\d{4})/);
+    return m ? ('tide-' + m[1] + '-' + m[2] + '.json') : ('tide-' + id + '.json');
+  },
+
+  /* ---------- presentation helpers ---------- */
+
+  formatBytes(n){
+    if(!(n > 0)) return '0 kB';
+    if(n < 1024*1024) return Math.max(1, Math.round(n/1024)) + ' kB';
+    return (n/(1024*1024)).toFixed(n < 10*1024*1024 ? 1 : 0) + ' MB';
+  },
+
+  formatDuration(sec){
+    const s = Math.max(0, Math.round(sec || 0));
+    const mm = Math.floor(s/60), ss = s % 60;
+    return mm + ':' + (ss < 10 ? '0' : '') + ss;
+  }
+};
+
+/* ---------- shared number handling ----------
+   Nothing raw ever reaches the file: 3 dp for time and derived values,
+   4 dp for the motion axes. */
+
+function rnd(v, dp){
+  if(typeof v !== 'number' || !isFinite(v)) return 0;
+  const k = Math.pow(10, dp);
+  return Math.round(v*k)/k;
+}
+
+/** Fixed dp, trailing zeros trimmed, no "-0". */
+function num(v, dp){
+  if(typeof v !== 'number' || !isFinite(v)) return '0';
+  let s = v.toFixed(dp);
+  if(s.indexOf('.') >= 0) s = s.replace(/0+$/,'').replace(/\.$/,'');
+  return (s === '-0' || s === '') ? '0' : s;
+}
+
+/** Accept either the columnar shape or export rows, and give back columns. */
+function colsOf(chan, width){
+  const vcount = width - 1;
+  if(chan && chan.cols && chan.cols.t) return {t:chan.cols.t, v:chan.cols.v, n:chan.cols.n};
+  const rows = (chan && chan.rows) || [];
+  const n = rows.length;
+  const t = new Uint32Array(n);
+  const v = [];
+  for(let c=0;c<vcount;c++) v.push(new Float32Array(n));
+  for(let i=0;i<n;i++){
+    const r = rows[i];
+    t[i] = Math.max(0, Math.round((r[0] || 0)*1000));
+    for(let c=0;c<vcount;c++) v[c][i] = r[c+1] || 0;
+  }
+  return {t:t, v:v, n:n};
+}
+
+function unpack(t, v, n, dp){
+  const rows = new Array(n);
+  for(let i=0;i<n;i++){
+    const r = new Array(v.length + 1);
+    r[0] = t[i]/1000;                       // ms integers are already 3 dp
+    for(let c=0;c<v.length;c++) r[c+1] = rnd(v[c][i], dp);
+    rows[i] = r;
+  }
+  return rows;
+}
+
+/** Push row text into `parts`, one string per row, newline every 8 rows. */
+function rowText(parts, c, dp, tdp){
+  for(let i=0;i<c.n;i++){
+    let s = (i ? ',' : '') + ((i % 8 === 0) ? '\n    [' : '[') + num(c.t[i]/1000, tdp);
+    for(let k=0;k<c.v.length;k++) s += ',' + num(c.v[k][i], dp);
+    parts.push(s + ']');
+  }
+  if(c.n) parts.push('\n  ');
+}
+
+/* ============================================================
+   Recorder — buffers one session into growable typed arrays.
+   ------------------------------------------------------------
+   sample() runs at the sensor rate, so it does no allocation, no
+   rounding and no branching beyond a bounds check. Everything else
+   happens in stop().
+
+   A recording failure must never reach the user mid-breath: every
+   entry point is guarded, and problems are parked in Recorder.saveError
+   for the summary screen to report afterwards.
+   ============================================================ */
+
+const Recorder = {
+  active:false,
+  lastSession:null,
+  /* Set once by onMotion: accelerationIncludingGravity is what the tracker
+     wants, but the event can only offer `acceleration` on some devices and a
+     reader has to be able to tell which one produced the file. */
+  motionSource:null,
+  saveError:null,          // set at stop(); APP shows it on the summary screen
+  truncated:false,
+
+  /* A breathing session is not an all-nighter. 45 min at 60 Hz is
+     162 000 samples = 2.6 MB of buffer; past that the motion channel
+     stops growing and an event records that it happened. */
+  MAX_MIN:45,
+
+  t0:null, startedAt:null, id:null,
+  m:null, d:null, events:null, meta:null,
+  maxSamples:0,
+
+  /**
+   * @param meta.app  {voice, targetBpm, rampMin, invert, demo}
+   * @param t         session zero, in the same clock sample() will use.
+   *                  Defaults to now; pass it explicitly when replaying a
+   *                  recorded clock. Every tSec in the file is relative to it,
+   *                  so samples and events can never disagree about time zero.
+   */
+  start(meta, t){
+    try{
+      this.stopBuffers();
+      const now = new Date();
+      this.startedAt = now.toISOString();
+      this.id = idFor(this.startedAt);
+      this.t0 = (typeof t === 'number' && isFinite(t)) ? t : nowSec();
+      this.truncated = false;
+      this.saveError = null;
+      this.motionSource = null;
+      this.events = [];
+      this.meta = meta || {};
+      this.maxSamples = this.MAX_MIN*60*60;
+      // 2 min of headroom, doubled as needed up to the ceiling
+      this.m = allocCols(60*120, 3, this.maxSamples);
+      this.d = allocCols(10*120, 8, this.MAX_MIN*60*20);
+      this.active = true;
+    }catch(e){
+      this.active = false;
+      this.saveError = 'start:' + ((e && e.name) || 'unknown');
+    }
+  },
+
+  /** Every raw sensor sample. t in seconds, same clock as derived(). */
+  sample(x, y, z, t){
+    if(!this.active) return;
+    const m = this.m;
+    if(m.n >= this.maxSamples){
+      if(!this.truncated){
+        this.truncated = true;
+        this.event('recording-truncated', {afterSec: this.MAX_MIN*60});
+      }
+      return;
+    }
+    if(m.n >= m.cap && !this.grow(m)) return;
+    const i = m.n++;
+    const ms = (t - this.t0)*1000;
+    m.t[i] = ms > 0 ? Math.round(ms) : 0;
+    m.v[0][i] = x; m.v[1][i] = y; m.v[2][i] = z;
+  },
+
+  /**
+   * ~10 Hz snapshot of what the tracker believed at that moment.
+   * @param o {t,s,level,phase,bpm,quality,rich,pacerLevel,pacerBpm}
+   */
+  derived(o){
+    if(!this.active || !o) return;
+    const d = this.d;
+    if(d.n >= d.cap && !this.grow(d)) return;
+    const i = d.n++;
+    const ms = (o.t - this.t0)*1000;
+    d.t[i] = ms > 0 ? Math.round(ms) : 0;
+    d.v[0][i] = o.s || 0;
+    d.v[1][i] = o.level || 0;
+    d.v[2][i] = o.phase || 0;
+    d.v[3][i] = o.bpm || 0;
+    d.v[4][i] = o.quality || 0;
+    d.v[5][i] = o.rich || 0;
+    d.v[6][i] = o.pacerLevel || 0;
+    d.v[7][i] = o.pacerBpm || 0;
+  },
+
+  /**
+   * Sparse timeline event. `t` is optional and defaults to the wall clock;
+   * pass it when replaying a recorded clock.
+   *
+   * Known types, all optional except the first two:
+   *   calibration-start  {}
+   *   calibration-end    {ok, axis:[x,y,z], amplitude, flipped}
+   *   breath             {inhaleSec, exhaleSec}
+   *   recalibrate        {}
+   *   signal-lost / signal-back  {quality}
+   *   recording-truncated {afterSec}
+   */
+  event(type, data, t){
+    if(!this.events) return;
+    if(this.events.length > 4000) return;          // a runaway loop must not eat the heap
+    const now = (typeof t === 'number') ? t : nowSec();
+    const e = {tSec: rnd(Math.max(0, now - this.t0), 3), type: type};
+    if(data) for(const k in data) if(Object.prototype.hasOwnProperty.call(data, k)) e[k] = data[k];
+    this.events.push(e);
+  },
+
+  grow(c){
+    try{
+      const cap = Math.min(c.cap*2, c.max);
+      if(cap <= c.cap) return false;
+      const t = new Uint32Array(cap), v = [];
+      t.set(c.t);
+      for(let i=0;i<c.v.length;i++){ const a = new Float32Array(cap); a.set(c.v[i]); v.push(a); }
+      c.t = t; c.v = v; c.cap = cap;
+      return true;
+    }catch(e){
+      // Out of memory. Stop recording; the session itself carries on.
+      this.active = false;
+      this.saveError = 'memory:' + ((e && e.name) || 'unknown');
+      return false;
+    }
+  },
+
+  /**
+   * Flush and persist.
+   * @returns Promise<session|null>  the session in memory. Its motion is
+   *          carried as typed-array columns, not rows — export it with
+   *          Store.exportBlob(id) or Store.exportJson(session), never by
+   *          JSON.stringify().
+   */
+  stop(){
+    if(!this.m){ return Promise.resolve(null); }
+    this.active = false;
+    let session;
+    try{ session = this.build(); }
+    catch(e){
+      this.saveError = 'build:' + ((e && e.name) || 'unknown');
+      this.stopBuffers();
+      return Promise.resolve(null);
+    }
+    this.lastSession = session;
+    const self = this;
+    return Store.put(session).then(function(ok){
+      if(!ok) self.saveError = Store.lastError || 'unavailable';
+      return session;
+    }, function(e){
+      self.saveError = 'save:' + ((e && e.name) || 'unknown');
+      return session;
+    });
+  },
+
+  stopBuffers(){ this.m = null; this.d = null; this.active = false; },
+
+  build(){
+    const m = this.m, d = this.d;
+    const durationSec = m.n ? m.t[m.n-1]/1000 : (d.n ? d.t[d.n-1]/1000 : 0);
+    const hz = durationSec > 1 ? m.n/durationSec : 0;
+
+    const cal = calFromEvents(this.events);
+    const app = (this.meta && this.meta.app) || {};
+    const dSpan = d.n > 1 ? (d.t[d.n-1] - d.t[0])/1000 : 0;
+    const dHz = dSpan > 0 ? Math.round((d.n-1)/dSpan*100)/100 : Store.DERIVED_HZ;
+
+    return {
+      format: Store.FORMAT,
+      id: this.id,
+      startedAt: this.startedAt,
+      durationSec: rnd(durationSec, 3),
+      app: app,
+      device: deviceInfo(hz),
+      calibration: cal,
+      labels: [],
+      events: this.events.slice(),
+      motion: {units:'m/s^2',
+               source: app.demo ? 'simulated'
+                                : (this.motionSource || 'accelerationIncludingGravity'),
+               columns: Store.MOTION_COLUMNS.slice(),
+               count: m.n,
+               cols: {t:m.t, v:m.v, n:m.n}, rows: []},
+      derived:{hz: dHz,
+               columns: Store.DERIVED_COLUMNS.slice(),
+               count: d.n,
+               cols: {t:d.t, v:d.v, n:d.n}, rows: []},
+      summary: summarise(d, this.events, dHz)
+    };
+  }
+};
+
+/* ---------- Recorder helpers ---------- */
+
+function nowSec(){
+  return (typeof performance !== 'undefined' && performance.now)
+    ? performance.now()/1000 : Date.now()/1000;
+}
+
+function idFor(iso){
+  const stamp = String(iso).replace(/[-:]/g,'').replace(/\.\d+Z$/,'Z');
+  let tail = '';
+  try{
+    if(typeof crypto !== 'undefined' && crypto.getRandomValues){
+      const a = new Uint8Array(2); crypto.getRandomValues(a);
+      tail = (a[0]+256).toString(16).slice(1) + (a[1]+256).toString(16).slice(1);
+    }
+  }catch(e){}
+  if(!tail) tail = ('000' + Math.floor(Math.random()*65536).toString(16)).slice(-4);
+  return stamp + '-' + tail;
+}
+
+function deviceInfo(hz){
+  const d = {sampleHz: rnd(hz, 1)};
+  try{ if(typeof navigator !== 'undefined') d.ua = navigator.userAgent; }catch(e){}
+  try{
+    if(typeof screen !== 'undefined') d.screen = [screen.width, screen.height];
+  }catch(e){}
+  return d;
+}
+
+function allocCols(n, vcount, max){
+  const v = [];
+  for(let i=0;i<vcount;i++) v.push(new Float32Array(n));
+  return {n:0, cap:n, max:max, t:new Uint32Array(n), v:v};
+}
+
+function calFromEvents(events){
+  let startSec = null, end = null;
+  for(let i=0;i<events.length;i++){
+    if(events[i].type === 'calibration-start') startSec = events[i].tSec;
+    if(events[i].type === 'calibration-end')   end = events[i];
+  }
+  if(!end) return null;
+  return {
+    startSec: startSec === null ? 0 : startSec,
+    endSec: end.tSec,
+    axis: end.axis || null,
+    flipped: (typeof end.flipped === 'boolean') ? end.flipped : null,
+    amplitude: rnd(end.amplitude, 4),
+    ok: end.ok !== false
+  };
+}
+
+/**
+ * `slowestBpm` is the slowest 30-second stretch, not the slowest single
+ * estimate — one dropped breath can halve an instantaneous reading.
+ */
+function summarise(d, events, hz){
+  const S = {meanBpm:0, slowestBpm:0, secondsUnder7:0, inOutRatio:0, meanQuality:0, breaths:0};
+  const n = d.n;
+  if(!(hz > 0)) hz = Store.DERIVED_HZ;
+  const bpm = d.v[3], q = d.v[4];
+
+  let bs = 0, bc = 0, qs = 0, under = 0;
+  for(let i=0;i<n;i++){
+    if(bpm[i] > 0){ bs += bpm[i]; bc++; if(bpm[i] < 7) under++; }
+    qs += q[i];
+  }
+  S.meanBpm = bc ? rnd(bs/bc, 2) : 0;
+  S.secondsUnder7 = rnd(under/hz, 1);
+  S.meanQuality = n ? rnd(qs/n, 3) : 0;
+
+  const win = Math.round(30*hz);   // a 30 s stretch, in snapshots
+  let best = 0;
+  if(bc && n >= win){
+    let sum = 0, good = 0;
+    for(let i=0;i<n;i++){
+      if(bpm[i] > 0){ sum += bpm[i]; good++; }
+      if(i >= win){ if(bpm[i-win] > 0){ sum -= bpm[i-win]; good--; } }
+      if(i >= win-1 && good === win){
+        const mean = sum/win;
+        if(!best || mean < best) best = mean;
+      }
+    }
+  }
+  S.slowestBpm = best ? rnd(best, 2) : S.meanBpm;
+
+  let inS = 0, outS = 0, k = 0;
+  for(let i=0;i<events.length;i++){
+    const e = events[i];
+    if(e.type !== 'breath') continue;
+    S.breaths++;
+    if(e.inhaleSec > 0 && e.exhaleSec > 0){ inS += e.inhaleSec; outS += e.exhaleSec; k++; }
+  }
+  S.inOutRatio = k && outS > 0 ? rnd((inS/k)/(outS/k), 3) : 0;
+  return S;
+}
+
+/* ============================================================
+   6. REVIEW UI
+   ------------------------------------------------------------
+   Three screens sharing one overlay:
+
+     summary   where End goes instead of back to the intro
+     list      every recording this phone is still holding
+     detail    scrub the waveform and say what was happening
+
+   Inert until show*() runs. No DOM lookups at definition time,
+   the same rule Audio follows.
+
+   ---- why the detail screen has two lanes ----
+   A twelve-minute session drawn across a 357 px phone canvas is
+   2 s per pixel, and a thumb covers about 40 px of it — 80 s of
+   blur. "Mark the moment I lay down" is simply not expressible
+   on one full-width lane, so the detail screen stacks two:
+
+     overview   the whole session; tap or drag to jump near
+     fine       a window of `span` seconds dragged past a
+                playhead pinned to the centre of the lane
+
+   Pinning the playhead to the centre is the part that makes it
+   work one-handed: the instant you are aiming at is never the
+   pixel under your finger. At the 8 s span that is 22 ms per
+   pixel, about a thousand times finer than one lane, and the
+   half-second steppers cover the case where a steady drag is
+   not available.
+   ============================================================ */
+const Review = {
+  onDone:null,                 // app wires this: return to the intro screen
+
+  screen:null,                 // null | 'summary' | 'list' | 'detail'
+  session:null,                // the full session object on screen
+  from:'list',                 // where Back leaves the detail screen for
+  metas:[],                    // last Store.list() result
+  confirmId:null,              // list row currently asking "delete this?"
+
+  /** scrub state for the detail screen */
+  det:{ dur:0, play:0, span:30, drag:null, kind:'', dirty:false },
+
+  /** projected signal unpacked from derived.rows, built once per session */
+  sig:{ n:0 },
+
+  /* the contract's fixed vocabulary, in the order the chips read */
+  KINDS:[
+    ['lay-down',      'Lay down'],
+    ['settled',       'Settled'],
+    ['sat-up',        'Sat up'],
+    ['phone-moved',   'Phone moved'],
+    ['talking',       'Talking'],
+    ['drifted-off',   'Drifted off'],
+    ['bad-detection', 'Bad detection'],
+    ['good-stretch',  'Good stretch'],
+    ['other',         'Other']
+  ],
+
+  /* fine-lane widths. 0 means "the whole recording". 8 s is the
+     finest useful step: below that a breath no longer fits on screen. */
+  SPANS:[[0,'Whole'],[120,'2 min'],[30,'30 s'],[8,'8 s']],
+
+  /* ---------- lazy DOM + palette ---------- */
+
+  dom(){
+    if(this._dom) return this._dom;
+    const d = this._dom = {
+      root:$('review'), title:$('revTitle'), tag:$('revTag'), back:$('revBack'),
+      scr:{ summary:$('revSummary'), list:$('revList'), detail:$('revDetail') },
+      bar:{ summary:$('revSumBar'), list:$('revListBar'), detail:$('revDetBar') },
+      spark:$('revSpark'), sumGrid:$('revSumGrid'), sumFlag:$('revSumFlag'),
+      rows:$('revRows'), listEmpty:$('revListEmpty'), listFoot:$('revListFoot'),
+      over:$('revOver'), fine:$('revFine'),
+      vAt:$('revVAt'), vSig:$('revVSig'), vRate:$('revVRate'),
+      spans:$('revSpans'), kinds:$('revKinds'), note:$('revNote'),
+      add:$('revAdd'), labels:$('revLabels'), labelsNone:$('revLabelsNone')
+    };
+    this.wire();
+    return d;
+  },
+
+  /** canvas colours live in :root like every other colour in the app */
+  ink(){
+    if(this._ink) return this._ink;
+    const cs = getComputedStyle(document.documentElement);
+    const g = (n,fallback)=>{ const v=cs.getPropertyValue(n).trim(); return v||fallback; };
+    return this._ink = {
+      you:  g('--glass','#7FBFAE'),
+      pace: g('--sand','#D9A85B'),
+      mute: g('--mute','#7C9AA1'),
+      foam: g('--foam','#E3EDE9'),
+      deep: g('--deep','#0E2732'),
+      abyss:g('--abyss','#08171E')
+    };
+  },
+
+  wire(){
+    if(this._wired) return; this._wired = true;
+    const d = this._dom;
+
+    d.back.addEventListener('click', ()=>this.back());
+    $('revDone').addEventListener('click', ()=>{ this.hide(); if(this.onDone) this.onDone(); });
+    $('revLabelBtn').addEventListener('click', ()=>{
+      if(this.session) this.showDetail(this.session.id, 'summary');
+    });
+    $('revSumExport').addEventListener('click', ()=>this.exportOne(this.session));
+    $('revListClose').addEventListener('click', ()=>this.hide());
+    $('revExportAll').addEventListener('click', ()=>this.exportAll());
+    $('revDetExport').addEventListener('click', ()=>this.exportOne(this.session));
+    $('revDetDelete').addEventListener('click', ()=>this.deleteCurrent());
+
+    d.spans.addEventListener('click', e=>{
+      const b = e.target.closest('button'); if(!b) return;
+      this.setSpan(parseFloat(b.dataset.span));
+    });
+    d.kinds.addEventListener('click', e=>{
+      const b = e.target.closest('button'); if(!b) return;
+      this.det.kind = b.dataset.kind;
+      this.paintKinds();
+    });
+    $('revBack05').addEventListener('click', ()=>this.nudge(-0.5));
+    $('revFwd05').addEventListener('click', ()=>this.nudge(0.5));
+    d.add.addEventListener('click', ()=>this.addLabel());
+
+    this.bindLane(d.over, 'over');
+    this.bindLane(d.fine, 'fine');
+
+    window.addEventListener('resize', ()=>{ if(this.screen) this.redraw(); });
+  },
+
+  /* ---------- screen switching ---------- */
+
+  show(name){
+    const d = this.dom();
+    this.screen = name;
+    d.root.classList.remove('hidden');
+    for(const k in d.scr) d.scr[k].classList.toggle('hidden', k!==name);
+    for(const k in d.bar) d.bar[k].classList.toggle('hidden', k!==name);
+    d.back.classList.toggle('hidden', name==='summary');
+    d.root.scrollTop = 0;
+    const sc = d.root.querySelector('.rev-scroll');
+    if(sc) sc.scrollTop = 0;
+    d.title.focus();
+  },
+
+  hide(){
+    if(!this._dom) return;
+    this._dom.root.classList.add('hidden');
+    this.screen = null;
+    this.confirmId = null;
+  },
+
+  back(){
+    if(this.screen==='detail' && this.from==='summary'){ this.showSummary(this.session); return; }
+    if(this.screen==='detail'){ this.showList(); return; }
+    this.hide();
+  },
+
+  /* ---------- 1. summary ---------- */
+
+  showSummary(session){
+    const d = this.dom();
+    this.session = session || null;
+    this.from = 'summary';
+    d.title.textContent = 'This session';
+    d.tag.textContent = session ? this.when(session.startedAt) : '';
+    this.show('summary');
+    if(!session){
+      d.sumFlag.textContent = 'Nothing was recorded, so there is nothing to show here.';
+      d.sumFlag.classList.remove('hidden');
+      d.sumGrid.textContent = '';
+      return;
+    }
+    this.prepare(session);
+    this.renderSummary();
+    this.redraw();
+  },
+
+  renderSummary(){
+    const d = this._dom, s = this.session, sum = s.summary || {};
+    const dur = this.det.dur;
+    const cell = (k, v, small)=>{
+      const c = this.h('div','cell');
+      c.appendChild(this.h('div','k',k));
+      const val = this.h('div','v', v);
+      if(small) val.appendChild(this.h('small',null,' '+small));
+      c.appendChild(val);
+      return c;
+    };
+    const bpm = n => (n>0 && isFinite(n)) ? n.toFixed(1) : '—';
+
+    const first = this.windowBpm(this.calEnd(), this.calEnd()+90);
+    const last  = this.windowBpm(Math.max(this.calEnd(), dur-90), dur);
+    const under = (sum.secondsUnder7!=null) ? sum.secondsUnder7 : this.secondsUnder(7);
+    const slow  = (sum.slowestBpm!=null) ? sum.slowestBpm : this.slowestSustained();
+    const q     = (sum.meanQuality!=null) ? sum.meanQuality : this.meanOf('q');
+
+    const g = d.sumGrid;
+    g.textContent = '';
+    g.appendChild(cell('Length', this.clock(dur)));
+    g.appendChild(cell('Breaths', (sum.breaths!=null && sum.breaths>0) ? String(sum.breaths) : '—'));
+    g.appendChild(cell('First 90 s', bpm(first), '/min'));
+    g.appendChild(cell('Last 90 s',  bpm(last),  '/min'));
+    g.appendChild(cell('Slowest sustained', bpm(slow), '/min'));
+    g.appendChild(cell('Under 7 /min', under>0 ? this.clock(under) : '—'));
+    g.appendChild(cell('In / out', this.ratio(sum.inOutRatio)));
+    g.appendChild(cell('Signal', this.qualityWord(q), q>0 ? Math.round(q*100)+'%' : ''));
+
+    // Facts about the recording, not about the person. A failed calibration
+    // or a noisy signal changes how much the numbers above are worth, so say so.
+    const flags = [];
+    if(s.calibration && s.calibration.ok === false)
+      flags.push('Calibration did not find your breathing, so the rates above are unreliable.');
+    else if(q > 0 && q < 0.4)
+      flags.push('The signal was noisy for most of this session. The rates above are approximate.');
+    if(!this.sig.n)
+      flags.push('This recording has no waveform stored, so the trace is empty.');
+    d.sumFlag.textContent = flags.join(' ');
+    d.sumFlag.classList.toggle('hidden', !flags.length);
+  },
+
+  /* ---------- 2. recordings ---------- */
+
+  async showList(){
+    const d = this.dom();
+    d.title.textContent = 'Recordings';
+    d.tag.textContent = '';
+    this.from = 'list';
+    this.show('list');
+    d.rows.textContent = '';
+    d.listEmpty.classList.add('hidden');
+    d.listFoot.textContent = '';
+
+    if(typeof Store === 'undefined' || Store.available === false){
+      this.listMessage('Storage is not available',
+        'This browser is blocking local storage, so sessions cannot be kept between visits. ' +
+        'A session you have just finished still shows on the summary screen, and you can export it from there before you leave it.');
+      return;
+    }
+    try{
+      await Store.open();
+      this.metas = await Store.list();
+    }catch(err){
+      this.listMessage('Recordings could not be read',
+        ((err && err.name) || 'The store failed to open') + '. Close other tabs of this page and open Recordings again.');
+      return;
+    }
+    this.renderList();
+  },
+
+  listMessage(head, body){
+    const d = this._dom;
+    d.listEmpty.textContent = '';
+    d.listEmpty.appendChild(this.h('h3',null,head));
+    d.listEmpty.appendChild(this.h('p',null,body));
+    d.listEmpty.classList.remove('hidden');
+    $('revExportAll').disabled = true;
+  },
+
+  renderList(){
+    const d = this._dom, list = this.metas || [];
+    d.rows.textContent = '';
+    if(!list.length){
+      this.listMessage('No recordings yet',
+        'Every session you run is kept here on the phone. Finish one and it will appear in this list.');
+      return;
+    }
+    d.listEmpty.classList.add('hidden');
+    $('revExportAll').disabled = false;
+
+    let bytes = 0;
+    list.forEach(m=>{
+      bytes += this.metaBytes(m);
+      const row = this.h('div','rec');
+      const open = this.h('button','rec-open');
+      open.type = 'button';
+      const top = this.h('span','rec-top');
+      top.appendChild(this.h('span','rec-when', this.when(m.startedAt)));
+      top.appendChild(this.h('span','rec-len',  this.clock(m.durationSec||0)));
+      const sub = this.h('span','rec-sub');
+      const mean = this.metaBpm(m);
+      sub.textContent = [
+        mean>0 ? mean.toFixed(1)+' /min' : 'rate unknown',
+        this.bytes(this.metaBytes(m)),
+        (m.labels && m.labels.length) ? m.labels.length + (m.labels.length===1?' label':' labels') : 'no labels'
+      ].join(' · ');
+      open.appendChild(top); open.appendChild(sub);
+      open.addEventListener('click', ()=>this.showDetail(m.id, 'list'));
+      row.appendChild(open);
+
+      if(this.confirmId === m.id){
+        const ask = this.h('div','rec-ask');
+        ask.appendChild(this.h('span','rec-ask-q','Delete this recording?'));
+        const yes = this.h('button','danger','Delete'); yes.type='button';
+        const no  = this.h('button','ghost','Keep');   no.type='button';
+        yes.addEventListener('click', ()=>this.removeRecording(m.id));
+        no.addEventListener('click', ()=>{ this.confirmId=null; this.renderList(); });
+        ask.appendChild(yes); ask.appendChild(no);
+        row.appendChild(ask);
+      }else{
+        const del = this.h('button','rec-del','Delete');
+        del.type = 'button';
+        del.setAttribute('aria-label','Delete the recording from '+this.when(m.startedAt));
+        del.addEventListener('click', ()=>{ this.confirmId=m.id; this.renderList(); });
+        row.appendChild(del);
+      }
+      d.rows.appendChild(row);
+    });
+
+    d.listFoot.textContent = list.length + (list.length===1?' recording':' recordings') +
+      ' · ' + this.bytes(bytes) + ' on this phone';
+    if(typeof Store !== 'undefined' && Store.usage){
+      Store.usage().then(u=>{
+        if(this.screen!=='list' || !u) return;
+        d.listFoot.textContent = u.count + (u.count===1?' recording':' recordings') +
+          ' · ' + this.bytes(u.bytes) + ' on this phone';
+      }, ()=>{});
+    }
+  },
+
+  async removeRecording(id){
+    this.confirmId = null;
+    try{ await Store.delete(id); }
+    catch(err){
+      notice('Could not delete', ((err && err.name)||'The store refused the delete') + '. Open Recordings again and retry.', 6000);
+      return;
+    }
+    this.metas = (this.metas||[]).filter(m=>m.id!==id);
+    if(this.session && this.session.id===id) this.session = null;
+    this.renderList();
+  },
+
+  /* ---------- 3. detail ---------- */
+
+  async showDetail(id, from){
+    const d = this.dom();
+    this.from = from || this.from;
+    let session = (this.session && this.session.id===id) ? this.session : null;
+    if(!session && typeof Store !== 'undefined' && Store.available !== false){
+      try{ await Store.open(); session = await Store.get(id); }catch(err){ session = null; }
+    }
+    if(!session){
+      notice('Recording not found', 'That recording is no longer on this phone. Open Recordings for the ones that are.', 6000);
+      this.showList(); return;
+    }
+    this.session = session;
+    this.prepare(session);
+    this.det.play = 0;
+    this.det.kind = this.det.kind || this.KINDS[0][0];
+    this.det.dirty = false;
+    this.setSpanSilent(this.det.dur > 90 ? 30 : 0);
+
+    d.title.textContent = 'Recording';
+    d.tag.textContent = this.when(session.startedAt);
+    this.show('detail');
+    this.paintSpans();
+    this.paintKinds();
+    d.note.value = '';
+    this.renderLabels();
+    this.redraw();
+  },
+
+  /* ---------- session unpacking ---------- */
+
+  cols(block){
+    const m = {};
+    ((block && block.columns) || []).forEach((c,i)=>{ m[c]=i; });
+    return m;
+  },
+
+  /** derived.rows -> typed arrays, so redraws never re-walk the JSON */
+  prepare(session){
+    const dv = session.derived || {}, rows = dv.rows || [], ci = this.cols(dv);
+    const n = rows.length;
+    const t=new Float32Array(n), s=new Float32Array(n), p=new Float32Array(n),
+          b=new Float32Array(n), pb=new Float32Array(n), q=new Float32Array(n);
+    const hasP = ci.pacerLevel!=null, hasPB = ci.pacerBpm!=null, hasQ = ci.quality!=null;
+    for(let i=0;i<n;i++){
+      const r = rows[i] || [];
+      t[i]  = +r[ci.t] || 0;
+      s[i]  = +r[ci.s] || 0;
+      p[i]  = hasP  ? (+r[ci.pacerLevel]||0)*2-1 : 0;   // 0..1 level onto the same +/-1 axis as s
+      b[i]  = +r[ci.bpm] || 0;
+      pb[i] = hasPB ? (+r[ci.pacerBpm]||0) : 0;
+      q[i]  = hasQ  ? (+r[ci.quality]||0) : 0;
+    }
+    this.sig = { n, t, s, p, b, pb, q, hasP, hasPB };
+    this.det.dur = session.durationSec || (n ? t[n-1] : 0);
+    this.det.play = clamp(this.det.play, 0, this.det.dur);
+    if(!(this.det.span>0)) this.det.span = this.det.dur || 30;
+    return this.sig;
+  },
+
+  calEnd(){
+    const c = this.session && this.session.calibration;
+    return (c && c.endSec>0) ? c.endSec : 0;
+  },
+
+  idxAt(t){
+    const a = this.sig.t, n = this.sig.n;
+    if(!n) return -1;
+    if(t<=a[0]) return 0;
+    if(t>=a[n-1]) return n-1;
+    let lo=0, hi=n-1;
+    while(hi-lo>1){ const m=(lo+hi)>>1; if(a[m]<=t) lo=m; else hi=m; }
+    return (t-a[lo] <= a[hi]-t) ? lo : hi;
+  },
+
+  /** mean of the measured rate over a time window; ignores rows with no estimate yet */
+  windowBpm(t0,t1){
+    const S=this.sig; if(!S.n || !(t1>t0)) return 0;
+    let sum=0, k=0;
+    for(let i=this.idxAt(t0); i<S.n && S.t[i]<=t1; i++){ if(S.b[i]>0){ sum+=S.b[i]; k++; } }
+    return k ? sum/k : 0;
+  },
+
+  /** seconds spent below a rate, integrated over the derived sample interval */
+  secondsUnder(rate){
+    const S=this.sig; if(S.n<2) return 0;
+    let sec=0;
+    for(let i=1;i<S.n;i++){
+      const dt = S.t[i]-S.t[i-1];
+      if(dt>0 && dt<2 && S.b[i]>0 && S.b[i]<rate) sec += dt;
+    }
+    return sec;
+  },
+
+  /** slowest 60 s mean, not the slowest instant: one mis-detected long gap
+      should not become the headline number on the summary screen */
+  slowestSustained(){
+    const S=this.sig; if(!S.n) return 0;
+    let best=0;
+    for(let i=0;i<S.n;i++){
+      const m = this.windowBpm(S.t[i], S.t[i]+60);
+      if(m>0 && (best===0 || m<best)) best=m;
+      if(S.t[i]+60 > (S.t[S.n-1]||0)) break;
+    }
+    return best;
+  },
+
+  meanOf(key){
+    const S=this.sig, a=S[key]; if(!S.n || !a) return 0;
+    let sum=0; for(let i=0;i<S.n;i++) sum+=a[i];
+    return sum/S.n;
+  },
+
+  /* ---------- drawing ---------- */
+
+  redraw(){
+    if(this.screen==='summary') this.drawSpark();
+    if(this.screen==='detail'){ this.drawOverview(); this.drawFine(); this.readout(); }
+  },
+
+  ground(ctx,w,h){
+    ctx.clearRect(0,0,w,h);
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = this.ink().deep;
+    ctx.fillRect(0,0,w,h);
+    ctx.globalAlpha = 1;
+  },
+
+  yOf(v,h,pad){ return h/2 - clamp(v,-1.6,1.6)*(h/2-pad)/1.6; },
+
+  /** min/max per pixel column: at whole-session zoom a polyline aliases
+      individual breaths away, an envelope keeps their depth visible */
+  band(ctx,w,h,t0,t1,key,pad){
+    const S=this.sig; if(S.n<2) return;
+    const a = S[key];
+    const top=[], bot=[];
+    for(let x=0;x<=w;x++){
+      const ta = t0 + (t1-t0)*(x/w), tb = t0 + (t1-t0)*((x+1)/w);
+      if(tb < S.t[0] || ta > S.t[S.n-1]){ top.push(null); bot.push(null); continue; }
+      let i0=this.idxAt(ta), i1=this.idxAt(tb);
+      if(i1<i0) i1=i0;
+      let mn=Infinity, mx=-Infinity;
+      for(let i=i0;i<=i1;i++){ if(a[i]<mn) mn=a[i]; if(a[i]>mx) mx=a[i]; }
+      top.push(this.yOf(mx,h,pad)); bot.push(this.yOf(mn,h,pad));
+    }
+    ctx.beginPath();
+    let open=false;
+    for(let x=0;x<top.length;x++){
+      if(top[x]==null){ open=false; continue; }
+      if(!open){ ctx.moveTo(x,top[x]); open=true; } else ctx.lineTo(x,top[x]);
+    }
+    for(let x=top.length-1;x>=0;x--){ if(bot[x]!=null) ctx.lineTo(x,bot[x]); }
+    ctx.closePath();
+    ctx.fill();
+  },
+
+  poly(ctx,w,h,t0,t1,key,pad){
+    const S=this.sig; if(S.n<2) return;
+    const a = S[key];
+    let i0 = Math.max(0, this.idxAt(t0)-1), i1 = Math.min(S.n-1, this.idxAt(t1)+1);
+    ctx.beginPath();
+    let started=false;
+    for(let i=i0;i<=i1;i++){
+      const x = (S.t[i]-t0)/(t1-t0)*w;
+      const y = this.yOf(a[i],h,pad);
+      started ? ctx.lineTo(x,y) : (ctx.moveTo(x,y), started=true);
+    }
+    ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.stroke();
+  },
+
+  /** breaths-per-minute curve on its own vertical scale */
+  rateLine(ctx,w,h,t0,t1,key,lo,hi,pad){
+    const S=this.sig; if(S.n<2) return;
+    const a = S[key];
+    ctx.beginPath();
+    let started=false;
+    for(let i=0;i<S.n;i++){
+      const v=a[i];
+      if(!(v>0)){ started=false; continue; }
+      const x = (S.t[i]-t0)/(t1-t0)*w;
+      const y = h-pad - (clamp(v,lo,hi)-lo)/(hi-lo)*(h-pad*2);
+      started ? ctx.lineTo(x,y) : (ctx.moveTo(x,y), started=true);
+    }
+    ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.stroke();
+  },
+
+  rateRange(){
+    const S=this.sig; let lo=Infinity, hi=-Infinity;
+    for(let i=0;i<S.n;i++){
+      if(S.b[i]>0){ if(S.b[i]<lo) lo=S.b[i]; if(S.b[i]>hi) hi=S.b[i]; }
+      if(S.pb && S.pb[i]>0){ if(S.pb[i]<lo) lo=S.pb[i]; if(S.pb[i]>hi) hi=S.pb[i]; }
+    }
+    if(!isFinite(lo) || !isFinite(hi)) return null;
+    lo = Math.floor(lo-0.6); hi = Math.ceil(hi+0.6);
+    if(hi-lo < 3) hi = lo+3;
+    return {lo,hi};
+  },
+
+  /** summary sparkline: the shape of every breath behind the two rates */
+  drawSpark(){
+    const c = this._dom.spark;
+    const {ctx,w,h} = fitCanvas(c);
+    const K = this.ink(), pad = 8;
+    this.ground(ctx,w,h);
+    if(!this.sig.n){
+      ctx.fillStyle = K.mute; ctx.globalAlpha=.8;
+      ctx.font = '11px ui-monospace, monospace'; ctx.textAlign='center';
+      ctx.fillText('no waveform stored', w/2, h/2+4); ctx.globalAlpha=1; ctx.textAlign='start';
+      return;
+    }
+    const t0=0, t1=Math.max(this.det.dur, 1);
+    const gut = 22, pw = w - gut;          // right gutter holds the rate scale
+
+    // background: how deep each breath was
+    ctx.fillStyle = K.you; ctx.globalAlpha = 0.16;
+    this.band(ctx,pw,h,t0,t1,'s',pad);
+    ctx.globalAlpha = 1;
+
+    const R = this.rateRange();
+    if(R){
+      // faint horizontal rules so the rate scale is readable at a glance
+      ctx.font = '9px ui-monospace, monospace'; ctx.textAlign='start';
+      for(let v=Math.ceil(R.lo); v<=R.hi; v++){
+        if((v % 2) !== 0) continue;
+        const y = h-pad - (v-R.lo)/(R.hi-R.lo)*(h-pad*2);
+        ctx.strokeStyle = K.mute; ctx.globalAlpha=.22;
+        ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(pw,y); ctx.stroke();
+        ctx.fillStyle = K.mute; ctx.globalAlpha=.6;
+        ctx.fillText(String(v), pw+5, y+3);
+      }
+      ctx.globalAlpha=1;
+
+      if(this.sig.hasPB){
+        ctx.strokeStyle = K.pace; ctx.lineWidth=1.2; ctx.globalAlpha=.85;
+        this.rateLine(ctx,pw,h,t0,t1,'pb',R.lo,R.hi,pad);
+        ctx.globalAlpha=1;
+      }
+      ctx.strokeStyle = K.you; ctx.lineWidth=1.8;
+      this.rateLine(ctx,pw,h,t0,t1,'b',R.lo,R.hi,pad);
+    }
+    this.drawMarks(ctx,pw,h,t0,t1,3);
+  },
+
+  drawOverview(){
+    const {ctx,w,h} = fitCanvas(this._dom.over);
+    const K = this.ink(), pad = 5;
+    this.ground(ctx,w,h);
+    const t0=0, t1=Math.max(this.det.dur,1);
+    if(this.sig.n){
+      ctx.fillStyle = K.you; ctx.globalAlpha = 0.34;
+      this.band(ctx,w,h,t0,t1,'s',pad);
+      ctx.globalAlpha = 1;
+    }
+    // the slice the fine lane is showing
+    const win = this.fineWindow();
+    const xa = (win.t0-t0)/(t1-t0)*w, xb = (win.t1-t0)/(t1-t0)*w;
+    ctx.fillStyle = K.foam; ctx.globalAlpha=.08;
+    ctx.fillRect(xa,0,Math.max(xb-xa,2),h);
+    ctx.globalAlpha=.45; ctx.strokeStyle=K.foam; ctx.lineWidth=1;
+    ctx.strokeRect(xa+0.5,0.5,Math.max(xb-xa-1,1),h-1);
+    ctx.globalAlpha=1;
+    this.drawMarks(ctx,w,h,t0,t1,3);
+    this.playMark(ctx,w,h,(this.det.play-t0)/(t1-t0)*w,false);
+  },
+
+  drawFine(){
+    const {ctx,w,h} = fitCanvas(this._dom.fine);
+    const K = this.ink(), pad = 10;
+    this.ground(ctx,w,h);
+    const win = this.fineWindow(), t0=win.t0, t1=win.t1;
+
+    // out-of-recording shading, so the ends of the session are obvious
+    ctx.fillStyle = K.abyss; ctx.globalAlpha=.72;
+    if(t0<0) ctx.fillRect(0,0,(0-t0)/(t1-t0)*w,h);
+    if(t1>this.det.dur) ctx.fillRect((this.det.dur-t0)/(t1-t0)*w,0,w,h);
+    ctx.globalAlpha=1;
+
+    // seconds grid
+    const stepFor = sp => sp<=10?1 : sp<=30?5 : sp<=120?10 : sp<=420?30 : 60;
+    const step = stepFor(t1-t0);
+    ctx.strokeStyle=K.mute; ctx.fillStyle=K.mute;
+    ctx.font='9px ui-monospace, monospace'; ctx.textAlign='center';
+    const px = (this.det.play-t0)/(t1-t0)*w;
+    for(let s=Math.ceil(t0/step)*step; s<=t1; s+=step){
+      const x=(s-t0)/(t1-t0)*w;
+      ctx.globalAlpha=.16; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h-12); ctx.stroke();
+      if(s<0 || s>this.det.dur) continue;
+      if(x<16 || x>w-17 || Math.abs(x-px)<20) continue;
+      ctx.globalAlpha=.5;  ctx.fillText(this.clock(s), x, h-3);
+    }
+    ctx.globalAlpha=1; ctx.textAlign='start';
+
+    ctx.strokeStyle=K.mute; ctx.globalAlpha=.2; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,this.yOf(0,h,pad)); ctx.lineTo(w,this.yOf(0,h,pad)); ctx.stroke();
+    ctx.globalAlpha=1;
+
+    if(this.sig.n){
+      if(this.sig.hasP){
+        ctx.strokeStyle=K.pace; ctx.lineWidth=1.1; ctx.globalAlpha=.6;
+        this.poly(ctx,w,h,t0,t1,'p',pad); ctx.globalAlpha=1;
+      }
+      ctx.strokeStyle=K.you; ctx.lineWidth=1.9;
+      this.poly(ctx,w,h,t0,t1,'s',pad);
+    }
+    this.drawMarks(ctx,w,h,t0,t1,7);
+    this.playMark(ctx,w,h,(this.det.play-t0)/(t1-t0)*w,true);
+  },
+
+  drawMarks(ctx,w,h,t0,t1,size){
+    const K=this.ink(), labels=(this.session && this.session.labels) || [];
+    ctx.strokeStyle=K.foam; ctx.fillStyle=K.foam;
+    labels.forEach(l=>{
+      const x=(l.tSec-t0)/(t1-t0)*w;
+      if(x<-2 || x>w+2) return;
+      ctx.globalAlpha=.42; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+      ctx.globalAlpha=.9;
+      ctx.fillRect(x-size/2, 0, size, size);
+    });
+    ctx.globalAlpha=1;
+  },
+
+  /** the pending label position: a pin, not a cursor, so it reads as "here" */
+  playMark(ctx,w,h,x,tall){
+    const K=this.ink();
+    ctx.strokeStyle=K.pace; ctx.fillStyle=K.pace; ctx.lineWidth=tall?1.6:1.2;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x-5,0); ctx.lineTo(x+5,0); ctx.lineTo(x,tall?9:6); ctx.closePath(); ctx.fill();
+  },
+
+  /* ---------- scrubbing ---------- */
+
+  fineWindow(){
+    const dur = Math.max(this.det.dur,1), span = Math.max(this.det.span, 1);
+    if(span >= dur) return {t0:0, t1:dur, centred:false};
+    return {t0:this.det.play-span/2, t1:this.det.play+span/2, centred:true};
+  },
+
+  bindLane(canvas, which){
+    const at = e => {
+      const r = canvas.getBoundingClientRect();
+      return {x:e.clientX-r.left, w:r.width};
+    };
+    canvas.addEventListener('pointerdown', e=>{
+      canvas.setPointerCapture(e.pointerId);
+      const p = at(e);
+      const win = which==='over' ? {t0:0,t1:Math.max(this.det.dur,1),centred:false} : this.fineWindow();
+      this.det.drag = {which, x0:p.x, play0:this.det.play, win, moved:0};
+      if(!win.centred) this.setPlay(win.t0 + (win.t1-win.t0)*(p.x/p.w));
+      e.preventDefault();
+    });
+    canvas.addEventListener('pointermove', e=>{
+      const d = this.det.drag; if(!d || d.which!==which) return;
+      const p = at(e);
+      d.moved = Math.max(d.moved, Math.abs(p.x-d.x0));
+      if(d.win.centred){
+        // drag the strip, not the playhead: the moment you are aiming at
+        // is never the pixel your thumb is covering
+        this.setPlay(d.play0 - (p.x-d.x0)*(d.win.t1-d.win.t0)/p.w);
+      }else{
+        this.setPlay(d.win.t0 + (d.win.t1-d.win.t0)*(p.x/p.w));
+      }
+      e.preventDefault();
+    });
+    const done = e=>{
+      if(this.det.drag && this.det.drag.which===which) this.det.drag=null;
+      try{ canvas.releasePointerCapture(e.pointerId); }catch(err){}
+    };
+    canvas.addEventListener('pointerup', done);
+    canvas.addEventListener('pointercancel', done);
+
+    // The lanes are canvases, so a keyboard has nothing to grab. The fine lane
+    // carries role=slider and takes the usual slider keys instead.
+    if(which === 'fine') canvas.addEventListener('keydown', e=>{
+      const page = Math.max(this.det.span/2, 5);
+      let t = null;
+      if(e.key === 'ArrowLeft'  || e.key === 'ArrowDown') t = this.det.play - 0.5;
+      else if(e.key === 'ArrowRight' || e.key === 'ArrowUp') t = this.det.play + 0.5;
+      else if(e.key === 'PageDown') t = this.det.play - page;
+      else if(e.key === 'PageUp')   t = this.det.play + page;
+      else if(e.key === 'Home')     t = 0;
+      else if(e.key === 'End')      t = this.det.dur;
+      if(t === null) return;
+      e.preventDefault();
+      this.setPlay(t);
+    });
+  },
+
+  setPlay(t){
+    this.det.play = clamp(t, 0, Math.max(this.det.dur,0));
+    if(this.screen==='detail'){ this.drawOverview(); this.drawFine(); this.readout(); }
+  },
+
+  nudge(d){ this.setPlay(this.det.play + d); },
+
+  setSpan(v){ this.setSpanSilent(v); this.paintSpans(); this.redraw(); },
+
+  setSpanSilent(v){
+    this.det.spanChoice = v;
+    this.det.span = v>0 ? v : Math.max(this.det.dur,1);
+  },
+
+  paintSpans(){
+    const d=this._dom;
+    [].forEach.call(d.spans.querySelectorAll('button'), b=>{
+      b.setAttribute('aria-pressed', String(parseFloat(b.dataset.span) === this.det.spanChoice));
+    });
+  },
+
+  paintKinds(){
+    const d=this._dom;
+    [].forEach.call(d.kinds.querySelectorAll('button'), b=>{
+      b.setAttribute('aria-pressed', String(b.dataset.kind === this.det.kind));
+    });
+  },
+
+  readout(){
+    const d=this._dom, t=this.det.play, i=this.idxAt(t);
+    d.vAt.textContent = this.clock(t);
+    if(i<0){ d.vSig.textContent='—'; d.vRate.innerHTML='—<small>/min</small>'; }
+    else{
+      const s=this.sig.s[i];
+      d.vSig.textContent = (s<0?'−':'') + Math.abs(s).toFixed(2);
+      const b=this.sig.b[i];
+      d.vRate.innerHTML = (b>0 ? b.toFixed(1) : '—') + '<small>/min</small>';
+    }
+    d.add.textContent = 'Add label at ' + this.clock(t);
+    d.fine.setAttribute('aria-valuemax',  String(Math.round(this.det.dur)));
+    d.fine.setAttribute('aria-valuenow',  String(Math.round(t)));
+    d.fine.setAttribute('aria-valuetext', this.clock(t));
+  },
+
+  /* ---------- labels ---------- */
+
+  addLabel(){
+    if(!this.session) return;
+    const d=this._dom;
+    if(!this.det.kind) this.det.kind = this.KINDS[0][0];
+    const label = {
+      tSec: Math.round(this.det.play*1000)/1000,   // 3 dp, matching the export rounding
+      kind: this.det.kind,
+      note: (d.note.value||'').trim().slice(0,140)
+    };
+    this.session.labels = (this.session.labels||[]).concat([label]);
+    this.session.labels.sort((a,b)=>a.tSec-b.tSec);
+    d.note.value = '';
+    this.renderLabels();
+    this.drawOverview(); this.drawFine();
+    this.persist();
+  },
+
+  removeLabel(label){
+    if(!this.session) return;
+    const i = (this.session.labels||[]).indexOf(label);
+    if(i<0) return;
+    this.session.labels.splice(i,1);
+    this.renderLabels();
+    this.drawOverview(); this.drawFine();
+    this.persist();
+  },
+
+  renderLabels(){
+    const d=this._dom, list=(this.session && this.session.labels)||[];
+    d.labels.textContent='';
+    d.labelsNone.classList.toggle('hidden', list.length>0);
+    const name = k => { const f=this.KINDS.filter(x=>x[0]===k)[0]; return f?f[1]:k; };
+    list.forEach(l=>{
+      const row=this.h('div','lab');
+      const go=this.h('button','lab-go'); go.type='button';
+      go.appendChild(this.h('span','lab-t', this.clock(l.tSec)));
+      const txt=this.h('span','lab-txt');
+      txt.appendChild(this.h('span','lab-kind', name(l.kind)));
+      if(l.note) txt.appendChild(this.h('span','lab-note', l.note));
+      go.appendChild(txt);
+      go.addEventListener('click', ()=>this.setPlay(l.tSec));
+      const del=this.h('button','lab-del','Remove'); del.type='button';
+      del.setAttribute('aria-label','Remove the '+name(l.kind)+' label at '+this.clock(l.tSec));
+      del.addEventListener('click', ()=>this.removeLabel(l));
+      row.appendChild(go); row.appendChild(del);
+      d.labels.appendChild(row);
+    });
+  },
+
+  persist(){
+    if(typeof Store === 'undefined' || Store.available === false || !this.session) return;
+    Store.put(this.session).catch(err=>{
+      notice('Label not kept', ((err && err.name)||'The store refused the write') +
+        '. The label is on screen but will be gone when you leave this recording. Export it now to keep it.', 7000);
+    });
+  },
+
+  /* ---------- delete + export ---------- */
+
+  async deleteCurrent(){
+    const b = $('revDetDelete');
+    if(b.dataset.armed !== '1'){
+      b.dataset.armed='1'; b.textContent='Delete, really';
+      setTimeout(()=>{ if(b.dataset.armed==='1'){ b.dataset.armed='0'; b.textContent='Delete'; } }, 5000);
+      return;
+    }
+    b.dataset.armed='0'; b.textContent='Delete';
+    const id = this.session && this.session.id;
+    if(typeof Store !== 'undefined' && Store.available !== false && id){
+      try{ await Store.delete(id); }
+      catch(err){ notice('Could not delete', ((err && err.name)||'The store refused the delete') + '. Try again from Recordings.', 6000); return; }
+    }
+    this.metas = (this.metas||[]).filter(m=>m.id!==id);
+    this.session = null;
+    this.showList();
+  },
+
+  exportOne(session){
+    if(!session){ notice('Nothing to export','There is no recording on screen to write out.',5000); return; }
+    this.save(this.filename(session), JSON.stringify(session));
+  },
+
+  async exportAll(){
+    if(typeof Store === 'undefined' || Store.available === false){
+      notice('Nothing to export','Storage is unavailable, so there is no list of recordings to write out.',5000); return;
+    }
+    let sessions=[];
+    try{
+      const metas = await Store.list();
+      for(const m of metas) sessions.push(await Store.get(m.id));
+    }catch(err){
+      notice('Export failed', ((err && err.name)||'The store could not be read') + '. Try exporting one recording at a time.', 6000);
+      return;
+    }
+    if(!sessions.length){ notice('Nothing to export','There are no recordings on this phone yet.',5000); return; }
+    const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    // one file, because a phone browser will not accept a burst of downloads
+    this.save('tide-sessions-'+stamp+'.json', JSON.stringify({
+      format:'tide-sessions/1', exportedAt:new Date().toISOString(), sessions:sessions
+    }));
+  },
+
+  filename(session){
+    const t = (session.startedAt||'').replace(/[-:]/g,'').slice(0,15) || 'session';
+    return 'tide-' + t + '.json';
+  },
+
+  /** Blob -> share sheet if the phone takes files, otherwise a download anchor.
+      Nothing leaves the device either way: no fetch, no upload, no URL beyond blob:. */
+  save(name, text){
+    let blob;
+    try{ blob = new Blob([text], {type:'application/json'}); }
+    catch(err){ notice('Export failed','This browser would not build the file. Try a different browser.',6000); return; }
+
+    if(window.File && navigator.canShare && navigator.share){
+      try{
+        const file = new File([blob], name, {type:'application/json'});
+        if(navigator.canShare({files:[file]})){
+          navigator.share({files:[file], title:name}).catch(()=>this.anchor(name, blob));
+          return;
+        }
+      }catch(err){ /* fall through to the anchor */ }
+    }
+    this.anchor(name, blob);
+  },
+
+  anchor(name, blob){
+    try{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; a.rel = 'noopener';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 4000);
+    }catch(err){
+      notice('Export failed','This browser blocked the download. Open the page in Safari or Chrome directly and try again.',7000);
+    }
+  },
+
+  /* ---------- the Adjust panel hint ---------- */
+
+  async refreshCount(){
+    const n = $('recCount'); if(!n) return;
+    if(typeof Store === 'undefined' || Store.available === false){ n.textContent = 'storage unavailable'; return; }
+    try{
+      await Store.open();
+      const u = await Store.usage();
+      n.textContent = u && u.count
+        ? u.count + (u.count===1?' recording kept':' recordings kept')
+        : 'nothing kept yet';
+    }catch(err){ n.textContent = 'storage unavailable'; }
+  },
+
+  /* ---------- small formatting ---------- */
+
+  h(tag, cls, text){
+    const n = document.createElement(tag);
+    if(cls) n.className = cls;
+    if(text!=null) n.textContent = text;
+    return n;
+  },
+
+  clock(sec){
+    sec = Math.max(0, Math.round(sec||0));
+    return Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
+  },
+
+  /** metric prefixes, so 1 kB is 1000 bytes and the number matches the ones on the phone */
+  bytes(b){
+    b = b||0;
+    if(b < 1000) return b + ' B';
+    if(b < 1000000) return (b/1000).toFixed(b<10000?1:0) + ' kB';
+    return (b/1000000).toFixed(1) + ' MB';
+  },
+
+  when(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return String(iso).slice(0,16);
+    return d.toLocaleDateString(undefined,{day:'numeric',month:'short'}) + ' · ' +
+           d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+  },
+
+  /** inOutRatio is inhale/exhale; "1 : 1.4" reads faster than "0.71" */
+  ratio(r){
+    if(!(r>0) || !isFinite(r)) return '—';
+    return r<=1 ? '1 : ' + (1/r).toFixed(1) : (r).toFixed(1) + ' : 1';
+  },
+
+  qualityWord(q){ return !(q>0) ? '—' : q>0.7 ? 'clear' : q>0.4 ? 'fair' : 'noisy'; },
+
+  metaBytes(m){ return (m && (m.bytes!=null ? m.bytes : m.size)) || 0; },
+  metaBpm(m){
+    if(!m) return 0;
+    if(m.summary && m.summary.meanBpm>0) return m.summary.meanBpm;
+    return m.meanBpm>0 ? m.meanBpm : 0;
+  }
+};
+
+/* ============================================================
+   7. APP
    ============================================================ */
 const UI = {
   state:'idle',                       // idle | calibrating | running
   demo:false, demoPhase:0,
   wakeLock:null, silentEl:null,
   rich:0.4, lastFrame:0, sensorSeen:false, calTimer:null,
+  voiceTimer:null, recal:false, paceSaid:0, nearSaid:false, toldSaveTrouble:false,
   trace:[], traceAcc:0,
   sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
 };
@@ -754,7 +4073,12 @@ function onMotion(e){
   const g = e.accelerationIncludingGravity || e.acceleration;
   if(!g || g.x===null || g.x===undefined) return;
   UI.sensorSeen = true;
-  Breath.push(g.x, g.y, g.z, performance.now()/1000);
+  if(!Recorder.motionSource)
+    Recorder.motionSource = e.accelerationIncludingGravity
+      ? 'accelerationIncludingGravity' : 'acceleration';
+  const t = performance.now()/1000;     // read once: two clocks here would drift apart
+  Breath.push(g.x, g.y, g.z, t);
+  Recorder.sample(g.x, g.y, g.z, t);
 }
 
 /**
@@ -798,15 +4122,19 @@ async function begin(sensorP, audioP){
   UI.sensorPerm = sensor;
 
   if(!audioOk){
+    Speech.sayNow('errNoAudio');
     notice('No sound', 'This browser blocked audio. Reload the page and tap Begin again.', 0);
     el.main.disabled = false; return;
   }
   if(sensor === 'denied'){
+    Speech.sayNow('errDenied');
     notice('Motion declined', 'Reload the page to be asked again. If no prompt appears, clear this site\u2019s data in Safari settings — a past "Don\u2019t Allow" is remembered per site.', 0);
   }else if(sensor === 'unsupported'){
+    Speech.sayNow('errUnsupported');
     notice('No motion sensor', 'This device or browser has no motion sensor. Demo mode under Adjust will still show you how it sounds.', 0);
   }else if(sensor.indexOf('error:') === 0){
     const name = sensor.slice(6);
+    Speech.sayNow(name === 'NotAllowedError' ? 'errNotAllowed' : 'errSensorSilent');
     notice('Motion request failed', name === 'NotAllowedError'
       ? 'Safari did not treat that as a direct tap. Reload the page and tap Begin as your first action, without scrolling first.'
       : name + '. Reload and try again, or use Demo mode under Adjust.', 0);
@@ -815,6 +4143,20 @@ async function begin(sensorP, audioP){
   requestWakeLock();
   Audio.setVolume(parseInt($('vol').value,10)/100);
 
+  // Every session is recorded. There is nothing to record if the sensor never
+  // arrived, so a denied or unsupported run is left alone rather than saved empty.
+  if(sensor === 'ok' || UI.demo){
+    Recorder.start({app:{
+      voice:     Audio.voiceId,
+      targetBpm: parseFloat($('target').value),
+      rampMin:   parseFloat($('ramp').value),
+      invert:    $('tglInvert').getAttribute('aria-checked') === 'true',
+      demo:      UI.demo
+    }}, performance.now()/1000);        // session zero, the same clock onMotion reads
+  }
+  Speech.say('begin');
+
+  Review.hide();
   el.intro.classList.add('hidden');
   [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.remove('hidden'));
   el.main.textContent = 'End'; el.main.classList.remove('primary'); el.main.disabled = false;
@@ -835,19 +4177,34 @@ function startCalibration(){
   clearTimeout(UI.calTimer);
   UI.calTimer = setTimeout(finishCalibration, 20000);
 
+  Recorder.event('calibration-start');
+  Speech.say(UI.recal ? 'recalibrate' : 'calibrateStart');
+  clearTimeout(UI.voiceTimer);
+  UI.voiceTimer = setTimeout(()=>Speech.say('calibrateHalf'), 10000);
+
   // if nothing arrives, say which of the two possible causes it is
   setTimeout(()=>{
     if(UI.state!=='calibrating' || UI.sensorSeen || UI.demo) return;
-    if(UI.sensorPerm === 'ok')
+    if(UI.sensorPerm === 'ok'){
+      Speech.sayNow('errSensorSilent');
       notice('Allowed, but silent', 'Motion access was granted and no readings are arriving. Lock and unlock the screen, or reload the page. If this is inside another app, open it in Safari directly.', 0);
-    else
+    }else{
       notice('Motion not active', 'Permission state: ' + UI.sensorPerm + '. Reload and tap Begin first, or switch on Demo mode under Adjust.', 0);
+    }
   }, 5000);
 }
 
 function finishCalibration(){
   if(UI.state!=='calibrating') return;
+  // Demo skips the PCA, but it must still leave the calibrating state: only
+  // Breath.finishCalibration() and the failure path below clear that flag, so
+  // demo used to stay in calibration forever and never detect a single breath.
   const ok = UI.demo ? true : Breath.finishCalibration();
+  if(UI.demo) Breath.calibrating = false;
+  Recorder.event('calibration-end', {
+    ok: ok, axis: Breath.u.slice(),
+    amplitude: Breath.calAmplitude || 0, flipped: !!Breath.flipped
+  });
   if(!ok){
     notice('Too little movement', 'The phone did not pick up your breathing. Move it lower on your belly, lie flatter, and tap Recalibrate.', 0);
     Breath.calibrating = false;
@@ -860,25 +4217,82 @@ function finishCalibration(){
 
   el.cue.textContent = 'Breathe';
   el.sub.textContent = 'Eyes closed. Let the sound do the counting.';
+  Speech.say(ok ? 'calibrateDone' : 'calibrateFailed');
+  Speech.say('running');
+  UI.paceSaid = 0; UI.nearSaid = false;
   Breath.onExhaleStart = (inD)=>{
     const slow = clamp((inD-2.0)/3.0, 0, 1);
     Audio.bell(0.35 + 0.65*slow*UI.rich);
+    // the summary counts breaths and the in/out ratio from these events
+    Recorder.event('breath', {inhaleSec:inD, exhaleSec:Breath.exhaleDur});
   };
 }
 
 async function end(){
   UI.state='idle';
-  clearTimeout(UI.calTimer);
+  clearTimeout(UI.calTimer); clearTimeout(UI.voiceTimer);
   window.removeEventListener('devicemotion', onMotion);
   Breath.onExhaleStart = null;
+  Speech.say('ending');
   await Audio.stop();
   if(UI.silentEl){ try{ UI.silentEl.pause(); }catch(e){} UI.silentEl=null; }
   if(UI.wakeLock){ try{ UI.wakeLock.release(); }catch(e){} UI.wakeLock=null; }
-  el.intro.classList.remove('hidden');
   [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.add('hidden'));
   el.main.textContent='Begin'; el.main.classList.add('primary');
   el.statusTag.textContent='standby';
-  UI.sensorSeen=false;
+  UI.sensorSeen=false; UI.recal=false;
+
+  // End used to drop you back on the start screen, throwing the session away.
+  // It now lands on the summary; Done is the only route back to the intro.
+  let session = null;
+  try{ session = await Recorder.stop(); }catch(e){}
+  // Recorder.build() leaves motion and derived in columnar form with rows:[];
+  // Store.get() assembles the row shape the summary draws from. Motion is skipped
+  // because the summary only needs the derived channel, and materialising 70k
+  // motion rows on a phone just to draw a sparkline is not worth the pause.
+  if(session && Store.available){
+    try{ session = (await Store.get(session.id, {motion:false})) || session; }catch(e){}
+  }
+  reportSaveTrouble();
+  Review.showSummary(session);
+  Speech.say('summaryReady');
+  refreshStorageRow();
+}
+
+/** Review's Done button. The list and detail screens never call this — they are
+    reachable mid-session, so closing those must return you to the session. */
+function toIntro(){
+  el.intro.classList.remove('hidden');
+  el.statusTag.textContent = 'standby';
+}
+
+/** Recording must never disturb a session, so trouble is reported once, after it. */
+function reportSaveTrouble(){
+  if(UI.toldSaveTrouble) return;
+  if(!Store.available){
+    UI.toldSaveTrouble = true;
+    notice('Not recorded', 'This browser will not let Tide store anything, so that session '
+      + 'was not kept. Your breathing was unaffected. Open the page in Safari directly, or '
+      + 'leave private browsing, if you want recordings.', 8000);
+  }else if(Recorder.saveError){
+    UI.toldSaveTrouble = true;
+    notice('Not recorded', 'That session could not be saved (' + Recorder.saveError
+      + '). Your breathing was unaffected. Try deleting older recordings under Adjust.', 8000);
+  }
+}
+
+/** The pacer decelerates smoothly, so any "step" is one we invented. Two spoken
+    markers across the whole ramp, not one every forty seconds. */
+function paceVoice(){
+  const k = Pacer.rampSec ? Pacer.elapsed/Pacer.rampSec : 1;
+  const marks = [0.34, 0.67];
+  if(UI.paceSaid < marks.length && k >= marks[UI.paceSaid]){
+    UI.paceSaid++;
+    Speech.say('paceStep', {bpm: String(Math.round(Pacer.bpm*2)/2)});
+  }else if(!UI.nearSaid && k >= 1){
+    UI.nearSaid = true;
+    Speech.say('nearTarget');
+  }
 }
 
 /* ---------- main loop ---------- */
@@ -892,7 +4306,9 @@ function loop(now){
     const p = 60/lerp(13, Pacer.bpm||13, 0.5);
     UI.demoPhase = (UI.demoPhase + dt/p) % 1;
     const s = Math.sin(UI.demoPhase*TAU - Math.PI/2);
-    Breath.push(s*0.05, 0.2, 9.79 + s*0.05, now/1000);
+    const dx = s*0.05, dy = 0.2, dz = 9.79 + s*0.05, dt0 = now/1000;
+    Breath.push(dx, dy, dz, dt0);
+    Recorder.sample(dx, dy, dz, dt0);   // or a demo session has no raw channel to replay
     if(UI.state==='calibrating' && Breath.cal.length>200) Breath.u=[0.7,0,0.71];
   }
 
@@ -911,11 +4327,17 @@ function loop(now){
     const targetRich = clamp(0.28 + 0.72*(0.6*slow + 0.4*sync), 0, 1);
     UI.rich = lp(UI.rich, targetRich, dt, 3.0);
 
-    Audio.frame(level, speed, UI.rich, pacerLvl);
+    Audio.frame({
+      level, vel:Breath.vel(), speed, inhaling:Breath.rising,
+      rich:UI.rich, pacerLvl, pacerVel:Pacer.vel,
+      bpm:Breath.bpmSmooth||0, dt
+    });
     updateReadout();
+    paceVoice();
   }else{
     // during calibration keep it quiet: just a hint of air
-    Audio.frame(0.35, Breath.speed()*0.4, 0.15, 0);
+    Audio.frame({level:0.35, vel:0, speed:Breath.speed()*0.4, inhaling:Breath.rising,
+                 rich:0.15, pacerLvl:0, pacerVel:0, bpm:0, dt});
   }
 
   // live sample rate in the header: 0 Hz means no events are arriving at all
@@ -931,9 +4353,12 @@ function loop(now){
   // rolling trace at ~10 Hz
   UI.traceAcc += dt;
   if(UI.traceAcc>0.1){
-    UI.traceAcc=0;
+    UI.traceAcc-=0.1;              // carry the remainder: resetting to 0 ran the tick at ~8.6 Hz
     UI.trace.push([clamp(Breath.s,-1.6,1.6), pacerLvl*2-1]);
     if(UI.trace.length>620) UI.trace.shift();
+    Recorder.derived({t:now/1000, s:Breath.s, level:level, phase:Breath.phase,
+                      bpm:Breath.bpmSmooth||0, quality:Breath.quality(), rich:UI.rich,
+                      pacerLevel:pacerLvl, pacerBpm:Pacer.bpm});
   }
 
   drawDial(level, pacerLvl);
@@ -1017,14 +4442,18 @@ el.main.addEventListener('click', ()=>{
   primeSilentChannel();
   const sensorP = UI.demo ? Promise.resolve('ok') : requestSensor();
   const audioP  = Audio.start().then(()=>true, ()=>false);
+  Speech.prime();          // last, so nothing here can sit above requestPermission()
   el.main.disabled = true;
   begin(sensorP, audioP);
 });
-el.panelBtn.addEventListener('click', ()=>el.panel.classList.add('open'));
+el.panelBtn.addEventListener('click', ()=>{
+  el.panel.classList.add('open');
+  Review.refreshCount(); refreshStorageRow();
+});
 $('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
 $('recalBtn').addEventListener('click', ()=>{
   el.panel.classList.remove('open');
-  if(UI.state!=='idle') startCalibration();
+  if(UI.state!=='idle'){ UI.recal = true; startCalibration(); }
 });
 $('vol').addEventListener('input', e=>Audio.setVolume(parseInt(e.target.value,10)/100));
 $('target').addEventListener('change', e=>{ Pacer.targetBpm=parseFloat(e.target.value); });
@@ -1045,11 +4474,90 @@ bindToggle('tglDemo',   on=>{ UI.demo=on; if(on) notice('Demo mode','Simulated b
 $('notice').addEventListener('click', ()=>$('notice').classList.remove('show'));
 window.addEventListener('resize', ()=>{ if(UI.state!=='idle'){ drawDial(Breath.level(),Pacer.level); drawTrace(); } });
 
+/* ---------- voice picker ---------- */
+// built from Audio.voices so the markup and the engine cannot drift apart
+const voiceSel = $('voice');
+voiceSel.innerHTML = '';
+Audio.voices.forEach(v=>{
+  const o = document.createElement('option');
+  o.value = v.id; o.textContent = v.name; o.selected = (v.id === Audio.voiceId);
+  voiceSel.appendChild(o);
+});
+const showVoiceHint = id => {
+  const v = Audio.voices.find(x=>x.id===id);
+  if(v) $('voiceHint').textContent = v.blurb;
+};
+showVoiceHint(Audio.voiceId);
+voiceSel.addEventListener('change', e=>{
+  Audio.setVoice(e.target.value);        // safe before start() and mid-session
+  showVoiceHint(e.target.value);
+});
+
+/* ---------- spoken guidance ---------- */
+// speech and Web Audio share the system audio session on iOS, so the instrument
+// is ducked deliberately rather than left to fight the synthesiser
+Speech.audio = Audio;
+Speech.onStart = ()=>Audio.duck(0.25, 0.25);
+Speech.onEnd   = info=>Audio.unduck(info && info.key==='running' ? 1.6 : 0.8);
+Speech.onUnavailable = ()=>{
+  notice('Guidance is silent', Speech.lines.errNoSpeech, 8000);
+};
+Speech.onVoices = ()=>{
+  const list = Speech.systemVoices();
+  const row = $('rowVoicePick'), sel = $('voicePick');
+  if(!list.length){ row.classList.add('hidden'); return; }
+  row.classList.remove('hidden');
+  sel.innerHTML = '<option value="">System default</option>';
+  list.forEach(v=>{
+    const o = document.createElement('option');
+    o.value = v.name; o.textContent = v.name; o.selected = (v.name === Speech.voiceName);
+    sel.appendChild(o);
+  });
+};
+Speech.init();
+bindToggle('tglVoice', on=>{
+  Speech.enabled = on;
+  if(!on) Speech.cancel();
+  $('rowVoiceRate').setAttribute('data-off', String(!on));
+  $('rowVoicePick').setAttribute('data-off', String(!on));
+});
+$('voiceRate').addEventListener('input', e=>Speech.setRate(parseInt(e.target.value,10)/100));
+$('voicePick').addEventListener('change', e=>Speech.setSystemVoice(e.target.value));
+
+/* ---------- recordings ---------- */
+function refreshStorageRow(){
+  const meter = $('storeMeterFill');
+  if(!Store.available){ if(meter) meter.style.width = '0%'; return; }
+  Store.usage().then(u=>{
+    if(!u || !meter) return;
+    meter.style.width = Math.round(clamp(u.bytes/(u.budget||1),0,1)*100) + '%';
+  });
+}
+$('openRecordings').addEventListener('click', ()=>{
+  el.panel.classList.remove('open');
+  Review.showList();
+});
+$('clearRecBtn').addEventListener('click', function(){
+  // asks twice rather than using confirm(), which iOS renders badly over the panel
+  if(this.getAttribute('data-armed') !== 'true'){
+    this.setAttribute('data-armed','true'); this.textContent = 'Tap again';
+    setTimeout(()=>{ this.setAttribute('data-armed','false'); this.textContent = 'Delete all'; }, 4000);
+    return;
+  }
+  this.setAttribute('data-armed','false'); this.textContent = 'Delete all';
+  Store.clear().then(()=>{
+    notice('Recordings deleted', 'Every recording is gone from this phone.', 4000);
+    Review.refreshCount(); refreshStorageRow();
+  });
+});
+Review.onDone = toIntro;
+// no user gesture is needed for IndexedDB, so this stays well away from the tap handler
+Store.open().then(()=>{ Review.refreshCount(); refreshStorageRow(); });
+
 // secure-context check up front — requestPermission simply will not fire otherwise
 if(!window.isSecureContext && location.hostname!=='localhost'){
   notice('Not a secure page','Motion sensors need HTTPS. Open this page over https:// and it will work.',0);
 }
-
 })();
 </script>
 </body>

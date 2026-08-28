@@ -54,7 +54,7 @@ section, update the harness in the same commit.
 | `0. small helpers` | `clamp`, `lerp`, `TAU`, `lp()` one-pole filter, `notice()` toast |
 | `1. AUDIO ENGINE` | `Audio` — three voices (`tide`, `shore`, `harmonium`), crossfading, procedural noise and impulse responses, per-frame parameter updates, ducking |
 | `2. BREATH TRACKER` | `Breath` — filtering, calibration PCA, projection, AGC, cycle detection, phase |
-| `3. SPEECH` | `Speech` — Web Speech API guidance, keyed copy table, iOS priming, duck and restore |
+| `3. SPEECH` | `Speech` — Web Speech API guidance, keyed copy table, iOS priming, duck and restore, the `quiet` gate |
 | `4. RECORDER + STORE` | `Recorder` (typed-array capture) and `Store` (IndexedDB, eviction, export) |
 | `5. REVIEW UI` | `Review` — the summary End lands on, the session browser, labelling |
 | `6. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
@@ -199,6 +199,13 @@ session carries a `phase` channel that uses it, so replay and analysis still rea
   the fallback advice is headphones — do not build anything load-bearing on it.
 
 ---
+
+**Speech goes quiet while the user breathes.** `Speech.quiet` is set true at the end of
+`finishCalibration()` and cleared in `end()` and on a mid-session recalibration. `say()`
+drops every line while it is set; `sayNow()` does not check it, because an error the user
+cannot see must still be heard. The voice is for setting up and for things going wrong.
+Do not add a line that speaks during the breathing stretch — that is what the pace
+announcements did, and it is why they are gone.
 
 ## 6. Testing
 

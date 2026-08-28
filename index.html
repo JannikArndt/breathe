@@ -630,7 +630,7 @@
 
 <div class="row">
   <label>Spoken guidance
-    <span class="hint">says the stages and any problems out loud</span>
+    <span class="hint">speaks while you set up, silent while you breathe</span>
   </label>
   <button class="toggle" id="tglVoice" role="switch" aria-checked="true" aria-label="Spoken guidance"></button>
 </div>
@@ -1817,6 +1817,7 @@ const Speech = {
   onStart : null,      // ({key})          -> Audio.duck(...)
   onEnd   : null,      // ({key, reason})  -> Audio.unduck(...)
   onVoices: null,      // ()               -> repopulate the picker
+  quiet   : false,     // true while the user is breathing; say() drops lines, sayNow() does not
   onUnavailable: null, // (reason)         -> notice(...), reason 'unsupported' | 'silent'
   gate    : null,      // () => bool; false holds an at-rest line back
   audio   : null,      // the Audio object, so the context can be checked after speech
@@ -1837,8 +1838,6 @@ const Speech = {
     timeUp         : 'That is your {min} minutes. Stay as long as you like.',
     summaryReady   : 'Your session summary is on the screen.',
     recalibrate    : 'Learning your movement again. Breathe as you normally would.',
-    signalLost     : 'The signal has gone quiet. Rest the phone flat on your belly.',
-    signalBack     : 'The signal is back.',
 
     errDenied      : 'Motion access was declined. Reload the page to be asked again.',
     errUnsupported : 'This device has no motion sensor. Demo mode under adjust still works.',
@@ -2000,6 +1999,11 @@ const Speech = {
    */
   say(key, vars, opts){
     if(!this.enabled || !this.available) return false;
+    // Once breathing starts the voice stops. Guidance is for getting set up and
+    // for things going wrong; a line spoken into a slow breath is an
+    // interruption however calm it sounds. Errors go through sayNow(), which
+    // does not check this — a failure the user cannot see must still be heard.
+    if(this.quiet) return false;
     const text = this.render(key, vars);
     if(!text) return false;
     // a repeat of the line already in flight is noise; sayNow() clears _active
@@ -4209,6 +4213,9 @@ function startCalibration(){
   UI.calTimer = setTimeout(finishCalibration, 20000);
 
   Recorder.event('calibration-start');
+  // Recalibration happens mid-session, when say() is muted, but it asks the
+  // user to breathe normally — they have to hear it.
+  if(UI.recal) Speech.quiet = false;
   Speech.say(UI.recal ? 'recalibrate' : 'calibrateStart');
   clearTimeout(UI.voiceTimer);
   UI.voiceTimer = setTimeout(()=>Speech.say('calibrateHalf'), 10000);
@@ -4250,6 +4257,9 @@ function finishCalibration(){
   el.sub.textContent = 'Eyes closed. Let the sound do the counting.';
   Speech.say(ok ? 'calibrateDone' : 'calibrateFailed');
   Speech.say('running');
+  // Everything after this line is breathing. The voice goes quiet until the
+  // session ends or something breaks.
+  Speech.quiet = true;
   Breath.onExhaleStart = (inD)=>{
     const slow = clamp((inD-2.0)/3.0, 0, 1);
     Audio.bell(0.35 + 0.65*slow*UI.rich);
@@ -4261,10 +4271,11 @@ function finishCalibration(){
 async function end(timeUp){
   UI.state='idle';
   UI.runUntil = 0;
+  Speech.quiet = false;
   clearTimeout(UI.calTimer); clearTimeout(UI.voiceTimer);
   window.removeEventListener('devicemotion', onMotion);
   Breath.onExhaleStart = null;
-  if(!timeUp) Speech.say('ending');
+  Speech.say(timeUp ? 'timeUp' : 'ending', {min: String(UI.durationMin)});
   // A session that ran its length gets a long fade; one you ended by hand
   // should stop close to when you meant it to.
   await Audio.stop(timeUp ? 6.0 : 1.4);
@@ -4355,8 +4366,7 @@ function loop(now){
     // Guarded: end() is async and the loop keeps turning until it lands.
     if(!UI.ending && UI.runUntil && now/1000 >= UI.runUntil){
       UI.ending = true;
-      Speech.say('timeUp', {min: String(UI.durationMin)});
-      end(true);
+      end(true);          // says the closing line itself, after clearing quiet
     }
   }
 

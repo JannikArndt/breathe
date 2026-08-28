@@ -3383,7 +3383,9 @@ const Review = {
     d.root.classList.remove('hidden');
     for(const k in d.scr) d.scr[k].classList.toggle('hidden', k!==name);
     for(const k in d.bar) d.bar[k].classList.toggle('hidden', k!==name);
-    d.back.classList.toggle('hidden', name==='summary');
+    // Back is shown on every screen, the summary included. It used to be hidden
+    // here because the summary's bottom bar carried a Done button that did the
+    // same job; Done is gone, so hiding Back left the summary with no exit.
     d.root.scrollTop = 0;
     const sc = d.root.querySelector('.rev-scroll');
     if(sc) sc.scrollTop = 0;

@@ -378,7 +378,7 @@
 
 /* ---------- 1. summary ---------- */
 .spark{
-  display:block;width:100%;height:168px;border-radius:2px;background:var(--rev-lane);
+  display:block;width:100%;height:184px;border-radius:2px;background:var(--rev-lane);
 }
 .rev-key{margin-top:8px}
 .key-you{background:var(--glass)}
@@ -707,12 +707,8 @@
     <!-- ---------- 1. summary: where End lands ---------- -->
     <section class="rev-screen hidden" id="revSummary">
       <canvas class="spark" id="revSpark"></canvas>
-      <div class="trace-key rev-key">
-        <span><i class="key-dot key-you"></i>You</span>
-        <span id="revKeyPace" class="hidden"><i class="key-dot key-pace"></i>Pace</span>
-      </div>
-      <p class="rev-cap">Rate over the whole session, in breaths per minute.
-         The shading behind it is how deep each breath was.</p>
+      <p class="rev-cap">The line is your breathing rate. The shading behind it is
+         how deep each breath was.</p>
       <p class="rev-flag hidden" id="revSumFlag"></p>
       <div class="readout rev-grid" id="revSumGrid"></div>
     </section>
@@ -3356,7 +3352,6 @@ const Review = {
       scr:{ summary:$('revSummary'), list:$('revList'), detail:$('revDetail') },
       bar:{ summary:$('revSumBar'), list:$('revListBar'), detail:$('revDetBar') },
       spark:$('revSpark'), sumGrid:$('revSumGrid'), sumFlag:$('revSumFlag'),
-      keyPace:$('revKeyPace'),
       rows:$('revRows'), listEmpty:$('revListEmpty'), listFoot:$('revListFoot'),
       over:$('revOver'), fine:$('revFine'),
       vAt:$('revVAt'), vSig:$('revVSig'), vRate:$('revVRate'),
@@ -3665,24 +3660,20 @@ const Review = {
   prepare(session){
     const dv = session.derived || {}, rows = dv.rows || [], ci = this.cols(dv);
     const n = rows.length;
-    const t=new Float32Array(n), s=new Float32Array(n), p=new Float32Array(n),
-          b=new Float32Array(n), pb=new Float32Array(n), q=new Float32Array(n);
-    // Recordings made before the guide tone was removed still carry these two
-    // channels. Reading them keeps those files renderable; nothing writes them now.
-    const hasP = ci.pacerLevel!=null, hasPB = ci.pacerBpm!=null, hasQ = ci.quality!=null;
+    const t=new Float32Array(n), s=new Float32Array(n),
+          b=new Float32Array(n), q=new Float32Array(n);
+    // Recordings made before the guide tone was removed still carry pacerLevel
+    // and pacerBpm. They are ignored: the pacer is gone from the product, so
+    // drawing its line would explain nothing to anyone looking at a session now.
+    const hasQ = ci.quality!=null;
     for(let i=0;i<n;i++){
       const r = rows[i] || [];
-      t[i]  = +r[ci.t] || 0;
-      s[i]  = +r[ci.s] || 0;
-      p[i]  = hasP  ? (+r[ci.pacerLevel]||0)*2-1 : 0;   // 0..1 level onto the same +/-1 axis as s
-      b[i]  = +r[ci.bpm] || 0;
-      pb[i] = hasPB ? (+r[ci.pacerBpm]||0) : 0;
-      q[i]  = hasQ  ? (+r[ci.quality]||0) : 0;
+      t[i] = +r[ci.t] || 0;
+      s[i] = +r[ci.s] || 0;
+      b[i] = +r[ci.bpm] || 0;
+      q[i] = hasQ ? (+r[ci.quality]||0) : 0;
     }
-    this.sig = { n, t, s, p, b, pb, q, hasP, hasPB };
-    // Only recordings from before the guide tone was removed have a pace line
-    // to label. Newer ones would show a legend for a curve that is not there.
-    if(this.d && this.d.keyPace) this.d.keyPace.classList.toggle('hidden', !hasPB);
+    this.sig = { n, t, s, b, q };
     this.det.dur = session.durationSec || (n ? t[n-1] : 0);
     this.det.play = clamp(this.det.play, 0, this.det.dur);
     if(!(this.det.span>0)) this.det.span = this.det.dur || 30;
@@ -3821,7 +3812,6 @@ const Review = {
     const S=this.sig; let lo=Infinity, hi=-Infinity;
     for(let i=0;i<S.n;i++){
       if(S.b[i]>0){ if(S.b[i]<lo) lo=S.b[i]; if(S.b[i]>hi) hi=S.b[i]; }
-      if(S.pb && S.pb[i]>0){ if(S.pb[i]<lo) lo=S.pb[i]; if(S.pb[i]>hi) hi=S.pb[i]; }
     }
     if(!isFinite(lo) || !isFinite(hi)) return null;
     lo = Math.floor(lo-0.6); hi = Math.ceil(hi+0.6);
@@ -3842,36 +3832,53 @@ const Review = {
       return;
     }
     const t0=0, t1=Math.max(this.det.dur, 1);
-    const gut = 22, pw = w - gut;          // right gutter holds the rate scale
+    const gut = 34, pw = w - gut;    // right gutter: the rate scale and its unit
+    const foot = 15;                 // bottom strip: elapsed time
+    const ph = h - foot;             // plot height
 
     // background: how deep each breath was
     ctx.fillStyle = K.you; ctx.globalAlpha = 0.16;
-    this.band(ctx,pw,h,t0,t1,'s',pad);
+    this.band(ctx,pw,ph,t0,t1,'s',pad);
     ctx.globalAlpha = 1;
+
+    ctx.font = '9px ui-monospace, monospace';
 
     const R = this.rateRange();
     if(R){
       // faint horizontal rules so the rate scale is readable at a glance
-      ctx.font = '9px ui-monospace, monospace'; ctx.textAlign='start';
+      ctx.textAlign='start';
       for(let v=Math.ceil(R.lo); v<=R.hi; v++){
         if((v % 2) !== 0) continue;
-        const y = h-pad - (v-R.lo)/(R.hi-R.lo)*(h-pad*2);
+        const y = ph-pad - (v-R.lo)/(R.hi-R.lo)*(ph-pad*2);
         ctx.strokeStyle = K.mute; ctx.globalAlpha=.22;
         ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(pw,y); ctx.stroke();
         ctx.fillStyle = K.mute; ctx.globalAlpha=.6;
         ctx.fillText(String(v), pw+5, y+3);
       }
+      // The rules are numbers until something says what they count.
+      ctx.fillStyle = K.mute; ctx.globalAlpha=.75;
+      ctx.fillText('/min', pw+5, 9);
       ctx.globalAlpha=1;
 
-      if(this.sig.hasPB){
-        ctx.strokeStyle = K.pace; ctx.lineWidth=1.2; ctx.globalAlpha=.85;
-        this.rateLine(ctx,pw,h,t0,t1,'pb',R.lo,R.hi,pad);
-        ctx.globalAlpha=1;
-      }
       ctx.strokeStyle = K.you; ctx.lineWidth=1.8;
-      this.rateLine(ctx,pw,h,t0,t1,'b',R.lo,R.hi,pad);
+      this.rateLine(ctx,pw,ph,t0,t1,'b',R.lo,R.hi,pad);
     }
-    this.drawMarks(ctx,pw,h,t0,t1,3);
+    this.drawMarks(ctx,pw,ph,t0,t1,3);
+
+    // ---- time along the bottom. Four ticks at most: on a phone this is about
+    //      340 px wide, and five m:ss labels start colliding.
+    const ticks = 4;
+    ctx.fillStyle = K.mute; ctx.globalAlpha=.6;
+    ctx.textBaseline='alphabetic';
+    for(let i=0;i<=ticks;i++){
+      const frac = i/ticks, x = frac*pw;
+      ctx.textAlign = i===0 ? 'start' : (i===ticks ? 'end' : 'center');
+      ctx.fillText(this.clock(t0 + frac*(t1-t0)), clamp(x, 0, pw), h-4);
+      ctx.strokeStyle = K.mute; ctx.globalAlpha=.22;
+      ctx.beginPath(); ctx.moveTo(x, ph); ctx.lineTo(x, ph+3); ctx.stroke();
+      ctx.globalAlpha=.6;
+    }
+    ctx.globalAlpha=1; ctx.textAlign='start';
   },
 
   drawOverview(){
@@ -3928,10 +3935,6 @@ const Review = {
     ctx.globalAlpha=1;
 
     if(this.sig.n){
-      if(this.sig.hasP){
-        ctx.strokeStyle=K.pace; ctx.lineWidth=1.1; ctx.globalAlpha=.6;
-        this.poly(ctx,w,h,t0,t1,'p',pad); ctx.globalAlpha=1;
-      }
       ctx.strokeStyle=K.you; ctx.lineWidth=1.9;
       this.poly(ctx,w,h,t0,t1,'s',pad);
     }

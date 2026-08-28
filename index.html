@@ -3893,9 +3893,17 @@ const Review = {
     this.showList();
   },
 
-  exportOne(session){
+  async exportOne(session){
     if(!session){ notice('Nothing to export','There is no recording on screen to write out.',5000); return; }
-    this.save(this.filename(session), JSON.stringify(session));
+    // The summary holds a session fetched with {motion:false} so the phone does not
+    // materialise 40k rows to draw a sparkline. Exporting that object shipped a file
+    // with motion.count set and motion.rows empty — the raw signal, which is the whole
+    // point of exporting, was missing. Re-read the full record here.
+    let full = session;
+    if(Store.available && session.id){
+      try{ full = (await Store.get(session.id)) || session; }catch(err){}
+    }
+    this.save(this.filename(full), JSON.stringify(full));
   },
 
   async exportAll(){

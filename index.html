@@ -1552,12 +1552,23 @@ const Breath = {
   inhaleDur:0, exhaleDur:0, period:0, bpm:0, bpmSmooth:0,
   omega:TAU/5, phase:0, onExhaleStart:null,
 
+  // how big a breath this user actually takes, learned as it goes.
+  // strokeAmp is peak-to-trough in normalised units; 1.7 is what a relaxed
+  // adult measured at, and is only a starting point until a stroke completes.
+  strokeAmp:1.7, peakS:null, troughS:null,
+  // rest detection: slopeEnv is mean |velocity|, stillFor counts seconds held
+  // still, restGate fades the velocity channels out while the user holds.
+  slopeEnv:0.35, stillFor:0, resting:false, restGate:1,
+
   reset(){
     this.smooth=[NaN,NaN,NaN]; this.base=[NaN,NaN,NaN];
     this.s=0; this.sPrev=0; this.dsLp=0; this.rms=0.02;
     this.samples=0; this.bpm=0; this.bpmSmooth=0; this.period=0;
     this.inhaleDur=0; this.exhaleDur=0; this.lastPeakT=0; this.lastTroughT=0;
     this.omega=TAU/5;
+    this.strokeAmp=1.7; this.peakS=null; this.troughS=null;
+    this.slopeEnv=0.35; this.stillFor=0; this.resting=false;
+    this.restGate=1;
   },
 
   beginCalibration(now){
@@ -1607,6 +1618,7 @@ const Breath = {
     this.dsLp = lp(this.dsLp, ds, dt, 0.28);
     this.s = sN;
 
+    this.detectRest(dt);
     this.detectCycle(sN, t);
 
     // ---- instantaneous phase from the signal and its derivative
@@ -1615,12 +1627,47 @@ const Breath = {
     this.phase = Math.atan2(-this.dsLp/w, sN);
   },
 
+  /** Is the belly moving, or is the user holding still between breaths?
+      Slow breathing has real pauses in it — on the first recording, 13 of 18
+      rests followed the bottom of an exhale. The tracker cannot tell a rest
+      from a stroke by velocity alone, because velocity is compared against
+      the breathing rate: at 5.4/min the reference peak is 0.216, so a tremor
+      of 0.05 divides out to a quarter-strength inhale. Compare against what
+      this user's own strokes measure instead. */
+  detectRest(dt){
+    const v = Math.abs(this.dsLp);
+    // tau = 8 s spans several breaths, so one held breath does not drag the
+    // reference down and make the next rest impossible to see.
+    this.slopeEnv = lp(this.slopeEnv, v, dt, 8.0);
+    // mean |v| of a sinusoid is 2/pi of its peak, so peak ~ mean * 1.57.
+    const peak = Math.max(this.slopeEnv*1.57, 0.05);
+    const r = v/peak;
+    // Asymmetric thresholds: fall under 0.22 to start counting as still, clear
+    // 0.50 to be moving again. Between the two nothing changes, so a wobble on
+    // the threshold cannot chatter.
+    if(r < 0.22)      this.stillFor += dt;
+    else if(r > 0.50) this.stillFor = 0;
+    this.resting = this.stillFor > 0.5;              // 0.5 s of holding, not a zero crossing
+    // Open in 0.30 s so a real inhale is not audibly late; close in 0.60 s so
+    // the sound settles rather than cutting.
+    const want = this.resting ? 0 : 1;
+    this.restGate = lp(this.restGate, want, dt, want ? 0.30 : 0.60);
+  },
+
   detectCycle(sN, t){
-    const H = 0.34;                                   // hysteresis
+    // Hysteresis scaled to how deeply this user breathes. A fixed threshold is
+    // a different test for a deep breather than a shallow one: on the first
+    // real recording 0.34 was 19% of a typical stroke, and 50 of 57 exhale
+    // bottoms cleared it more than 0.6 s before the signal reached half a
+    // stroke. The floor keeps shallow breathers detectable, the ceiling stops
+    // a few deep sighs from making the detector numb.
+    const H = clamp(this.strokeAmp*0.30, 0.30, 0.80);
     if(this.rising){
       if(sN > this.extreme){ this.extreme=sN; this.extremeT=t; }
       else if(sN < this.extreme - H){                 // that was a peak
         this.lastPeakT = this.extremeT;
+        this.peakS = this.extreme;
+        this.learnAmp();
         if(this.lastTroughT) this.inhaleDur = this.lastPeakT - this.lastTroughT;
         this.rising=false; this.extreme=sN; this.extremeT=t;
         if(this.onExhaleStart) this.onExhaleStart(this.inhaleDur, this.exhaleDur);
@@ -1630,6 +1677,8 @@ const Breath = {
       else if(sN > this.extreme + H){                 // that was a trough
         const prevTrough = this.lastTroughT;
         this.lastTroughT = this.extremeT;
+        this.troughS = this.extreme;
+        this.learnAmp();
         if(this.lastPeakT) this.exhaleDur = this.lastTroughT - this.lastPeakT;
         if(prevTrough){
           const p = this.lastTroughT - prevTrough;
@@ -1643,6 +1692,16 @@ const Breath = {
         this.rising=true; this.extreme=sN; this.extremeT=t;
       }
     }
+  },
+
+  /** Track how deep this user's breaths are, so the hysteresis can scale with
+      them. Bounds reject a half-stroke caught mid-drift and a sigh; alpha 0.25
+      settles over about four breaths, slow enough that one deep sigh does not
+      move the threshold out from under the next ordinary breath. */
+  learnAmp(){
+    if(this.peakS === null || this.troughS === null) return;
+    const amp = Math.abs(this.peakS - this.troughS);
+    if(amp > 0.35 && amp < 3.6) this.strokeAmp = lerp(this.strokeAmp, amp, 0.25);
   },
 
   /** dominant axis of belly movement: power iteration on the 3x3 covariance */
@@ -1685,10 +1744,11 @@ const Breath = {
 
   /** 0 = fully exhaled, 1 = fully inhaled */
   level(){ return clamp((this.s+1)/2, 0, 1); },
-  /** 0..1 how quickly the belly is moving */
-  speed(){ return clamp(Math.abs(this.dsLp)/2.4, 0, 1); },
+  /** 0..1 how quickly the belly is moving. Gated by restGate so a held breath
+      reads as stillness rather than as a faint stroke. */
+  speed(){ return clamp(Math.abs(this.dsLp)/2.4, 0, 1) * this.restGate; },
   /** signed belly velocity, -1..1; positive while inhaling */
-  vel(){ return clamp(this.dsLp/2.4, -1, 1); },
+  vel(){ return clamp(this.dsLp/2.4, -1, 1) * this.restGate; },
   quality(){
     const b=this.breathRms, m=this.motionRms;
     if(b<=0) return 0;
@@ -4336,7 +4396,7 @@ function loop(now){
     UI.rich = lp(UI.rich, targetRich, dt, 3.0);
 
     Audio.frame({
-      level, vel:Breath.vel(), speed, inhaling:Breath.rising,
+      level, vel:Breath.vel(), speed, inhaling:Breath.rising, resting:Breath.resting,
       rich:UI.rich, pacerLvl, pacerVel:Pacer.vel,
       bpm:Breath.bpmSmooth||0, dt
     });

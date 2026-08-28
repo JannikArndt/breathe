@@ -115,9 +115,27 @@ fired — purely so an exported session can say so. It changes no behaviour.
 `Breath.vel()` returns the *signed* velocity, −1..1, positive while inhaling. The
 audio engine needs direction; `speed()` only ever carried magnitude.
 
-**Cycle detection.** Peak/trough with hysteresis `H = 0.34` on the normalised signal.
-Periods outside 2–25 s are discarded. Period EMA α = 0.45, bpm EMA α = 0.4. Lowering `H`
-makes it double-count on noisy signals; raising it drops shallow breaths.
+**Cycle detection.** Peak/trough with hysteresis scaled to the depth the user actually
+breathes at: `H = clamp(strokeAmp · 0.30, 0.30, 0.80)`, where `strokeAmp` is an EMA
+(α = 0.25) of measured peak-to-trough excursions, seeded at 1.7. Periods outside 2–25 s
+are discarded. Period EMA α = 0.45, bpm EMA α = 0.4. Lowering the coefficient makes it
+double-count on noisy signals; raising it drops shallow breaths.
+
+`H` was a fixed 0.34 until the first real recording measured a median stroke of 1.75
+normalised units — so the threshold sat at 19 % of a breath, and 56 of 57 exhale bottoms
+cleared it more than 0.6 s before the signal reached half a stroke. At `H = 0.61` on that
+same recording the count falls to 23 of 57 with the *identical* 57 peaks and troughs and
+the same 11.28 s median period, so the sensitivity costs nothing in rate tracking.
+
+**Rest.** Slow breathing has real holds in it. `detectRest()` compares `|ṡ|` against this
+user's own stroke velocity (`slopeEnv` = mean `|ṡ|` at τ = 8 s; peak ≈ mean · 1.57), enters
+"still" under a ratio of 0.22 and leaves it over 0.50 — a dead band, so a wobble on the
+threshold cannot chatter. `resting` needs 0.5 s of holding, and `restGate` fades in over
+0.30 s and out over 0.60 s. **`vel()` and `speed()` are both multiplied by `restGate`.**
+This exists because velocity is normalised against breathing rate in `Audio.frame()`: at
+5.4 /min the reference peak is 0.216, so a belly tremor of 0.05 divides out to a
+quarter-strength inhale. Comparing against the rate alone cannot tell a hold from a stroke;
+comparing against the user's own strokes can.
 
 **Phase.** `phase = atan2(−ṡ_lp / ω, s)` with `ω` clamped to 0.25–2.2 rad/s and
 `ṡ` low-passed at τ = 0.28 s.

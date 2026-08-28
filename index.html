@@ -2054,10 +2054,7 @@ const Speech = {
      Every line is short on purpose: some builds truncate long utterances, and
      a long line spoken over a slow breath is worse than no line at all. */
   lines: {
-    begin          : 'Lie back, and rest the phone flat on your belly.',
-    calibrateStart : 'Breathe as you normally would while it learns your movement.',
-    calibrateHalf  : 'Keep breathing the same way.',
-    calibrateDone  : 'That is enough to work with.',
+    begin          : 'Lie back with the phone on your belly, and breathe as you normally would.',
     calibrateFailed: 'The phone did not pick up your breathing. Move it lower on your belly.',
     running        : 'Close your eyes. The sound follows your breathing.',
     ending         : 'Session complete.',
@@ -4450,11 +4447,10 @@ function startCalibration(){
 
   Recorder.event('calibration-start');
   // Recalibration happens mid-session, when say() is muted, but it asks the
-  // user to breathe normally — they have to hear it.
-  if(UI.recal) Speech.quiet = false;
-  Speech.say(UI.recal ? 'recalibrate' : 'calibrateStart');
+  // user to breathe normally — they have to hear it. A first calibration says
+  // nothing here: begin() already asked for exactly this, one line ago.
+  if(UI.recal){ Speech.quiet = false; Speech.say('recalibrate'); }
   clearTimeout(UI.voiceTimer);
-  UI.voiceTimer = setTimeout(()=>Speech.say('calibrateHalf'), 10000);
 
   // if nothing arrives, say which of the two possible causes it is
   setTimeout(()=>{
@@ -4491,8 +4487,7 @@ function finishCalibration(){
 
   el.cue.textContent = 'Breathe';
   el.sub.textContent = 'Eyes closed. Let the sound do the counting.';
-  Speech.say(ok ? 'calibrateDone' : 'calibrateFailed');
-  Speech.say('running');
+  Speech.say(ok ? 'running' : 'calibrateFailed');
   // Everything after this line is breathing. The voice goes quiet until the
   // session ends or something breaks.
   Speech.quiet = true;

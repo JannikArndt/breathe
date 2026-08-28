@@ -3242,17 +3242,26 @@ function calFromEvents(events){
  * estimate — one dropped breath can halve an instantaneous reading.
  */
 function summarise(d, events, hz){
-  const S = {meanBpm:0, slowestBpm:0, secondsUnder7:0, inOutRatio:0, meanQuality:0, breaths:0};
+  const S = {meanBpm:0, minBpm:0, maxBpm:0, slowestBpm:0, secondsUnder7:0,
+             inOutRatio:0, meanQuality:0, breaths:0};
   const n = d.n;
   if(!(hz > 0)) hz = Store.DERIVED_HZ;
   const bpm = d.v[3], q = d.v[4];
 
-  let bs = 0, bc = 0, qs = 0, under = 0;
+  let bs = 0, bc = 0, qs = 0, under = 0, lo = Infinity, hi = 0;
   for(let i=0;i<n;i++){
-    if(bpm[i] > 0){ bs += bpm[i]; bc++; if(bpm[i] < 7) under++; }
+    // A zero means no cycle has been timed yet, not a rate of zero.
+    if(bpm[i] > 0){
+      bs += bpm[i]; bc++;
+      if(bpm[i] < 7) under++;
+      if(bpm[i] < lo) lo = bpm[i];
+      if(bpm[i] > hi) hi = bpm[i];
+    }
     qs += q[i];
   }
   S.meanBpm = bc ? rnd(bs/bc, 2) : 0;
+  S.minBpm = bc ? rnd(lo, 2) : 0;
+  S.maxBpm = bc ? rnd(hi, 2) : 0;
   S.secondsUnder7 = rnd(under/hz, 1);
   S.meanQuality = n ? rnd(qs/n, 3) : 0;
 
@@ -3477,22 +3486,17 @@ const Review = {
     };
     const bpm = n => (n>0 && isFinite(n)) ? n.toFixed(1) : '—';
 
-    const first = this.windowBpm(this.calEnd(), this.calEnd()+90);
-    const last  = this.windowBpm(Math.max(this.calEnd(), dur-90), dur);
-    const under = (sum.secondsUnder7!=null) ? sum.secondsUnder7 : this.secondsUnder(7);
-    const slow  = (sum.slowestBpm!=null) ? sum.slowestBpm : this.slowestSustained();
-    const q     = (sum.meanQuality!=null) ? sum.meanQuality : this.meanOf('q');
+    const q = (sum.meanQuality!=null) ? sum.meanQuality : this.meanOf('q');
+    // Recordings made before these were summarised fall back to the signal.
+    const rate = this.rateStats(sum);
 
     const g = d.sumGrid;
     g.textContent = '';
     g.appendChild(cell('Length', this.clock(dur)));
     g.appendChild(cell('Breaths', (sum.breaths!=null && sum.breaths>0) ? String(sum.breaths) : '—'));
-    g.appendChild(cell('First 90 s', bpm(first), '/min'));
-    g.appendChild(cell('Last 90 s',  bpm(last),  '/min'));
-    g.appendChild(cell('Slowest sustained', bpm(slow), '/min'));
-    g.appendChild(cell('Under 7 /min', under>0 ? this.clock(under) : '—'));
-    g.appendChild(cell('In / out', this.ratio(sum.inOutRatio)));
-    g.appendChild(cell('Signal', this.qualityWord(q), q>0 ? Math.round(q*100)+'%' : ''));
+    g.appendChild(cell('Average rate', bpm(rate.avg), '/min'));
+    g.appendChild(cell('Slowest',      bpm(rate.min), '/min'));
+    g.appendChild(cell('Fastest',      bpm(rate.max), '/min'));
 
     // Facts about the recording, not about the person. A failed calibration
     // or a noisy signal changes how much the numbers above are worth, so say so.
@@ -3505,6 +3509,22 @@ const Review = {
       flags.push('This recording has no waveform stored, so the trace is empty.');
     d.sumFlag.textContent = flags.join(' ');
     d.sumFlag.classList.toggle('hidden', !flags.length);
+  },
+
+  /** Rate min/avg/max, from the stored summary when it has them and from the
+      recorded rate channel when it does not. Zeros are excluded throughout: a
+      zero means no cycle had been timed yet, not a rate of zero. */
+  rateStats(sum){
+    if(sum && sum.minBpm > 0 && sum.maxBpm > 0)
+      return {min:sum.minBpm, avg:sum.meanBpm, max:sum.maxBpm};
+    const S = this.sig;
+    let lo=Infinity, hi=0, tot=0, k=0;
+    for(let i=0;i<S.n;i++){
+      const v = S.b[i];
+      if(v > 0){ if(v<lo) lo=v; if(v>hi) hi=v; tot+=v; k++; }
+    }
+    if(!k) return {min:0, avg:(sum && sum.meanBpm) || 0, max:0};
+    return {min:lo, avg:tot/k, max:hi};
   },
 
   /* ---------- 2. recordings ---------- */
@@ -3696,37 +3716,6 @@ const Review = {
   },
 
   /** mean of the measured rate over a time window; ignores rows with no estimate yet */
-  windowBpm(t0,t1){
-    const S=this.sig; if(!S.n || !(t1>t0)) return 0;
-    let sum=0, k=0;
-    for(let i=this.idxAt(t0); i<S.n && S.t[i]<=t1; i++){ if(S.b[i]>0){ sum+=S.b[i]; k++; } }
-    return k ? sum/k : 0;
-  },
-
-  /** seconds spent below a rate, integrated over the derived sample interval */
-  secondsUnder(rate){
-    const S=this.sig; if(S.n<2) return 0;
-    let sec=0;
-    for(let i=1;i<S.n;i++){
-      const dt = S.t[i]-S.t[i-1];
-      if(dt>0 && dt<2 && S.b[i]>0 && S.b[i]<rate) sec += dt;
-    }
-    return sec;
-  },
-
-  /** slowest 60 s mean, not the slowest instant: one mis-detected long gap
-      should not become the headline number on the summary screen */
-  slowestSustained(){
-    const S=this.sig; if(!S.n) return 0;
-    let best=0;
-    for(let i=0;i<S.n;i++){
-      const m = this.windowBpm(S.t[i], S.t[i]+60);
-      if(m>0 && (best===0 || m<best)) best=m;
-      if(S.t[i]+60 > (S.t[S.n-1]||0)) break;
-    }
-    return best;
-  },
-
   meanOf(key){
     const S=this.sig, a=S[key]; if(!S.n || !a) return 0;
     let sum=0; for(let i=0;i<S.n;i++) sum+=a[i];
@@ -4260,13 +4249,6 @@ const Review = {
   },
 
   /** inOutRatio is inhale/exhale; "1 : 1.4" reads faster than "0.71" */
-  ratio(r){
-    if(!(r>0) || !isFinite(r)) return '—';
-    return r<=1 ? '1 : ' + (1/r).toFixed(1) : (r).toFixed(1) + ' : 1';
-  },
-
-  qualityWord(q){ return !(q>0) ? '—' : q>0.7 ? 'clear' : q>0.4 ? 'fair' : 'noisy'; },
-
   metaBytes(m){ return (m && (m.bytes!=null ? m.bytes : m.size)) || 0; },
   metaBpm(m){
     if(!m) return 0;

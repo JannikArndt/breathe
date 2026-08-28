@@ -598,7 +598,7 @@
     <canvas id="trace"></canvas>
     <div class="trace-key">
       <span><i class="key-dot" style="background:var(--glass)"></i>You</span>
-      <span style="margin-left:auto" id="qualityTxt">signal —</span>
+      <span style="margin-left:auto" id="qualityTxt"></span>
     </div>
   </div>
 
@@ -4266,7 +4266,7 @@ const UI = {
   wakeLock:null, silentEl:null,
   rich:0.4, lastFrame:0, sensorSeen:false, calTimer:null,
   voiceTimer:null, recal:false, toldSaveTrouble:false,
-  durationMin:10, runUntil:0, ending:false,
+  durationMin:10, runUntil:0, ending:false, badSince:0,
   trace:[], traceAcc:0,
   sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
 };
@@ -4366,7 +4366,7 @@ function requestSensor(){
 /* ---------- session control ---------- */
 /** Both promises are started inside the tap handler; begin() only awaits them. */
 async function begin(sensorP, audioP){
-  UI.ending = false;
+  UI.ending = false; UI.badSince = 0;
   // Adjust stays reachable while breathing — it holds the volume and the
   // recalibrate button, both of which are wanted mid-session. Only Recordings
   // goes, since opening the browser over a running session is not a thing to
@@ -4623,9 +4623,39 @@ function updateReadout(){
     // than it is.
     el.vHr.innerHTML = hr ? Math.round(hr) + '<small>/min</small>' : '—';
   }
-  const q=Breath.quality();
-  el.qualityTxt.textContent = 'signal ' + (q>0.7?'clear':q>0.4?'fair':'noisy');
-  el.qualityTxt.style.color = q>0.7?'var(--glass)':q>0.4?'var(--mute)':'var(--sand)';
+  signalHint();
+}
+
+/**
+ * "signal: fair" told the user a number they could not act on. Say nothing
+ * while the signal is usable, and when it is not, say which of the two things
+ * is wrong — there is not much movement to read, or there is too much of the
+ * wrong sort — because those have different fixes.
+ *
+ * Debounced hard on purpose. The user is lying with their eyes closed; a line
+ * that appears and vanishes as quality crosses a threshold is worse than none,
+ * and by the time they look it should still be true.
+ */
+function signalHint(){
+  const q = Breath.quality();
+  const bad = q < 0.35, good = q > 0.5;      // dead band, so it cannot chatter
+  const now = performance.now()/1000;
+
+  if(bad){ if(!UI.badSince) UI.badSince = now; }
+  else if(good){ UI.badSince = 0; }
+
+  const show = UI.badSince && (now - UI.badSince) > 6;
+  if(!show){
+    el.qualityTxt.textContent = '';
+    return;
+  }
+  // Which term is dragging quality down? breathRms is how much breathing there
+  // is to read; motionRms is everything else the phone felt.
+  const weak = Breath.breathRms < 0.012;
+  el.qualityTxt.textContent = weak
+    ? 'move the phone lower on your belly'
+    : 'lie still for a moment';
+  el.qualityTxt.style.color = 'var(--sand)';
 }
 
 /* ---------- drawing ---------- */

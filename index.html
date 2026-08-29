@@ -184,6 +184,10 @@
   .set-row label{font-size:14.5px;color:#C7D8D4}
   .set-v{font-family:var(--data);font-size:13px;color:var(--sand);letter-spacing:.06em}
   .set-hint{margin:-3px 0 0;font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute)}
+  .panel-sub{
+    margin:22px 0 2px;font-family:var(--display);font-size:11px;font-weight:500;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--sand);
+  }
   .set select{min-width:9.5em}
   .set input[type=range]{width:100%}
 
@@ -233,7 +237,6 @@
 
 /* A long voice name ("Samantha (Enhanced)") would otherwise push the label off
    a narrow phone. The select clips instead of wrapping the row. */
-#voicePick{max-width:52vw}
 
 /* Speed and voice only take effect while guidance is on. Dimming says so
    without hiding them, so nothing jumps around when the toggle is flipped;
@@ -561,36 +564,19 @@
         <li><span class="prep-i" aria-hidden="true">◎</span><span>Headphones, volume low</span></li>
       </ul>
 
-      <p class="lede">Lie on your back. Phone face-up on your belly, just below the navel.</p>
+      <p class="lede">Lie on your back. Phone face-up on your belly, just below the
+      navel. Tap Start, close your eyes, and breathe.</p>
 
-      <div class="set">
-        <div class="set-row">
-          <label for="dur">Length</label>
-          <output class="set-v" id="durOut" for="dur">10 min</output>
-        </div>
-        <input type="range" id="dur" min="1" max="20" step="1" value="10"
-               aria-label="Session length in minutes">
-
-        <div class="set-row">
-          <label for="voice">Sound</label>
-          <select id="voice">
-            <option value="tide">Tide</option>
-            <option value="shore" selected>Shore</option>
-            <option value="harmonium">Harmonium</option>
-          </select>
-        </div>
-        <p class="set-hint" id="voiceHint">a wave gathers, breaks and drains</p>
-      </div>
-
-      <p class="fineprint">Motion never leaves the phone. Sessions are recorded and kept here, and
-      go nowhere unless you export them. A relaxation tool, not a medical device.</p>
+      <p class="fineprint">The sound follows your belly. It runs until you end it.<br>
+      Motion never leaves the phone. Sessions are recorded and kept here, and go
+      nowhere unless you export them. A relaxation tool, not a medical device.</p>
     </div>
 
     <!-- live dial -->
     <canvas id="dial" class="hidden"></canvas>
     <div class="center-read hidden" id="centerRead">
-      <p class="cue" id="cue">Settle</p>
-      <p class="sub" id="sub">Breathe as you normally would</p>
+      <p class="cue" id="cue">Breathe</p>
+      <p class="sub" id="sub"></p>
     </div>
   </div>
 
@@ -609,7 +595,7 @@
   </div>
 
   <div class="bar">
-    <button id="mainBtn" class="primary">Begin</button>
+    <button id="mainBtn" class="primary">Start</button>
   </div>
   <div class="subbar" id="homeSub">
     <button class="link" id="recBtn">Recordings</button>
@@ -629,29 +615,72 @@
     <input type="range" id="vol" min="0" max="100" value="55">
   </div>
 
-<div class="row">
-  <label>Spoken guidance
-    <span class="hint">speaks while you set up, silent while you breathe</span>
-  </label>
-  <button class="toggle" id="tglVoice" role="switch" aria-checked="true" aria-label="Spoken guidance"></button>
-</div>
+  <div class="row">
+    <label for="sens">Sensitivity
+      <span class="hint">how readily it decides you are breathing</span>
+    </label>
+    <input type="range" id="sens" min="0" max="100" value="50" aria-label="Sensitivity">
+  </div>
 
-<div class="row" id="rowVoiceRate">
-  <label for="voiceRate">Speaking speed
-    <span class="hint">slower to faster</span>
-  </label>
-  <input type="range" id="voiceRate" min="70" max="110" value="86"
-         aria-label="Speaking speed">
-</div>
+  <h3 class="panel-sub">Sound</h3>
 
-<div class="row hidden" id="rowVoicePick">
-  <label for="voicePick">Speaking voice
-    <span class="hint">the English voices on this phone</span>
-  </label>
-  <select id="voicePick">
-    <option value="">System default</option>
-  </select>
-</div>
+  <div class="row">
+    <label for="mSwell">Swell
+      <span class="hint">the wave gathering as you draw in</span>
+    </label>
+    <input type="range" id="mSwell" min="0" max="150" value="100" aria-label="Swell">
+  </div>
+
+  <div class="row">
+    <label for="mBreak">Break
+      <span class="hint">the crest, at the top of each inhale</span>
+    </label>
+    <input type="range" id="mBreak" min="0" max="150" value="100" aria-label="Break">
+  </div>
+
+  <div class="row">
+    <label for="mFoam">Foam
+      <span class="hint">hiss draining through the exhale</span>
+    </label>
+    <input type="range" id="mFoam" min="0" max="150" value="100" aria-label="Foam">
+  </div>
+
+  <div class="row">
+    <label for="mSpray">Spray
+      <span class="hint">a thin band drifting across the field</span>
+    </label>
+    <input type="range" id="mSpray" min="0" max="150" value="100" aria-label="Spray">
+  </div>
+
+  <div class="row">
+    <label for="mUnder">Undertow
+      <span class="hint">the low drag at the bottom of the breath</span>
+    </label>
+    <input type="range" id="mUnder" min="0" max="150" value="100" aria-label="Undertow">
+  </div>
+
+  <div class="row">
+    <label for="mTone">Tone
+      <span class="hint">the pitch under the water</span>
+    </label>
+    <input type="range" id="mTone" min="0" max="150" value="100" aria-label="Tone">
+  </div>
+
+  <div class="row">
+    <label for="mBright">Brightness
+      <span class="hint">dark and near, or open and airy</span>
+    </label>
+    <input type="range" id="mBright" min="0" max="100" value="50" aria-label="Brightness">
+  </div>
+
+  <div class="row">
+    <label for="mSpace">Space
+      <span class="hint">how large the room around it is</span>
+    </label>
+    <input type="range" id="mSpace" min="0" max="100" value="50" aria-label="Space">
+  </div>
+
+  <h3 class="panel-sub">Sensor</h3>
 
   <div class="row">
     <label>Flip direction
@@ -826,11 +855,10 @@ function notice(title, body, ms){
 /* ============================================================
    1. AUDIO ENGINE
    ------------------------------------------------------------
-   Three voices. One sounds at a time; setVoice() crossfades.
-
-     tide        deep water: drone, air, a bell as you begin to let go
-     shore       a wave: surf gathers, breaks at the top, drains
-     harmonium   a reed drone box, bellows worked by your belly
+   One voice: a shoreline. Surf gathers as you draw in, breaks at the
+   top, and drains through the exhale. There were three; the other two
+   were dropped rather than kept as also-rans, and the eight controls
+   in Adjust are the depth that replaced the breadth.
 
    Direction is the whole point of this rewrite. The old engine only
    ever saw |velocity|, so filling and emptying sounded identical.
@@ -844,13 +872,11 @@ function notice(title, body, ms){
      turnarounds  a one-shot at the top and a deliberately unlike one
                   at the bottom, so the two ends never blur together
 
-   The exhale is the half the app is trying to lengthen, so in all
-   three voices it is the wider, warmer, more rewarding of the two.
+   The exhale is the half the app is trying to lengthen, so it is the
+   wider, warmer, more rewarding of the two.
 
    Shared and built once: two looping noise buffers, one convolution
-   room, one limiter. 24 oscillators and 3 buffer sources run for the
-   whole session; a silent voice keeps playing into a gain of 0, which
-   is what makes a crossfade free of both clicks and dropouts.
+   room, one limiter.
    ============================================================ */
 
 /** finite-or-fallback. Nothing from the tracker reaches an AudioParam without
@@ -861,12 +887,10 @@ const fin = (x,d) => (typeof x === 'number' && x-x === 0) ? x : d;
 const Audio = {
   ctx:null, ready:false, vol:0.55,
 
-  voiceId:'shore',
-  voices:[
-    {id:'tide',      name:'Tide',      blurb:'deep water, a bell as you let go'},
-    {id:'shore',     name:'Shore',     blurb:'a wave gathers, breaks and drains'},
-    {id:'harmonium', name:'Harmonium', blurb:'a reed box your belly works'}
-  ],
+  // User-facing sound controls, 0..1 unless noted. The layer gains run to 1.5
+  // so a layer can be pushed past its designed level, which is the point of
+  // having the control at all.
+  mix:{ swell:1, brk:1, foam:1, spray:1, under:1, tone:1, bright:0.5, space:0.5 },
 
   v:null,                       // built voices, keyed by id
   m:null,                       // the per-frame bundle, allocated once
@@ -939,17 +963,11 @@ const Audio = {
     const kit = {ctx, t, G, F, P, O, pink, surf, dc,
                  pinkBuf:this.pinkBuf, surfBuf:this.surfBuf};
 
-    this.v = {
-      tide:      this.buildTide(kit),
-      shore:     this.buildShore(kit),
-      harmonium: this.buildHarmonium(kit)
-    };
-    for(const id in this.v){
-      const V = this.v[id];
-      V.out.connect(dry);
-      V.out.connect(V.send); V.send.connect(conv);
-      V.out.gain.value = (id === this.voiceId) ? V.trim : 0;
-    }
+    this.voice = this.buildShore(kit);
+    this.voice.out.connect(dry);
+    this.voice.out.connect(this.voice.send);
+    this.voice.send.connect(conv);
+    this.voice.out.gain.value = this.voice.trim;
 
     // Built once: frame() runs 60 times a second for as long as the session
     // lasts, and allocating a bundle plus four closures each time is the one
@@ -1053,110 +1071,13 @@ const Audio = {
      same peak. Nothing here has been heard yet, so these are all 1.0 — this is
      the one number to move per voice after a listening test, and moving it
      changes nothing else. */
-  buildTide(k){
-    const {ctx,G,F,P,O,pink,surf} = k;
-    const out=G(0), send=G(0.30), trim=1.0;
-    let lastRich=0;
-
-    // Drone: A2 with the octave below, a just fifth and the octave above. The
-    // stack is deliberately harmonic-rich above the fundamental so the
-    // low-pass has something to take away — the cutoff carries the direction,
-    // and a pure sine gives it nothing to work on.
-    const cut  = F('lowpass', 300, 0.9);
-    const dGain= G(0.20);
-    cut.connect(dGain); dGain.connect(out);
-    O(55,  'sine',     0.38, cut);
-    O(110, 'sine',     0.46, cut);
-    const fifth = O(165, 'sine', 0.20, cut);
-    O(220, 'triangle', 0.08, cut);
-    // 0.055 Hz is slower than any breath, so the drift never reads as a pulse
-    O(0.055,'sine',5,fifth.o.detune);                      // +/- 5 cents
-
-    // Inhale air: narrow, centred, rising. Silent on the exhale.
-    const inF=F('bandpass',700,1.6), inG_=G(0), inPan=P(0);
-    pink.connect(inF); inF.connect(inG_); inG_.connect(inPan); inPan.connect(out);
-
-    // Exhale air: wide, falling, resonant. Fed from the stereo noise with no
-    // panner, so it opens across the whole field exactly where the inhale
-    // narrowed to a point. Width is the cue; level is only the carrier.
-    const outF=F('lowpass',900,0.7), outG_=G(0);
-    surf.connect(outF); outF.connect(outG_); outG_.connect(out);
-
-    // Pad: Asus2, the reward layer. Arrives as you fill, blooms as you let go.
-    const padF=F('lowpass',900,0.6), padG=G(0);
-    padF.connect(padG); padG.connect(out);
-    [[220,0.26,-4],[246.94,0.16,3],[329.63,0.20,-2],[440,0.10,5]]
-      .forEach(a => O(a[0],'sine',a[1],padF,a[2]));
-
-    return {
-      out, send, trim,
-      frame(m){
-        lastRich = m.rich;
-        // Brightness carries position and direction together, so the two halves
-        // trace different curves through the same range instead of retracing
-        // one. At mid-belly the inhale sits about 1.4 octaves above the exhale,
-        // which is the single loudest statement of direction in this voice.
-        const bri = clamp(0.10 + 0.60*m.lvl + 0.30*m.inG + 0.14*m.up, 0, 1);
-        m.stF(cut.frequency, 150*Math.pow(2, 4.2*bri*(0.55+0.45*m.rich)), 0.11);
-        m.stG(dGain.gain,    0.185 + 0.055*m.lvl, 0.30);
-
-        m.stF(inF.frequency, 420*Math.pow(2, 2.6*m.lvl), 0.09);
-        // the effortful half recedes as the room warms: at rich = 1 the drawn
-        // breath is 40% quieter than it was at the start of the session
-        m.stG(inG_.gain,     0.105*m.up*m.inG*(0.6+0.4*(1-m.rich)), 0.09);
-
-        m.stF(outF.frequency, 1500*Math.pow(2, -2.3*(1-m.lvl)), 0.12);
-        m.stQ(outF.Q,         0.6 + 1.0*m.rich, 0.40);       // a soft vowel, not a whistle
-        m.stG(outG_.gain,     0.100*m.dn*m.outG*(0.7+0.3*m.rich), 0.10);
-
-        m.stG(padG.gain,      0.115*m.rich*(0.22+0.78*m.lvl)*(0.72+0.52*m.outG), 0.22);
-        m.stF(padF.frequency, 620*Math.pow(2, 1.9*(0.35+0.65*m.rich)*(0.40+0.60*m.outG)), 0.30);
-        m.stG(send.gain,      0.28+0.30*m.rich, 0.50);
-      },
-
-      /** top of the inhale: the release. A low bell that sags 18 cents over its
-          first second and a half, which is what makes it read as a sigh rather
-          than a chime. Peak into the bus is 0.116 — a cue, not a downbeat. */
-      top(s){
-        const t0=ctx.currentTime, tail=3.6+2.4*lastRich;
-        const g=G(0.0001); g.connect(out);
-        g.gain.setValueAtTime(0.0001, t0);
-        g.gain.linearRampToValueAtTime(0.075*s, t0+0.035);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0+tail);
-        [[146.83,1],[220.0,0.22],[293.66,0.26],[440.0,0.07]].forEach(a=>{
-          const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=a[0];
-          o.detune.setValueAtTime(0,t0);
-          o.detune.linearRampToValueAtTime(-18,t0+1.6);
-          const og=G(a[1]); o.connect(og); og.connect(g);
-          o.start(t0); o.stop(t0+tail+0.2);
-        });
-      },
-
-      /** bottom of the exhale: short, high, breathy. Deliberately nothing like
-          the bell — two unlike sounds at the two turnarounds is the clearest
-          statement of direction available. */
-      bottom(s){
-        const t0=ctx.currentTime;
-        const src=ctx.createBufferSource(); src.buffer=k.pinkBuf;
-        const bp=F('bandpass',700,2.4), g=G(0);
-        src.connect(bp); bp.connect(g); g.connect(out);
-        bp.frequency.setValueAtTime(700,t0);
-        bp.frequency.exponentialRampToValueAtTime(2100,t0+0.55);
-        g.gain.setValueAtTime(0,t0);
-        g.gain.linearRampToValueAtTime(0.075*s,t0+0.09);
-        g.gain.linearRampToValueAtTime(0,t0+0.70);
-        src.start(t0, Math.random()*4); src.stop(t0+0.75);
-      }
-    };
-  },
-
-  /* ============================================================
-     VOICE: shore — a wave, told literally
-     ============================================================ */
   buildShore(k){
     const {ctx,G,F,P,O,surf} = k;
     const out=G(0), send=G(0.45), trim=1.0;
     let lastRich=0;
+    // The one-shots fire outside frame(), so they read the live mix directly
+    // rather than the per-frame bundle.
+    const mix = this.mix;
 
     // Swell: the body of the wave. A resonant low-pass on brown noise tightens
     // as you draw in, which is what makes it gather rather than merely get
@@ -1194,33 +1115,43 @@ const Audio = {
       out, send, trim,
       frame(m){
         lastRich = m.rich;
+        const X = m.mix;
+        // Brightness shifts every filter corner together, up or down about an
+        // octave, so the whole voice moves rather than one layer detaching.
+        const br = Math.pow(2, (X.bright - 0.5)*2.0);
+
         // 170 Hz to 1.6 kHz. The swell is the loudest thing at the top of the
         // inhale and drops by nearly half the moment you turn.
-        m.stF(swF.frequency, 170*Math.pow(2, 3.2*m.lvl), 0.10);
+        m.stF(swF.frequency, br*170*Math.pow(2, 3.2*m.lvl), 0.10);
         m.stQ(swF.Q,         2.0 + 3.0*m.up*m.inG, 0.20);
         // the resonance is worth up to ~10 dB at the corner, so take it back
         // out of the level or the wave stabs every time it gathers
-        m.stG(swG.gain, 0.167*(0.15+0.85*m.lvl)*(0.55+0.45*m.inG)/(1+0.55*m.up*m.inG), 0.12);
+        m.stG(swG.gain, X.swell*0.167*(0.15+0.85*m.lvl)*(0.55+0.45*m.inG)/(1+0.55*m.up*m.inG), 0.12);
 
-        m.stF(foF.frequency, 900*Math.pow(2, 2.32*m.lvl), 0.13);
-        m.stG(foG.gain,      0.123*m.dn*m.outG*(0.65+0.35*m.rich), 0.10);
+        m.stF(foF.frequency, br*900*Math.pow(2, 2.32*m.lvl), 0.13);
+        m.stG(foG.gain,      X.foam*0.123*m.dn*m.outG*(0.65+0.35*m.rich), 0.10);
 
-        m.stF(spF.frequency, 1400*Math.pow(2, 1.6*m.lvl), 0.15);
-        m.stG(spG.gain,      0.065*m.dn*m.outG, 0.14);
+        m.stF(spF.frequency, br*1400*Math.pow(2, 1.6*m.lvl), 0.15);
+        m.stG(spG.gain,      X.spray*0.065*m.dn*m.outG, 0.14);
 
-        m.stF(unF.frequency, 60 + 70*(1-m.lvl), 0.30);
-        m.stG(unG.gain,      0.130*m.outG*(0.30+0.70*(1-m.lvl)), 0.20);
+        // The undertow is the floor of the sound, so brightness moves it much
+        // less than the layers above it — otherwise turning down the brightness
+        // takes the bottom out too and the whole thing gets thinner, not darker.
+        m.stF(unF.frequency, (60 + 70*(1-m.lvl))*Math.pow(br, 0.35), 0.30);
+        m.stG(unG.gain,      X.under*0.130*m.outG*(0.30+0.70*(1-m.lvl)), 0.20);
 
-        m.stG(subG.gain,     0.058*(0.25+0.75*m.rich)*(0.35+0.65*m.outG), 0.35);
-        m.stG(waG.gain,      0.030*m.rich*m.rich*(0.40+0.60*m.outG), 0.45);
-        m.stF(waF.frequency, 500*Math.pow(2, 1.4*m.rich), 0.50);
-        m.stG(send.gain,     0.34+0.26*m.rich, 0.50);
+        m.stG(subG.gain,     X.tone*0.058*(0.25+0.75*m.rich)*(0.35+0.65*m.outG), 0.35);
+        m.stG(waG.gain,      X.tone*0.030*m.rich*m.rich*(0.40+0.60*m.outG), 0.45);
+        m.stF(waF.frequency, br*500*Math.pow(2, 1.4*m.rich), 0.50);
+        m.stG(send.gain,     (0.34+0.26*m.rich)*(0.35+1.30*X.space), 0.50);
       },
 
       /** top of the inhale: the break. The loudest event in the app, and the
           only one allowed to be — a wave that gathers and then does not break
           is a worse cue than no wave at all. Tail lengthens with rich. */
       top(s){
+        s *= mix.brk;
+        if(s <= 0.02) return;
         const t0=ctx.currentTime, dec=1.9+1.6*lastRich;
         const src=ctx.createBufferSource(); src.buffer=k.surfBuf;
         const bp=F('bandpass',2600,0.8), bg=G(0);
@@ -1244,6 +1175,8 @@ const Audio = {
       /** bottom of the exhale: the draw. Slow attack, rising band, low and
           soft — the opposite envelope to the break, which is the point. */
       bottom(s){
+        s *= mix.brk;
+        if(s <= 0.02) return;
         const t0=ctx.currentTime;
         const src=ctx.createBufferSource(); src.buffer=k.surfBuf;
         const bp=F('bandpass',240,1.0), g=G(0);
@@ -1261,122 +1194,12 @@ const Audio = {
   /* ============================================================
      VOICE: harmonium — a reed drone box worked by the belly
      ============================================================ */
-  buildHarmonium(k){
-    const {ctx,G,F,O,pink,dc} = k;
-    const out=G(0), send=G(0.26), trim=1.0;
-    let lastRich=0;
-
-    // reeds -> nasal peak -> low-pass -> level -> tremolo -> out
-    const trem  = G(1);              trem.connect(out);
-    const rGain = G(0.10);           rGain.connect(trem);
-    const rCut  = F('lowpass',700,0.9); rCut.connect(rGain);
-    // Real reeds ring around a kilohertz. This one peaking section is most of
-    // why the stack reads as a harmonium rather than an organ.
-    const rPeak = F('peaking',1100,1.2); rPeak.gain.value=5; rPeak.connect(rCut);
-
-    // Sa at A2, with the octave below, a just fifth (3:2) and the octave above.
-    // The twins sit 9 and -7 cents off, beating at 0.57 and 0.67 Hz — about
-    // what a well-kept box does, and slow enough never to read as vibrato.
-    const reeds=[
-      O(55,    'sine',     0.22, rPeak),
-      O(110,   'sawtooth', 0.22, rPeak),
-      O(110,   'sawtooth', 0.18, rPeak, 9),
-      O(164.81,'sawtooth', 0.15, rPeak),
-      O(164.81,'sawtooth', 0.12, rPeak, -7),
-      O(220,   'triangle', 0.11, rPeak)
-    ];
-
-    // The upper reed sits behind two gains on purpose. upRide belongs to
-    // frame(), upHit belongs to top(): one node, one owner, so a scheduled
-    // envelope and the render loop can never fight over the same parameter.
-    const upHit  = G(0.25); upHit.connect(rPeak);
-    const upRide = G(0.06); upRide.connect(upHit);
-    reeds.push(O(329.63,'triangle',0.42,upRide));
-
-    // Bellows pressure. Reeds go sharp when you lean on them; -9 to +10 cents
-    // is small enough to stay musical and wide enough that the beat rates
-    // audibly tighten as you fill. One automated gain moves the whole stack.
-    const press=G(0); dc.connect(press);
-    reeds.forEach(r => press.connect(r.o.detune));
-
-    // 4.6 Hz is the flutter of a reed under moving air, far clear of the
-    // breath band (0.08-0.33 Hz) so it can never be mistaken for the pace.
-    const tDepth=G(0.012);
-    O(4.6,'sine',1,tDepth);
-    tDepth.connect(trem.gain);
-
-    // Bellows air under the reed. Barely there, but it is the difference
-    // between an instrument and an oscillator bank.
-    const bF=F('lowpass',400,0.8), bG=G(0);
-    pink.connect(bF); bF.connect(bG); bG.connect(out);
-
-    /** short filtered-noise event; the mechanical half of this voice */
-    const burst=(t0,hz,q,peak,atk,dec,sweepTo,sweepSec)=>{
-      const src=ctx.createBufferSource(); src.buffer=k.pinkBuf;
-      const bp=F('bandpass',hz,q), g=G(0);
-      src.connect(bp); bp.connect(g); g.connect(out);
-      if(sweepTo){
-        bp.frequency.setValueAtTime(hz,t0);
-        bp.frequency.exponentialRampToValueAtTime(sweepTo,t0+sweepSec);
-      }
-      g.gain.setValueAtTime(0,t0);
-      g.gain.linearRampToValueAtTime(peak,t0+atk);
-      g.gain.linearRampToValueAtTime(0,t0+atk+dec);
-      src.start(t0, Math.random()*4); src.stop(t0+atk+dec+0.05);
-    };
-
-    return {
-      out, send, trim,
-      frame(m){
-        lastRich = m.rich;
-        const p   = clamp(0.12 + 0.88*m.lvl, 0, 1);          // bellows pressure
-        const bri = clamp(0.12 + 0.58*m.lvl + 0.26*m.inG + 0.12*m.up, 0, 1);
-        m.stF(rCut.frequency, 260*Math.pow(2, 3.6*bri*(0.55+0.45*m.rich)), 0.12);
-        // Never silent: a harmonium drone does not stop between breaths, it
-        // only leans. 0.085 is the floor you still clearly hear under the room.
-        m.stG(rGain.gain,  0.085 + 0.155*p*(0.75+0.25*m.rich), 0.16);
-        m.stC(press.gain,  -9 + 19*p, 0.25);
-        m.stG(tDepth.gain, 0.012 + 0.030*p, 0.30);
-        m.stG(upRide.gain, 0.06 + 0.16*m.rich*(0.40+0.60*m.outG), 0.35);
-        m.stF(bF.frequency, 180*Math.pow(2, 2.2*m.lvl), 0.14);
-        m.stG(bG.gain,      0.070*(0.25+0.75*m.spd)*(0.55+0.45*m.inG), 0.10);
-        m.stG(send.gain,    0.20+0.22*m.rich, 0.50);
-      },
-
-      /** top of the inhale: the key goes down. The upper reed opens fourfold in
-          100 ms and then rides back down over the whole exhale — that decay is
-          the sigh, and it is the longest gesture in the voice. */
-      top(s){
-        const t0=ctx.currentTime;
-        try{
-          upHit.gain.cancelScheduledValues(t0);
-          upHit.gain.setValueAtTime(clamp(fin(upHit.gain.value,0.25),0.05,1), t0);
-          upHit.gain.linearRampToValueAtTime(0.25+0.75*s, t0+0.10);
-          // 0.9 s constant: down again by the end of any exhale the app accepts
-          upHit.gain.setTargetAtTime(0.25, t0+0.12, 0.9);
-        }catch(e){}
-        burst(t0, 150, 3.5, 0.075*s, 0.012, 0.30);           // wooden action thunk
-      },
-
-      /** bottom of the exhale: the bellows drawn open. Wood and leather, higher
-          and rougher than the key thunk, so the two ends never blur. */
-      bottom(s){
-        const t0=ctx.currentTime;
-        burst(t0,      230, 6.0, 0.080*s, 0.10, 0.42, 340, 0.45);
-        burst(t0+0.05, 620, 9.0, 0.030*s, 0.06, 0.26);
-      }
-    };
-  },
-
-  /* ============================================================
-     per-frame update
-     ============================================================ */
   /**
    * @param f {level, vel, speed, inhaling, resting, rich, bpm, dt}
    *          level 0..1 (1 = fullest inhale), vel -1..1 (positive inhaling).
    */
   frame(f){
-    if(!this.ready || !this.v || !this.m) return;
+    if(!this.ready || !this.voice || !this.m) return;
     const t = this.ctx.currentTime;
     if(!f) f = {};
 
@@ -1421,14 +1244,8 @@ const Audio = {
     m.t=t; m.dt=dt; m.lvl=lvl; m.vel=vel; m.up=up; m.dn=dn; m.spd=spd;
     m.rich=rich; m.inG=inG; m.outG=outG; m.bpm=bpm;
 
-    const cur = this.v[this.voiceId];
-    if(cur) cur.frame(m);
-    // While a crossfade is in flight the outgoing voice is still audible, so it
-    // keeps being driven; otherwise it would freeze mid-breath as it faded.
-    if(this.fadeFrom){
-      if(t < this.fadeUntil){ const p=this.v[this.fadeFrom]; if(p) p.frame(m); }
-      else this.fadeFrom = null;
-    }
+    m.mix = this.mix;
+    if(this.voice) this.voice.frame(m);
 
   },
 
@@ -1446,33 +1263,16 @@ const Audio = {
   },
 
   dispatch(which, strength){
-    if(!this.ready || !this.v) return;
+    if(!this.ready || !this.voice) return;
     const s = clamp(fin(strength, 0.5), 0, 1);
     if(s <= 0.02) return;
-    const cur = this.v[this.voiceId];
-    if(cur && cur[which]) cur[which](s);
-    // mid-crossfade the outgoing voice is still audible; let it finish the
-    // breath rather than dropping its markers halfway through a cycle
-    if(this.fadeFrom && this.ctx.currentTime < this.fadeUntil){
-      const p = this.v[this.fadeFrom];
-      if(p && p[which]) p[which](s);
-    }
+    if(this.voice[which]) this.voice[which](s);
   },
 
-  /** Safe before start() — then it only records the choice — and safe while
-      running, where it crossfades over 1.5 s. */
-  setVoice(id){
-    let known=false;
-    for(let i=0;i<this.voices.length;i++) if(this.voices[i].id===id) known=true;
-    if(!known) return;
-    const prev = this.voiceId;
-    this.voiceId = id;
-    if(!this.ready || !this.v || prev === id) return;
-    const secs = 1.5;                 // long enough to read as a change of scene,
-    this.xfade(this.v[prev].out.gain, 0, secs);   // short enough not to feel broken
-    this.xfade(this.v[id].out.gain, this.v[id].trim, secs);
-    this.fadeFrom  = prev;
-    this.fadeUntil = this.ctx.currentTime + secs + 0.15;
+  /** 0..1 from a slider; bright and space run 0..1, the layers 0..1.5. */
+  setMix(key, v){
+    if(!(key in this.mix)) return;
+    this.mix[key] = clamp(fin(v, 1), 0, 1.5);
   },
 
   /** Equal-power ramp. Two voices are uncorrelated, so a pair of linear ramps
@@ -1528,7 +1328,7 @@ const Audio = {
     const f = clamp(fin(fadeSec, 1.4), 0.2, 12);
     this.fade(0, f);
     const ctx=this.ctx;
-    this.ready=false; this.v=null; this.m=null; this.fadeFrom=null;
+    this.ready=false; this.voice=null; this.m=null;
     setTimeout(()=>{ try{ ctx.close(); }catch(e){} }, f*1000 + 300);
     this.ctx=null;
   }
@@ -1565,7 +1365,11 @@ const Breath = {
   covSeen:0, lastTrack:0,
   axisAmp:0,            // RMS of the projection, in m/s^2 — a physical quantity
   signSet:false, lostFor:0,
-  periods:[], conf:0,   // recent cycle lengths, and how much this looks like breathing
+  periods:[], conf:0, follow:0,
+  // follow  — there is movement of a plausible size, so the sound should track
+  //           it. Available within seconds, because the sound cannot wait.
+  // conf    — it is also rhythmic, so a rate is worth reporting. Needs a few
+  //           cycles, and is what stops a waved phone being counted as breaths.
   // 0..1, user-facing. Low: only clear, deep, steady breathing gets through.
   // High: follow almost anything. The right value depends on the person and
   // where the phone sits, and is not something to guess from two recordings.
@@ -1835,11 +1639,19 @@ const Breath = {
     // 0.007. Where to put the line between them depends on the body and where
     // the phone sits, so sensitivity moves it rather than a constant deciding.
     const floor = lerp(0.030, 0.004, this.sensitivity);
-    const size = clamp((this.axisAmp - floor)/(floor*1.9), 0, 1);
+    const small = clamp((this.axisAmp - floor)/(floor*1.9), 0, 1);
+    // ...and an upper bound, which the bogus recording is the reason for: being
+    // picked up and waved put 6.4 m/s^2 on the axis. A belly does not do that,
+    // so past about 1.2 this is a phone being handled, not a breath.
+    const big = clamp((2.6 - this.axisAmp)/1.4, 0, 1);
+    const size = small*big;
 
-    // rhythm: how alike are consecutive breaths? Needs three periods before it
-    // says anything, and 1.25x apart still counts as steady breathing.
-    let rhythm = 0;
+    // rhythm: how alike are consecutive breaths? Until three periods exist
+    // there is no evidence either way, so this caps at 0.30 rather than
+    // assuming the best — that cap is what keeps a waved phone below the bar
+    // for reporting a rate during the seconds before its erratic periods
+    // accumulate. The sound does not wait for this; `follow` does not use it.
+    let rhythm = 0.30;
     const P = this.periods;
     if(P.length >= 3){
       const tol = lerp(1.45, 2.70, this.sensitivity);
@@ -1854,10 +1666,14 @@ const Breath = {
     // stillness: a phone being carried or waved is not reporting a breath.
     const calm = clamp((1.1 - this.motionRms)/0.7, 0, 1);
 
-    const want = size * rhythm * calm;
-    // Rises over a couple of breaths and falls faster, so the sound does not
-    // keep following a signal that has already stopped making sense.
-    this.conf = lp(this.conf, want, dt, want > this.conf ? 4.0 : 2.0);
+    // The sound only needs to know there is real movement to follow, and it
+    // needs to know it in seconds rather than in breaths.
+    const wantFollow = size * calm;
+    this.follow = lp(this.follow, wantFollow, dt, wantFollow > this.follow ? 3.0 : 1.5);
+
+    // Reporting a rate is a stronger claim and waits for the rhythm to back it.
+    const want = wantFollow * rhythm;
+    this.conf = lp(this.conf, want, dt, want > this.conf ? 6.0 : 2.0);
 
     if(this.conf > 0.5) this.resolveSign();
     // If it has been lost for a long time the user has probably moved, so let
@@ -2054,417 +1870,7 @@ const Pulse = {
 };
 
 /* ============================================================
-   4. SPEECH
-   ------------------------------------------------------------
-   The phone is on the user's belly, so the screen cannot be read
-   without a movement that ruins the signal. Anything the app has
-   to tell them has to arrive as sound.
-
-   window.speechSynthesis only. It renders on the device, so the
-   "motion never leaves the phone" claim stays literally true —
-   no fetched audio, no service, no samples.
-
-   Budget: stages and errors. Nothing is spoken between the start
-   of the breathing and the end of the session except a pace step,
-   signal loss and recovery, and errors.
-
-   iOS makes four things hard; all four are handled here.
-     - the voice list is empty until it loads, and voiceschanged
-       is unreliable                            -> _collect() + polling
-     - speech only starts from a user gesture   -> prime()
-     - 'end' often never fires, and Safari never fires it for a
-       cancelled utterance                      -> the watch in _pump()
-     - speech and Web Audio share the system audio session, so the
-       context can come back suspended          -> _restoreAudio()
-
-   The 'end' problem is the dangerous one. onStart ducks the
-   instrument and onEnd brings it back, so a missing 'end' would
-   leave the session quiet for the rest of the sitting. Every path
-   out of a spoken line runs through _settle(), and _settle() is
-   the only place onEnd is called.
-   ============================================================ */
-
-/* Engines read "5.5" as "five point five", which lands as a measurement
-   rather than a pace. These are the only values the target selector
-   offers, plus the range a measured rate realistically starts in. */
-const SPOKEN_NUM = {
-  '5':'five', '5.5':'five and a half', '6':'six', '6.5':'six and a half',
-  '7':'seven', '7.5':'seven and a half', '8':'eight', '8.5':'eight and a half',
-  '9':'nine', '10':'ten', '11':'eleven', '12':'twelve', '13':'thirteen',
-  '14':'fourteen', '15':'fifteen', '16':'sixteen', '17':'seventeen', '18':'eighteen'
-};
-
-/* macOS ships joke voices in the same list as the real ones. A voice called
-   Bubbles reading "close your eyes" is not the instrument we are building, so
-   they are kept out of the picker. Delete this to get them back. */
-const NOVELTY = /^(albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|jester|junior|kathy|organ|superstar|trinoids|whisper|wobble|zarvox)\b/i;
-
-const Speech = {
-
-  /* ---------- state the app reads ---------- */
-  available : false,   // set by init(); false when the API is missing entirely
-  enabled   : true,    // Adjust > Spoken guidance
-  primed    : false,   // true once an utterance has been dispatched from a tap
-  rate      : 0.86,    // slower than conversation, short of sluggish
-  voiceName : '',      // '' = let the system choose an English voice
-
-  /* ---------- hooks the app wires (see NOTES.md) ---------- */
-  onStart : null,      // ({key})          -> Audio.duck(...)
-  onEnd   : null,      // ({key, reason})  -> Audio.unduck(...)
-  onVoices: null,      // ()               -> repopulate the picker
-  quiet   : false,     // true while the user is breathing; say() drops lines, sayNow() does not
-  onUnavailable: null, // (reason)         -> notice(...), reason 'unsupported' | 'silent'
-  gate    : null,      // () => bool; false holds an at-rest line back
-  audio   : null,      // the Audio object, so the context can be checked after speech
-
-  /* ---------- copy ----------
-     Sentence case, second person, no exclamation marks. Errors say what went
-     wrong and what to do. Nothing here describes what the body will do.
-     Every line is short on purpose: some builds truncate long utterances, and
-     a long line spoken over a slow breath is worse than no line at all. */
-  lines: {
-    begin          : 'Lie back with the phone on your belly, and breathe as you normally would.',
-    calibrateFailed: 'The phone did not pick up your breathing. Move it lower on your belly.',
-    running        : 'Close your eyes. The sound follows your breathing.',
-    ending         : 'Session complete.',
-    recalibrate    : 'Learning your movement again. Breathe as you normally would.',
-
-    errDenied      : 'Motion access was declined. Reload the page to be asked again.',
-    errUnsupported : 'This device has no motion sensor. Demo mode under adjust still works.',
-    errNotAllowed  : 'Safari did not read that as a direct tap. Reload, then tap begin first.',
-    errSensorSilent: 'Motion is allowed, but nothing is arriving. Lock and unlock the screen.',
-    errNoAudio     : 'The browser blocked the sound. Reload the page and tap begin again.',
-    errInsecure    : 'This page is not secure, so the sensor stays off. Try a secure address.',
-    // never spoken — this is the line the app shows on screen when speech itself
-    // is what failed. It lives here so the copy has one home.
-    errNoSpeech    : 'Spoken guidance did not start. Check the ringer switch, or turn guidance off under Adjust.'
-  },
-
-  /* ---------- internals ---------- */
-  _q:[], _active:null, _ducked:false, _lastKey:'',
-  _voices:[], _sig:'', _bound:false, _watch:null, _hold:null,
-  _primeU:null, _spokeEver:false, _told:'',
-
-  _now(){
-    return (typeof performance !== 'undefined' && performance.now
-      ? performance.now() : Date.now()) / 1000;
-  },
-
-  _syn(){
-    return (typeof window !== 'undefined' && window.speechSynthesis) || null;
-  },
-
-  /* ---------- setup ---------- */
-
-  /** Feature-detect and start the voice list loading. Safe to call repeatedly. */
-  init(){
-    const ss = this._syn();
-    const U  = (typeof window !== 'undefined') && window.SpeechSynthesisUtterance;
-    this.available = !!(ss && typeof ss.speak === 'function' && typeof U === 'function');
-    if(!this.available){ this._tell('unsupported'); return false; }
-
-    this._collect();
-    if(this._bound) return true;
-    this._bound = true;
-
-    const onchg = () => this._collect();
-    // Safari has no addEventListener on speechSynthesis, so the property handler
-    // is the only portable way to hear about the list; register both.
-    try{ if(typeof ss.addEventListener === 'function') ss.addEventListener('voiceschanged', onchg); }catch(e){}
-    try{ ss.onvoiceschanged = onchg; }catch(e){}
-    // voiceschanged does not fire on every build. The list normally appears
-    // within a few hundred milliseconds, so give up polling after 3 s.
-    [120, 350, 800, 1600, 3000].forEach(ms => setTimeout(onchg, ms));
-    return true;
-  },
-
-  _collect(){
-    const ss = this._syn();
-    if(!ss) return;
-    let list = [];
-    try{ list = ss.getVoices() || []; }catch(e){ list = []; }
-    if(!list.length) return;                     // empty means "not loaded yet"
-    let sig = '';
-    for(let i=0;i<list.length;i++) sig += (list[i] && list[i].name) + '|';
-    if(sig === this._sig) return;
-    this._sig = sig;
-    this._voices = list;
-    if(this.onVoices){ try{ this.onVoices(); }catch(e){} }
-  },
-
-  /**
-   * MUST be called synchronously from inside a tap handler, and MUST NOT be
-   * awaited. iOS only lets speech start from a user gesture; once one utterance
-   * has been dispatched inside a gesture, the rest of the page's life is
-   * allowed. Community-reported, like primeSilentChannel() — not documented.
-   *
-   * Everything is wrapped, because a throw here would abort the rest of the tap
-   * handler, and DeviceMotionEvent.requestPermission() shares that stack.
-   */
-  prime(){
-    try{
-      if(!this.available) this.init();
-      const ss = this._syn();
-      if(!ss || !window.SpeechSynthesisUtterance) return false;
-      // A single space at zero volume: inaudible, but not empty — WebKit
-      // completes an empty utterance without speaking it, which would not
-      // lift the gesture restriction.
-      const u = new window.SpeechSynthesisUtterance(' ');
-      u.volume = 0; u.rate = 1; u.lang = 'en-US';
-      this._primeU = u;          // utterances get collected mid-flight; hold it
-      ss.speak(u);
-      this.primed = true;
-      return true;
-    }catch(e){ return false; }
-  },
-
-  /* ---------- voices ---------- */
-
-  /** English voices only: the page is lang="en" and a Spanish voice reading
-      English text is unusable. Returns [] when none are loaded yet. */
-  systemVoices(){
-    this._collect();
-    const seen = {}, out = [];
-    for(let i=0;i<this._voices.length;i++){
-      const v = this._voices[i];
-      if(!v) continue;
-      const lang = String(v.lang || '').replace('_','-');
-      if(lang.slice(0,2).toLowerCase() !== 'en') continue;
-      const name = String(v.name || '');
-      if(!name || seen[name]) continue;          // Safari repeats names
-      if(NOVELTY.test(name)) continue;
-      seen[name] = 1;
-      out.push({name:name, lang:lang, local:v.localService !== false, def:!!v.default});
-    }
-    out.sort((a,b) => (b.def?1:0)-(a.def?1:0) || a.name.localeCompare(b.name));
-    return out;
-  },
-
-  setSystemVoice(name){ this.voiceName = name || ''; },
-
-  _pick(){
-    if(!this.voiceName) return null;
-    for(let i=0;i<this._voices.length;i++){
-      const v = this._voices[i];
-      if(v && v.name === this.voiceName) return v;
-    }
-    return null;
-  },
-
-  setRate(r){
-    const n = Number(r);
-    this.rate = clamp(isFinite(n) ? n : 0.86, 0.7, 1.1);
-  },
-
-  /* ---------- copy rendering ---------- */
-
-  words(n){
-    const half = Math.round(Number(n)*2)/2;
-    return SPOKEN_NUM[String(half)] || String(half);
-  },
-
-  /** A missing variable is dropped rather than left as "{bpm}", which the
-      engine would read out brace and all. */
-  render(key, vars){
-    const t = this.lines[key];
-    if(!t) return '';
-    if(!vars) return t;
-    const self = this;
-    return t.replace(/\{(\w+)\}/g, function(m, k){
-      if(!(k in vars)) return '';
-      const raw = vars[k];
-      return (k === 'bpm' && typeof raw === 'number') ? self.words(raw) : String(raw);
-    }).replace(/\s{2,}/g, ' ').trim();
-  },
-
-  /* ---------- speaking ---------- */
-
-  /**
-   * @param key   a key of Speech.lines
-   * @param vars  optional {name: value} for {placeholders}; a numeric bpm is
-   *              spoken as a word
-   * @param opts  {atRest:true} holds the line until Speech.gate() opens, so it
-   *              lands in the pause at the bottom of an exhale rather than over
-   *              an inhale. Never held longer than opts.maxWait (default 6 s).
-   */
-  say(key, vars, opts){
-    if(!this.enabled || !this.available) return false;
-    // Once breathing starts the voice stops. Guidance is for getting set up and
-    // for things going wrong; a line spoken into a slow breath is an
-    // interruption however calm it sounds. Errors go through sayNow(), which
-    // does not check this — a failure the user cannot see must still be heard.
-    if(this.quiet) return false;
-    const text = this.render(key, vars);
-    if(!text) return false;
-    // a repeat of the line already in flight is noise; sayNow() clears _active
-    // first, so an error can still interrupt a copy of itself
-    if(this._active && this._active.key === key) return false;
-    for(let i=0;i<this._q.length;i++) if(this._q[i].key === key) return false;
-    opts = opts || {};
-    this._q.push({
-      key:key, text:text,
-      atRest: !!opts.atRest,
-      maxWait: opts.maxWait || 6,
-      at: this._now()
-    });
-    this._pump();
-    return true;
-  },
-
-  /** For errors: drop whatever is queued and say this instead. The duck is held
-      across the swap so the instrument does not bob up for a frame. */
-  sayNow(key, vars){
-    if(!this.enabled || !this.available) return false;
-    this._clear(true);
-    const ok = this.say(key, vars);
-    if(!ok) this._settle();
-    return ok;
-  },
-
-  cancel(){ this._clear(false); },
-
-  _clear(keepDuck){
-    this._q.length = 0;
-    if(this._hold){ clearTimeout(this._hold); this._hold = null; }
-    if(this._watch){ clearInterval(this._watch); this._watch = null; }
-    const a = this._active;
-    this._active = null;
-    if(a){
-      a.done = true;
-      try{ a.u.onend = a.u.onerror = a.u.onstart = null; }catch(e){}
-      const ss = this._syn();
-      // Safari does not fire 'end' for a cancelled utterance, so the duck has to
-      // be released from here rather than from the utterance.
-      try{ if(ss && (ss.speaking || ss.pending)) ss.cancel(); }catch(e){}
-    }
-    if(!keepDuck) this._settle();
-  },
-
-  /** The only place onEnd is called, and the only place the duck is released. */
-  _settle(){
-    if(this._active || this._q.length) return;
-    if(!this._ducked) return;
-    this._ducked = false;
-    const key = this._lastKey;
-    this._lastKey = '';
-    if(this.onEnd){ try{ this.onEnd({key:key}); }catch(e){} }
-    this._restoreAudio();
-  },
-
-  /** iOS routes speech through the system audio session and can hand the page
-      back a context that is no longer running. 'interrupted' is a Safari-only
-      state whose resume() rejects, so the rejection is swallowed and the app's
-      visibilitychange handler gets the next attempt. */
-  _restoreAudio(){
-    const A = this.audio;
-    if(!A || !A.ctx) return;
-    try{
-      if(A.ctx.state !== 'running'){
-        const p = A.ctx.resume();
-        if(p && p.catch) p.catch(function(){});
-      }
-    }catch(e){}
-  },
-
-  _pump(){
-    if(this._active) return;
-    if(!this.enabled){ this._q.length = 0; this._settle(); return; }
-    if(!this._q.length){ this._settle(); return; }
-
-    const ss = this._syn();
-    if(!ss){ this._q.length = 0; this._settle(); return; }
-
-    const item = this._q[0];
-
-    // hold an at-rest line until the breath is at the bottom, but not for long
-    if(item.atRest && this.gate && (this._now() - item.at) < item.maxWait){
-      let open = true;
-      try{ open = !!this.gate(); }catch(e){ open = true; }
-      if(!open){
-        if(!this._hold){
-          const self = this;
-          this._hold = setTimeout(function(){ self._hold = null; self._pump(); }, 200);
-        }
-        return;
-      }
-    }
-    this._q.shift();
-
-    if(!this._ducked){
-      this._ducked = true;
-      if(this.onStart){ try{ this.onStart({key:item.key}); }catch(e){} }
-    }
-    this._lastKey = item.key;
-
-    let u;
-    try{ u = new window.SpeechSynthesisUtterance(item.text); }
-    catch(e){ this._pump(); return; }
-
-    const v = this._pick();
-    if(v){ try{ u.voice = v; u.lang = v.lang; }catch(e){} }
-    else  { try{ u.lang = 'en-US'; }catch(e){} }
-    u.rate = this.rate; u.pitch = 1; u.volume = 1;
-
-    const self = this;
-    const rec = {u:u, key:item.key, done:false, at:this._now(), seen:false, lastSeen:0};
-    this._active = rec;
-
-    function finish(reason){
-      if(rec.done) return;
-      rec.done = true;
-      if(self._active === rec) self._active = null;
-      if(self._watch){ clearInterval(self._watch); self._watch = null; }
-      try{ u.onend = u.onerror = u.onstart = null; }catch(e){}
-      // nothing ever came out of the speaker on the first line we tried
-      if(reason === 'no-start' && !self._spokeEver) self._tell('silent');
-      self._pump();
-    }
-
-    u.onstart = function(){ rec.seen = true; self._spokeEver = true; };
-    u.onend   = function(){ finish('end'); };
-    u.onerror = function(){ finish('error'); };
-
-    // The guard. 'end' is dropped often enough on iOS that trusting it would
-    // leave the instrument ducked for the rest of the session, so the poll below
-    // decides when a line is over whatever the utterance reports. speaking flips
-    // true within about 100 ms when the engine accepts a line; 1.2 s of silence
-    // before that means it never started at all.
-    const cap = this._cap(item.text);
-
-    let spoke = false;
-    try{ ss.speak(u); spoke = true; }catch(e){}
-    if(!spoke){ finish('throw'); return; }
-
-    this._watch = setInterval(function(){
-      if(rec.done) return;
-      const age = self._now() - rec.at;
-      let sp = false;
-      try{ sp = !!(ss.speaking || ss.pending); }catch(e){ sp = false; }
-      if(sp){ rec.seen = true; rec.lastSeen = self._now(); self._spokeEver = true; }
-      if(age > cap){ finish('cap'); return; }
-      if(sp) return;
-      if(rec.seen){ if(self._now() - (rec.lastSeen || rec.at) > 0.5) finish('quiet'); }
-      else if(age > 1.2) finish('no-start');
-    }, 200);
-  },
-
-  /** Ceiling for one line. English synthesis runs near 13 characters a second
-      at rate 1; the slack covers a voice slower than that without leaving the
-      instrument ducked for long if the engine has simply stopped answering. */
-  _cap(text){
-    const secs = 0.4 + text.length / (13 * clamp(this.rate, 0.7, 1.1));
-    return clamp(secs*1.8 + 2.5, 4, 16);
-  },
-
-  _tell(reason){
-    if(this._told === reason) return;
-    this._told = reason;
-    if(this.onUnavailable){ try{ this.onUnavailable(reason); }catch(e){} }
-  }
-};
-
-/* ============================================================
-   5. RECORDER + STORE
+   4. RECORDER + STORE
    ------------------------------------------------------------
    Every session records, with no toggle, so the breath detector can
    later be tested against real breathing instead of synthetic tilt.
@@ -3365,7 +2771,7 @@ function summarise(d, events, hz){
 }
 
 /* ============================================================
-   6. REVIEW UI
+   5. REVIEW UI
    ------------------------------------------------------------
    Three screens sharing one overlay:
 
@@ -3577,8 +2983,8 @@ const Review = {
     // Facts about the recording, not about the person. A failed calibration
     // or a noisy signal changes how much the numbers above are worth, so say so.
     const flags = [];
-    if(s.calibration && s.calibration.ok === false)
-      flags.push('Calibration did not find your breathing, so the rates above are unreliable.');
+    if(rate.avg === 0)
+      flags.push('This recording never settled into a rhythm the app could read, so no rate is given.');
     else if(q > 0 && q < 0.4)
       flags.push('The signal was noisy for most of this session. The rates above are approximate.');
     if(!this.sig.n)
@@ -4334,15 +3740,14 @@ const Review = {
 };
 
 /* ============================================================
-   7. APP
+   6. APP
    ============================================================ */
 const UI = {
-  state:'idle',                       // idle | calibrating | running
+  state:'idle',                       // idle | running
   demo:false, demoPhase:0,
   wakeLock:null, silentEl:null,
-  rich:0.4, lastFrame:0, sensorSeen:false, calTimer:null,
-  voiceTimer:null, recal:false, toldSaveTrouble:false,
-  durationMin:10, runUntil:0, ending:false, badSince:0,
+  rich:0.4, lastFrame:0, sensorSeen:false, toldSaveTrouble:false,
+  badSince:0,
   trace:[], traceAcc:0,
   sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
 };
@@ -4442,7 +3847,7 @@ function requestSensor(){
 /* ---------- session control ---------- */
 /** Both promises are started inside the tap handler; begin() only awaits them. */
 async function begin(sensorP, audioP){
-  UI.ending = false; UI.badSince = 0;
+  UI.badSince = 0;
   // Adjust stays reachable while breathing — it holds the volume and the
   // recalibrate button, both of which are wanted mid-session. Only Recordings
   // goes, since opening the browser over a running session is not a thing to
@@ -4453,19 +3858,15 @@ async function begin(sensorP, audioP){
   UI.sensorPerm = sensor;
 
   if(!audioOk){
-    Speech.sayNow('errNoAudio');
     notice('No sound', 'This browser blocked audio. Reload the page and tap Begin again.', 0);
     el.main.disabled = false; return;
   }
   if(sensor === 'denied'){
-    Speech.sayNow('errDenied');
     notice('Motion declined', 'Reload the page to be asked again. If no prompt appears, clear this site\u2019s data in Safari settings — a past "Don\u2019t Allow" is remembered per site.', 0);
   }else if(sensor === 'unsupported'){
-    Speech.sayNow('errUnsupported');
     notice('No motion sensor', 'This device or browser has no motion sensor. Demo mode under Adjust will still show you how it sounds.', 0);
   }else if(sensor.indexOf('error:') === 0){
     const name = sensor.slice(6);
-    Speech.sayNow(name === 'NotAllowedError' ? 'errNotAllowed' : 'errSensorSilent');
     notice('Motion request failed', name === 'NotAllowedError'
       ? 'Safari did not treat that as a direct tap. Reload the page and tap Begin as your first action, without scrolling first.'
       : name + '. Reload and try again, or use Demo mode under Adjust.', 0);
@@ -4478,108 +3879,58 @@ async function begin(sensorP, audioP){
   // arrived, so a denied or unsupported run is left alone rather than saved empty.
   if(sensor === 'ok' || UI.demo){
     Recorder.start({app:{
-      voice:     Audio.voiceId,
       invert:    $('tglInvert').getAttribute('aria-checked') === 'true',
       demo:      UI.demo
     }}, performance.now()/1000);        // session zero, the same clock onMotion reads
   }
-  Speech.say('begin');
-
   Review.hide();
   el.intro.classList.add('hidden');
   [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.remove('hidden'));
   el.main.textContent = 'End'; el.main.classList.remove('primary'); el.main.disabled = false;
 
-  startCalibration();
+  UI.state = 'running';
+  UI.trace = [];
+  Breath.invert = $('tglInvert').getAttribute('aria-checked')==='true';
+  Breath.begin(performance.now()/1000);
+  el.statusTag.textContent = 'listening';
+  el.cue.textContent = 'Breathe';
+  el.sub.textContent = '';
+
+  Breath.onExhaleStart = (inD)=>{
+    const slow = clamp((inD-2.0)/3.0, 0, 1);
+    Audio.bell((0.35 + 0.65*slow*UI.rich) * Breath.follow);
+    // Only count it as a breath once the rhythm backs the claim. A phone being
+    // moved about produced 248 "breaths" at 26 a minute before this line.
+    if(Breath.conf > 0.45)
+      Recorder.event('breath', {inhaleSec:inD, exhaleSec:Breath.exhaleDur});
+  };
+
+  // If nothing arrives at all, say which of the two possible causes it is.
+  setTimeout(()=>{
+    if(UI.state!=='running' || UI.sensorSeen || UI.demo) return;
+    if(UI.sensorPerm === 'ok'){
+      notice('Allowed, but silent', 'Motion access was granted and no readings are arriving. Lock and unlock the screen, or reload the page. If this is inside another app, open it in Safari directly.', 0);
+    }else{
+      notice('Motion not active', 'Permission state: ' + UI.sensorPerm + '. Reload and tap Start first, or switch on Demo mode under Adjust.', 0);
+    }
+  }, 5000);
+
   UI.lastFrame = performance.now();
   requestAnimationFrame(loop);
 }
 
-function startCalibration(){
-  UI.state = 'calibrating';
-  UI.trace = [];
-  Breath.invert = $('tglInvert').getAttribute('aria-checked')==='true';
-  Breath.beginCalibration(performance.now()/1000);
-  el.statusTag.textContent = 'learning';
-  el.cue.textContent = 'Settle';
-  el.sub.textContent = 'Breathe as you normally would — 20 seconds';
-  clearTimeout(UI.calTimer);
-  UI.calTimer = setTimeout(finishCalibration, 20000);
-
-  Recorder.event('calibration-start');
-  // Recalibration happens mid-session, when say() is muted, but it asks the
-  // user to breathe normally — they have to hear it. A first calibration says
-  // nothing here: begin() already asked for exactly this, one line ago.
-  if(UI.recal){ Speech.quiet = false; Speech.say('recalibrate'); }
-  clearTimeout(UI.voiceTimer);
-
-  // if nothing arrives, say which of the two possible causes it is
-  setTimeout(()=>{
-    if(UI.state!=='calibrating' || UI.sensorSeen || UI.demo) return;
-    if(UI.sensorPerm === 'ok'){
-      Speech.sayNow('errSensorSilent');
-      notice('Allowed, but silent', 'Motion access was granted and no readings are arriving. Lock and unlock the screen, or reload the page. If this is inside another app, open it in Safari directly.', 0);
-    }else{
-      notice('Motion not active', 'Permission state: ' + UI.sensorPerm + '. Reload and tap Begin first, or switch on Demo mode under Adjust.', 0);
-    }
-  }, 5000);
-}
-
-function finishCalibration(){
-  if(UI.state!=='calibrating') return;
-  // Demo skips the PCA, but it must still leave the calibrating state: only
-  // Breath.finishCalibration() and the failure path below clear that flag, so
-  // demo used to stay in calibration forever and never detect a single breath.
-  const ok = UI.demo ? true : Breath.finishCalibration();
-  if(UI.demo) Breath.calibrating = false;
-  Recorder.event('calibration-end', {
-    ok: ok, axis: Breath.u.slice(),
-    amplitude: Breath.calAmplitude || 0, flipped: !!Breath.flipped
-  });
-  if(!ok){
-    notice('Too little movement', 'The phone did not pick up your breathing. Move it lower on your belly, lie flatter, and measure again under Adjust.', 0);
-    Breath.calibrating = false;
-  }
-  UI.state = 'running';
-  el.statusTag.textContent = 'listening';
-  // The length the user picked is breathing time. Calibration is setup, and
-  // charging it against a 1-minute session would leave 40 seconds.
-  UI.runUntil = performance.now()/1000 + UI.durationMin*60;
-
-  el.cue.textContent = 'Breathe';
-  el.sub.textContent = 'Eyes closed. Let the sound do the counting.';
-  Speech.say(ok ? 'running' : 'calibrateFailed');
-  // Everything after this line is breathing. The voice goes quiet until the
-  // session ends or something breaks.
-  Speech.quiet = true;
-  Breath.onExhaleStart = (inD)=>{
-    const slow = clamp((inD-2.0)/3.0, 0, 1);
-    Audio.bell(0.35 + 0.65*slow*UI.rich);
-    // the summary counts breaths and the in/out ratio from these events
-    Recorder.event('breath', {inhaleSec:inD, exhaleSec:Breath.exhaleDur});
-  };
-}
-
-async function end(timeUp){
+async function end(){
   UI.state='idle';
-  UI.runUntil = 0;
-  Speech.quiet = false;
-  clearTimeout(UI.calTimer); clearTimeout(UI.voiceTimer);
   window.removeEventListener('devicemotion', onMotion);
   Breath.onExhaleStart = null;
-  Speech.say('ending');
-  // A session that ran its length gets a long fade; one you ended by hand
-  // should stop close to when you meant it to.
-  await Audio.stop(timeUp ? 6.0 : 1.4);
+  await Audio.stop(2.2);
   if(UI.silentEl){ try{ UI.silentEl.pause(); }catch(e){} UI.silentEl=null; }
   if(UI.wakeLock){ try{ UI.wakeLock.release(); }catch(e){} UI.wakeLock=null; }
   [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.add('hidden'));
-  el.main.textContent='Begin'; el.main.classList.add('primary');
+  el.main.textContent='Start'; el.main.classList.add('primary');
   el.statusTag.textContent='standby';
-  UI.sensorSeen=false; UI.recal=false;
+  UI.sensorSeen=false;
 
-  // End used to drop you back on the start screen, throwing the session away.
-  // It now lands on the summary; Done is the only route back to the intro.
   let session = null;
   try{ session = await Recorder.stop(); }catch(e){}
   // Recorder.build() leaves motion and derived in columnar form with rows:[];
@@ -4628,10 +3979,12 @@ function loop(now){
     const p = 60/9;
     UI.demoPhase = (UI.demoPhase + dt/p) % 1;
     const s = Math.sin(UI.demoPhase*TAU - Math.PI/2);
-    const dx = s*0.05, dy = 0.2, dz = 9.79 + s*0.05, dt0 = now/1000;
+    // 0.45 m/s^2 on each of two axes: the amplitude real sessions actually
+    // measured. It was 0.05, which the confidence gate would now read as a
+    // phone lying on a table.
+    const dx = s*0.45, dy = 0.2, dz = 9.79 + s*0.45, dt0 = now/1000;
     Breath.push(dx, dy, dz, dt0);
     Recorder.sample(dx, dy, dz, dt0);   // or a demo session has no raw channel to replay
-    if(UI.state==='calibrating' && Breath.cal.length>200) Breath.u=[0.7,0,0.71];
   }
 
   // The sound runs from the first frame, calibration included. Waiting for the
@@ -4639,8 +3992,12 @@ function loop(now){
   // anything worked. Before finishCalibration() the projection uses the default
   // z axis, which on a phone lying face-up on a belly already carries most of
   // the movement, so it responds — just less precisely than it will in a moment.
-  const level = Breath.level();
-  const speed = Breath.speed();
+  // When there is nothing worth following, the sound settles to a neutral bed
+  // rather than chasing whatever the sensor happens to be doing. lvl goes to
+  // mid-breath, velocity to nothing.
+  const f = Breath.follow;
+  const level = 0.5 + (Breath.level() - 0.5)*f;
+  const speed = Breath.speed()*f;
 
   // reward: slower breathing opens the sound up. bpmSmooth is 0 until the
   // second breath is timed, and (14-14)/8 = 0 holds rich at its floor until
@@ -4649,17 +4006,10 @@ function loop(now){
   UI.rich = lp(UI.rich, clamp(0.28 + 0.72*slow, 0, 1), dt, 3.0);
 
   Audio.frame({
-    level, vel:Breath.vel(), speed, inhaling:Breath.rising, resting:Breath.resting,
+    level, vel:Breath.vel()*f, speed, inhaling:Breath.rising, resting:Breath.resting,
     rich:UI.rich, bpm:Breath.bpmSmooth||0, dt
   });
-  if(UI.state==='running'){
-    updateReadout();
-    // Guarded: end() is async and the loop keeps turning until it lands.
-    if(!UI.ending && UI.runUntil && now/1000 >= UI.runUntil){
-      UI.ending = true;
-      end(true);          // says the closing line itself, after clearing quiet
-    }
-  }
+  if(UI.state==='running') updateReadout();
 
   // live sample rate in the header: 0 Hz means no events are arriving at all
   UI.hzAcc += dt;
@@ -4667,7 +4017,7 @@ function loop(now){
     UI.hz = Math.round((Breath.samples - UI.lastSamples)/UI.hzAcc);
     UI.lastSamples = Breath.samples; UI.hzAcc = 0;
     el.statusTag.textContent =
-      (UI.state==='calibrating' ? 'learning' : 'listening') +
+      'listening' +
       (UI.demo ? ' \u00b7 demo' : ' \u00b7 ' + UI.hz + ' Hz');
   }
 
@@ -4678,7 +4028,8 @@ function loop(now){
     UI.trace.push([clamp(Breath.s,-1.6,1.6), 0]);
     if(UI.trace.length>620) UI.trace.shift();
     Recorder.derived({t:now/1000, s:Breath.s, level:level, phase:Breath.phase,
-                      bpm:Breath.bpmSmooth||0, quality:Breath.quality(), rich:UI.rich,
+                      bpm:(Breath.conf>0.45 ? Breath.bpmSmooth : 0)||0,
+                      quality:Breath.quality(), rich:UI.rich,
                       hr:Pulse.reading(Breath.motionRms), hrConf:Pulse.conf});
   }
 
@@ -4688,10 +4039,13 @@ function loop(now){
 }
 
 function updateReadout(){
-  const b=Breath.bpmSmooth;
+  // A dash until the rhythm supports a number. Showing a rate the app does not
+  // stand behind is how the bogus session came to claim 26 breaths a minute.
+  const sure = Breath.conf > 0.45;
+  const b = sure ? Breath.bpmSmooth : 0;
   el.vRate.innerHTML = (b?b.toFixed(1):'—') + '<small>/min</small>';
   const i=Breath.inhaleDur, o=Breath.exhaleDur;
-  el.vRatio.textContent = (i>0.4&&o>0.4) ? (i.toFixed(1)+' / '+o.toFixed(1)) : '—';
+  el.vRatio.textContent = (sure && i>0.4 && o>0.4) ? (i.toFixed(1)+' / '+o.toFixed(1)) : '—';
   if(Pulse.enabled){
     const hr = Pulse.reading(Breath.motionRms);
     // A dash is the honest reading most of the time. Holding the last number on
@@ -4713,22 +4067,20 @@ function updateReadout(){
  * and by the time they look it should still be true.
  */
 function signalHint(){
-  const q = Breath.quality();
-  const bad = q < 0.35, good = q > 0.5;      // dead band, so it cannot chatter
+  const bad = Breath.follow < 0.3, good = Breath.follow > 0.55;
   const now = performance.now()/1000;
 
   if(bad){ if(!UI.badSince) UI.badSince = now; }
   else if(good){ UI.badSince = 0; }
 
-  const show = UI.badSince && (now - UI.badSince) > 6;
-  if(!show){
+  if(!(UI.badSince && (now - UI.badSince) > 8)){
     el.qualityTxt.textContent = '';
     return;
   }
-  // Which term is dragging quality down? breathRms is how much breathing there
-  // is to read; motionRms is everything else the phone felt.
-  const weak = Breath.breathRms < 0.012;
-  el.qualityTxt.textContent = weak
+  // axisAmp is the size of the movement on the breath axis, in m/s^2. Real
+  // sessions measure 0.3-0.5; too little means the phone is not picking the
+  // breath up, too much means it is being handled rather than breathed on.
+  el.qualityTxt.textContent = Breath.axisAmp < 0.05
     ? 'move the phone lower on your belly'
     : 'lie still for a moment';
   el.qualityTxt.style.color = 'var(--sand)';
@@ -4793,7 +4145,6 @@ el.main.addEventListener('click', ()=>{
   primeSilentChannel();
   const sensorP = UI.demo ? Promise.resolve('ok') : requestSensor();
   const audioP  = Audio.start().then(()=>true, ()=>false);
-  Speech.prime();          // last, so nothing here can sit above requestPermission()
   el.main.disabled = true;
   begin(sensorP, audioP);
 });
@@ -4807,17 +4158,24 @@ $('recBtn').addEventListener('click', ()=>Review.showList());
 $('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
 $('recalBtn').addEventListener('click', ()=>{
   el.panel.classList.remove('open');
-  if(UI.state!=='idle'){ UI.recal = true; startCalibration(); }
+  if(UI.state!=='idle') Breath.begin(performance.now()/1000);
 });
 $('vol').addEventListener('input', e=>Audio.setVolume(parseInt(e.target.value,10)/100));
 
-const durSlider = $('dur'), durOut = $('durOut');
-function showDuration(){
-  UI.durationMin = clamp(parseInt(durSlider.value, 10) || 10, 1, 20);
-  durOut.textContent = UI.durationMin + ' min';
-}
-durSlider.addEventListener('input', showDuration);
-showDuration();
+// Sensitivity: where the line falls between a shallow breather and a phone on
+// a table is not something a constant can settle for every body and every
+// pocket of belly, so it is a control.
+$('sens').addEventListener('input', e=>{
+  Breath.sensitivity = clamp(parseInt(e.target.value,10)/100, 0, 1);
+});
+
+// The eight sound controls. Layer gains run past 1 on purpose: being able to
+// push a layer beyond its designed level is most of the point.
+[['mSwell','swell'],['mBreak','brk'],['mFoam','foam'],['mSpray','spray'],
+ ['mUnder','under'],['mTone','tone'],['mBright','bright'],['mSpace','space']
+].forEach(([id,key])=>{
+  $(id).addEventListener('input', e=>Audio.setMix(key, parseInt(e.target.value,10)/100));
+});
 
 function bindToggle(id, fn){
   const b=$(id);
@@ -4840,54 +4198,6 @@ window.addEventListener('resize', ()=>{ if(UI.state!=='idle'){ drawDial(Breath.l
 
 /* ---------- voice picker ---------- */
 // built from Audio.voices so the markup and the engine cannot drift apart
-const voiceSel = $('voice');
-voiceSel.innerHTML = '';
-Audio.voices.forEach(v=>{
-  const o = document.createElement('option');
-  o.value = v.id; o.textContent = v.name; o.selected = (v.id === Audio.voiceId);
-  voiceSel.appendChild(o);
-});
-const showVoiceHint = id => {
-  const v = Audio.voices.find(x=>x.id===id);
-  if(v) $('voiceHint').textContent = v.blurb;
-};
-showVoiceHint(Audio.voiceId);
-voiceSel.addEventListener('change', e=>{
-  Audio.setVoice(e.target.value);        // safe before start() and mid-session
-  showVoiceHint(e.target.value);
-});
-
-/* ---------- spoken guidance ---------- */
-// speech and Web Audio share the system audio session on iOS, so the instrument
-// is ducked deliberately rather than left to fight the synthesiser
-Speech.audio = Audio;
-Speech.onStart = ()=>Audio.duck(0.25, 0.25);
-Speech.onEnd   = info=>Audio.unduck(info && info.key==='running' ? 1.6 : 0.8);
-Speech.onUnavailable = ()=>{
-  notice('Guidance is silent', Speech.lines.errNoSpeech, 8000);
-};
-Speech.onVoices = ()=>{
-  const list = Speech.systemVoices();
-  const row = $('rowVoicePick'), sel = $('voicePick');
-  if(!list.length){ row.classList.add('hidden'); return; }
-  row.classList.remove('hidden');
-  sel.innerHTML = '<option value="">System default</option>';
-  list.forEach(v=>{
-    const o = document.createElement('option');
-    o.value = v.name; o.textContent = v.name; o.selected = (v.name === Speech.voiceName);
-    sel.appendChild(o);
-  });
-};
-Speech.init();
-bindToggle('tglVoice', on=>{
-  Speech.enabled = on;
-  if(!on) Speech.cancel();
-  $('rowVoiceRate').setAttribute('data-off', String(!on));
-  $('rowVoicePick').setAttribute('data-off', String(!on));
-});
-$('voiceRate').addEventListener('input', e=>Speech.setRate(parseInt(e.target.value,10)/100));
-$('voicePick').addEventListener('change', e=>Speech.setSystemVoice(e.target.value));
-
 /* ---------- recordings ---------- */
 function refreshStorageRow(){
   const meter = $('storeMeterFill');

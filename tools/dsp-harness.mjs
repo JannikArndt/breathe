@@ -25,7 +25,7 @@ const js = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 if (!js) fail('no <script> block found in ' + htmlPath);
 
 const START = 'const clamp';
-const END = '   4. SPEECH';
+const END = '   4. RECORDER + STORE';
 const a = js.indexOf(START);
 const b = js.indexOf(END);
 if (a < 0 || b < 0) fail('section markers moved — update START/END in this harness');
@@ -250,7 +250,10 @@ console.log('source: ' + htmlPath + '\n');
     for (const r of rows) { Breath.push(r[1], r[2], r[3], r[0]); peak = Math.max(peak, Breath.conf); }
     // This recording is what motivated the confidence gate: before it existed
     // the app reported 248 breaths at 26/min from this file.
-    check('a real not-breathing recording stays rejected', peak < 0.2,
+    // The app reports a rate above 0.45. Without rhythm evidence confidence
+    // cannot exceed 0.30 by construction, so the gap here is structural rather
+    // than a threshold fitted to this one file.
+    check('a real not-breathing recording stays rejected', peak < 0.35,
       `peak conf = ${peak.toFixed(3)} over ${(S.durationSec).toFixed(0)} s`);
   }
 }

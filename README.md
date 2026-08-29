@@ -7,6 +7,10 @@ turns it into a slow ambient sound. Breathe more slowly and the sound opens up: 
 lifts, a chord fades in, the room gets longer. It follows you; it does not lead you
 anywhere.
 
+Tap Start, lie down, breathe. There is no calibration, no session length, no voice and no
+target — it starts listening immediately and runs until you end it. End lands on a summary
+you can label and export.
+
 Single HTML file. No dependencies, no build step, no network calls. Sessions are recorded
 to the phone and go nowhere unless you export them yourself.
 

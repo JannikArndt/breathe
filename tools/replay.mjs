@@ -117,8 +117,8 @@ if (/^(breathe|tide)-sessions\//.test(String(S.format || ''))) {
   S = chosen;
 }
 
-if (!String(S.format || '').startsWith('tide-session/'))
-  die(`unexpected format ${JSON.stringify(S.format)}, want tide-session/1`);
+if (!/^(breathe|tide)-session\//.test(String(S.format || '')))
+  die(`unexpected format ${JSON.stringify(S.format)}, want breathe-session/1`);
 
 const rows = (S.motion && S.motion.rows) || [];
 if (rows.length < 60)
@@ -154,45 +154,39 @@ const rate = {
   claimedHz: (S.device && S.device.sampleHz) || null
 };
 
-/* ---------------------------------------------------------------- calibrate */
+/* ------------------------------------------------------------- axis tracking */
+// There is no calibration step to replay. The tracker finds the axis as it
+// goes, so the useful comparison is where it ends up against what the session
+// recorded, and how long it took to get there.
 const cal = S.calibration || {};
-const calStart = typeof cal.startSec === 'number' ? t0 + cal.startSec : t0;
-const calEnd = typeof cal.endSec === 'number' ? t0 + cal.endSec : t0 + 20;
-
-Breath.invert = false;                 // the toggle is reported separately, not applied twice
-Breath.beginCalibration(calStart);
-let i = 0;
-for (; i < rows.length && rows[i][0] < calEnd; i++) {
-  if (rows[i][0] < calStart) continue;
-  Breath.push(rows[i][1], rows[i][2], rows[i][3], rows[i][0]);
-}
-const calOk = Breath.finishCalibration();
-const recovered = calOk ? Breath.u.slice() : null;
 const recordedAxis = Array.isArray(cal.axis) && cal.axis.length === 3 ? cal.axis : null;
 
-let dot = null, flipped = null, angleDeg = null;
-if (recovered && recordedAxis) {
-  dot = recovered[0] * recordedAxis[0] + recovered[1] * recordedAxis[1] + recovered[2] * recordedAxis[2];
-  flipped = dot < 0;
-  angleDeg = r2(Math.acos(Math.min(1, Math.abs(dot))) * 180 / Math.PI);
+Breath.invert = false;          // the toggle is reported separately, not applied twice
+Breath.begin(rows[0][0]);
+
+// Run the first 30 s to see how quickly the axis settles.
+let i = 0, axisAt = {};
+const axisMarks = [5, 10, 20, 30];
+for (; i < rows.length; i++) {
+  const el = rows[i][0] - t0;
+  if (el > 30) break;
+  Breath.push(rows[i][1], rows[i][2], rows[i][3], rows[i][0]);
+  for (const m of axisMarks)
+    if (axisAt[m] === undefined && el >= m) axisAt[m] = Breath.u.slice();
 }
-if (!calOk && recordedAxis) {           // keep the run meaningful anyway
-  Breath.calibrating = false;
-  Breath.u = recordedAxis.slice();
-}
+const dotOf = v => (v && recordedAxis)
+  ? r4(Math.abs(v[0]*recordedAxis[0] + v[1]*recordedAxis[1] + v[2]*recordedAxis[2]))
+  : null;
 const calibration = {
-  windowSec: [r3(calStart - t0), r3(calEnd - t0)],
-  samplesUsed: i,
-  ok: calOk,
-  recoveredAxis: recovered ? recovered.map(v => r4(v)) : null,
   recordedAxis,
-  recoveredAmplitude: r4(Breath.calAmplitude || 0),
+  axisAfter: axisMarks.reduce((o,m)=>{ o[m+'s'] = dotOf(axisAt[m]); return o; }, {}),
+  amplitude: r4(Breath.axisAmp),
   recordedAmplitude: typeof cal.amplitude === 'number' ? cal.amplitude : null,
-  dot: dot === null ? null : r4(dot),
-  alignmentDeg: angleDeg,
-  signFlipped: flipped,
-  usedRecordedAxisInstead: !calOk && !!recordedAxis
+  confidence: r3(Breath.conf),
+  follow: r3(Breath.follow)
 };
+i = 0;   // and replay the whole thing from the start for the run below
+Breath.begin(rows[0][0]);
 
 /* ---------------------------------------------------------------- run */
 Breath.invert = !!app.invert;
@@ -231,8 +225,11 @@ for (; i < rows.length; i++) {
   while (t >= nextSnap) {
     track.push({
       t: r3(nextSnap - t0), s: r3(Breath.s), level: r3(Breath.level()), phase: r3(Breath.phase),
-      bpm: r2(Breath.bpmSmooth), quality: r3(Breath.quality()), rich: r3(rich),
-      restGate: r3(Breath.restGate), strokeAmp: r2(Breath.strokeAmp)
+      // the app shows a rate only above 0.45 confidence, so neither does this
+      bpm: r2(Breath.conf > 0.45 ? Breath.bpmSmooth : 0),
+      quality: r3(Breath.quality()), rich: r3(rich),
+      restGate: r3(Breath.restGate), strokeAmp: r2(Breath.strokeAmp),
+      conf: r3(Breath.conf), follow: r3(Breath.follow)
     });
     nextSnap += 1 / HZ;
   }
@@ -312,21 +309,12 @@ say(`  intervals ${rate.minDt}s .. ${rate.maxDt}s   (t is stored to 1 ms, so 60 
 say(`  ` + (rate.gaps ? `${rate.gaps} gap(s) over ${r3(gapLimit)}s, worst ${rate.worstGapSec}s` : 'no dropouts'));
 if (rate.gaps) say(`  first gaps: ` + gaps.slice(0, 5).map(g => `${g.tSec}s/${g.sec}s`).join('  '));
 
-head('calibration');
-say(`  window        ${calibration.windowSec[0]}s .. ${calibration.windowSec[1]}s   ${calibration.samplesUsed} samples`);
-say(`  replayed      ${calOk ? 'succeeded' : 'FAILED (too little movement, or under 60 samples)'}`);
-say(`  axis now      ${vec(calibration.recoveredAxis)}   amplitude ${calibration.recoveredAmplitude} m/s^2`);
-say(`  axis in file  ${vec(recordedAxis)}` +
+head('axis tracking');
+say(`  recorded axis ${vec(calibration.recordedAxis)}` +
     (calibration.recordedAmplitude !== null ? `   amplitude ${calibration.recordedAmplitude} m/s^2` : ''));
-if (dot === null) say(`  agreement     no axis recorded in the file — nothing to compare against`);
-else {
-  say(`  agreement     ${calibration.alignmentDeg}° apart, sign aside` +
-      (Math.abs(dot) > 0.97 ? '  (same axis)' : Math.abs(dot) > 0.85 ? '  (close)' : '  <-- THE AXIS MOVED'));
-  say(`  sign          ${flipped ? 'FLIPPED relative to the recording — in and out are swapped'
-                                : 'same as the recording'}`);
-}
-if (cal.flipped === true) say(`  note          the file records that the sign heuristic flipped the axis at capture`);
-if (calibration.usedRecordedAxisInstead) say(`  note          calibration failed on replay; the recorded axis was used for the rest`);
+say(`  tracked to    ` + Object.entries(calibration.axisAfter)
+      .map(([k,v]) => `${k} ${v === null ? '-' : v}`).join('   ') + `   (1.000 = same direction)`);
+say(`  after 30 s    amplitude ${calibration.amplitude} m/s^2   follow ${calibration.follow}   confidence ${calibration.confidence}`);
 
 head('detected rate');
 if (out.window.warmedFromZero)

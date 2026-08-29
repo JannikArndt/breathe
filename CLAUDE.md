@@ -55,16 +55,19 @@ section, update the harness in the same commit.
 | `1. AUDIO ENGINE` | `Audio` — three voices (`tide`, `shore`, `harmonium`), crossfading, procedural noise and impulse responses, per-frame parameter updates, ducking |
 | `2. BREATH TRACKER` | `Breath` — filtering, calibration PCA, projection, AGC, cycle detection, phase |
 | `3. PULSE` | `Pulse` — experimental heart rate from the same accelerometer |
-| `4. SPEECH` | `Speech` — Web Speech API guidance, keyed copy table, iOS priming, duck and restore, the `quiet` gate |
-| `5. RECORDER + STORE` | `Recorder` (typed-array capture) and `Store` (IndexedDB, eviction, export) |
-| `6. REVIEW UI` | `Review` — the summary End lands on, the session browser, labelling |
-| `7. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
+| `4. RECORDER + STORE` | `Recorder` (typed-array capture) and `Store` (IndexedDB, eviction, export) |
+| `5. REVIEW UI` | `Review` — the summary End lands on, the session browser, labelling |
+| `6. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
 
-Sections 4–6 sit between the DSP and APP so the harness's slice of 0–3 is unchanged.
+Sections 4–5 sit between the DSP and APP so the harness's slice of 0–3 is unchanged.
 **They must be inert at definition time** — no `document.getElementById`, `indexedDB`
 or `speechSynthesis` at the top level of the IIFE, only inside methods. The harness
-slices `const clamp` → the banner before `4. SPEECH`; renumbering means editing
+slices `const clamp` → the banner before `4. RECORDER + STORE`; renumbering means editing
 `END` in `tools/dsp-harness.mjs` in the same commit.
+
+There is no spoken guidance, no session length, and no calibration step. Start asks for
+motion access and the session begins; End stops it and lands on the summary. Do not add a
+setup phase, a countdown, or a voice — the app sonifies breathing and gets out of the way.
 
 There is no pacer. The app once led the user from their measured rate toward a target
 and rewarded them for staying phase-locked to a guide tone; that was removed because it
@@ -101,15 +104,24 @@ raw (accelerationIncludingGravity, m/s²)
   iOS is around 60 Hz. Never hardcode a sample rate — the passband must not move if the
   rate does. `dt` is clamped to 0.5 s and falls back to 1/60 on a stall.
 
-**Calibration.** 20 s, minimum 60 samples. Covariance of `d` over the window, 60 rounds of
-power iteration for the dominant eigenvector `u` (`axisFrom()`). The axis is **also
-estimated while calibration is still running** — `provisionalAxis()` re-solves at most
-twice a second once 3 s of samples exist — because `push()` used to return early and leave
-`Breath.s` at zero, so the trace was a flat line and the sound had nothing to follow for
-the whole twenty seconds. The first provisional estimate picks its sign properly; later
-ones stay consistent with it, since re-running the heuristic on a part-filled window makes
-the trace flip about. `detectCycle()` is skipped while calibrating, so breaths taken during
-setup are not counted. Sign is resolved by counting rising vs
+**Axis tracking.** There is no calibration. `trackAxis()` keeps a covariance of `d` with
+exponential forgetting (τ = 25 s) and re-solves the dominant eigenvector every 0.4 s by
+power iteration **warm-started from the axis already in use** — so it costs a handful of
+rounds and cannot jump between refreshes. Early on the forgetting factor is `max(1/n, …)`,
+which averages everything seen so far and converges in seconds rather than time constants.
+
+**The covariance is taken about the mean.** Postural drift leaves a standing offset in `d`
+— 0.6 m/s² per minute puts 0.12 through the 12 s high-pass, larger than a breath — and a
+covariance about zero locks the axis onto that offset. The drift check went from 0.00/min
+to 6.00/min when this was fixed.
+
+`√λ₁` is `axisAmp`, the size of a breath in m/s². It is the only physical quantity in the
+chain and the one that tells a belly from a table.
+
+**Sign** is resolved once, by `resolveSign()`, when confidence first passes 0.5, and then
+left alone — a sign that changes mid-session is indistinguishable from the user turning
+over. It re-arms only after 45 s of lost tracking. The *Flip direction* toggle remains the
+user-facing escape hatch. Sign is resolved by counting rising vs
 falling sample transitions and flipping when `up > down * 1.12`, on the assumption that
 relaxed breathing exhales more slowly than it inhales. The *Flip direction* toggle is the
 user-facing escape hatch — keep it.
@@ -165,7 +177,40 @@ session carries a `phase` channel that uses it, so replay and analysis still rea
 
 ---
 
-## 4a. Pulse (experimental)
+## 4a. Is it breathing at all?
+
+The app used to sonify whatever the accelerometer produced. `recordings/breathe-*-bogus.json`
+is a phone left on a table and then waved by hand, and the app reported **248 breaths at
+26/min** from it. Two numbers now come out of `scoreConfidence()`, because the two questions
+have different deadlines:
+
+| | what it asks | how fast | what it drives |
+|---|---|---|---|
+| `follow` | is there movement of a plausible size? | seconds | the sound |
+| `conf` | is it rhythmic enough to call a rate? | a few cycles | rate readout, breath count, recorded `bpm` |
+
+Three terms, each set against measurement rather than taste:
+
+- **size** — `axisAmp` between a floor and a ceiling. Real sessions measured 0.32 and
+  0.45 m/s²; a phone on a table 0.007; being waved 6.4. Both bounds matter — a belly does
+  not move the gravity vector by six.
+- **rhythm** — how alike consecutive periods are. Real sessions 1.09–1.29×, the bogus
+  recording 1.66–6.03×. **Capped at 0.30 until three periods exist**, so "no evidence yet"
+  cannot read as "confident". That cap is what keeps the gap structural: a rate is reported
+  above 0.45, and confidence without rhythm evidence cannot reach it.
+- **calm** — `motionRms`, which rejects a phone being carried.
+
+The plausible period band is **3–30 s**. It was 2–25 s, which admitted the bogus
+recording's 1.2 s "breaths"; nobody using this app breathes faster than 20/min.
+
+**Sensitivity** (a user control, 0–1) moves both the size floor and the rhythm tolerance.
+Where the line falls between a shallow breather and a still phone depends on the body and
+where the phone sits, and is not something two recordings can settle.
+
+**Do not re-tune these against the recordings in `recordings/`.** Two sessions is not a
+sample; the sensitivity control exists so the user can settle it on their own body.
+
+## 4a2. Pulse (experimental)
 
 Ballistocardiography from the same accelerometer. It is **off by default** and must stay
 that way: on a belly the beat is one to ten milli-g against a breathing tilt of 90, and it
@@ -210,12 +255,12 @@ recording predates the export fix and carries no motion rows.
   exactly as the user slowed down — the app rewarded slowness with `rich` while fading
   out its most breath-like layer. `frame()` divides by the peak the current rate
   implies. Do not replace that with a constant.
-- **Three voices, one interface.** `Audio.voices` drives the picker, `setVoice(id)`
-  crossfades over ~1.5 s and is safe before `start()` and mid-session. All three graphs
-  are built at startup and crossfaded rather than rebuilt, which costs 24 oscillators
-  and 99 nodes but cannot click. Each voice carries a `trim` (all 1.0) as the one
-  number to move after a listening test — peak levels match within 1.0 dB, but peak is
-  not loudness.
+- **One voice, eight controls.** Shore is the only sound; Tide and Harmonium were deleted
+  rather than kept as also-rans. `Audio.mix` carries swell, brk, foam, spray, under, tone
+  (0–1.5, so a layer can be pushed past its designed level), and bright/space (0–1).
+  `setMix(key, v)` is safe at any time. Brightness moves every filter corner together
+  **except the undertow, which follows at `br^0.35`** — taking the bottom out along with
+  everything else makes the sound thinner rather than darker.
 - **Everything is a `setTargetAtTime` on a smoothed parameter.** Never set an
   `AudioParam.value` directly in the render loop; it produces zipper noise on a signal this
   slow. Time constants in `Audio.frame()` are 0.09–0.5 s and are part of how the instrument
@@ -237,12 +282,6 @@ recording predates the export fix and carries no motion rows.
 
 ---
 
-**Speech goes quiet while the user breathes.** `Speech.quiet` is set true at the end of
-`finishCalibration()` and cleared in `end()` and on a mid-session recalibration. `say()`
-drops every line while it is set; `sayNow()` does not check it, because an error the user
-cannot see must still be heard. The voice is for setting up and for things going wrong.
-Do not add a line that speaks during the breathing stretch — that is what the pace
-announcements did, and it is why they are gone.
 
 ## 6. Testing
 
@@ -251,11 +290,14 @@ node tools/dsp-harness.mjs                    # defaults to ./index.html
 node tools/dsp-harness.mjs path/to/other.html
 ```
 
-24 checks: axis recovery, rate tracking at 12 and 6/min, inhale/exhale split, sign
+24 checks: axis recovery with no calibration step, rate tracking at 12 and 6/min, inhale/exhale split, sign
 correction with the phone inverted, tolerance to 0.6 m/s² per minute of postural drift, the
 quality meter, the phase convention, that the signal moves during calibration without
 detecting cycles, the learned stroke amplitude, and rest detection —
-that a hold reads as rest and closes the gate while an ordinary stroke does neither.
+that a hold reads as rest and closes the gate while an ordinary stroke does neither, and
+that confidence separates breathing from a still phone. One check replays the real bogus
+recording from `recordings/` and asserts peak confidence stays under 0.35 (it is 0.135);
+it skips rather than fails when `recordings/` is not checked out.
 Three more cover the pulse estimator: it recovers a synthetic 62 bpm heartbeat, it
 reports nothing on noise alone, and it refuses to read while the body is moving.
 Exit code 0 on success.
@@ -313,16 +355,12 @@ top of it, `#panel` (settings) and `#review` (summary, list, detail).
 stateDiagram-v2
     [*] --> Home
 
-    Home --> Calibrating: Begin
+    Home --> Breathing: Start
     Home --> List: Recordings
     Home --> Settings: Adjust
 
-    Calibrating --> Breathing: after 20 s
-    Calibrating --> Summary: End
     Breathing --> Summary: End
-    Breathing --> Summary: length elapsed
     Breathing --> Settings: Adjust
-    Settings --> Calibrating: Measure my breathing again
 
     Summary --> Home: Back
     Summary --> Detail: Label
@@ -348,7 +386,8 @@ in Settings still opens it, since that is where the space it uses is reported.
 `Review.back()` implements the Detail split: it returns to whichever screen opened the
 detail, and leaving the Summary is what calls `onDone` and returns the app to Home.
 
-Adjust stays reachable while breathing — it holds volume and recalibrate. Recordings does
+Adjust stays reachable while breathing — it holds volume, sensitivity and the sound
+controls. Recordings does
 not, because opening the browser over a running session is not something to do by accident.
 
 ## 7. Style

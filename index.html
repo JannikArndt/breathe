@@ -2566,8 +2566,8 @@ const Recorder = {
    * pass it when replaying a recorded clock.
    *
    * Known types, all optional except the first two:
-   *   calibration-start  {}
-   *   calibration-end    {ok, axis:[x,y,z], amplitude, flipped}
+   *   axis               {axis:[x,y,z], amplitude, conf}  every 30 s
+   *   breath             {inhaleSec, exhaleSec}
    *   breath             {inhaleSec, exhaleSec}
    *   recalibrate        {}
    *   signal-lost / signal-back  {quality}
@@ -2699,11 +2699,16 @@ function allocCols(n, vcount, max){
   return {n:0, cap:n, max:max, t:new Uint32Array(n), v:v};
 }
 
+/** There is no calibration step any more, but the axis is still the single most
+    useful thing to know when reading a recording back, so the tracker's own
+    estimate is sampled into `axis` events and the last one fills the field the
+    tools already read. Recordings made before this carry the old events. */
 function calFromEvents(events){
   let startSec = null, end = null;
   for(let i=0;i<events.length;i++){
     if(events[i].type === 'calibration-start') startSec = events[i].tSec;
     if(events[i].type === 'calibration-end')   end = events[i];
+    if(events[i].type === 'axis'){ if(startSec===null) startSec = 0; end = events[i]; }
   }
   if(!end) return null;
   return {
@@ -3748,7 +3753,7 @@ const UI = {
   wakeLock:null, silentEl:null,
   rich:0.4, lastFrame:0, sensorSeen:false, toldSaveTrouble:false,
   badSince:0,
-  trace:[], traceAcc:0,
+  trace:[], traceAcc:0, axisAcc:29,
   sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
 };
 
@@ -4019,6 +4024,16 @@ function loop(now){
     el.statusTag.textContent =
       'listening' +
       (UI.demo ? ' \u00b7 demo' : ' \u00b7 ' + UI.hz + ' Hz');
+  }
+
+  // The axis moves now, so a recording that only carried the final one would
+  // hide the tracker settling. 30 s is coarse enough to stay cheap.
+  UI.axisAcc += dt;
+  if(UI.axisAcc >= 30){
+    UI.axisAcc = 0;
+    Recorder.event('axis', {axis:Breath.u.slice(), ok:Breath.conf>0.45,
+                            amplitude:+Breath.axisAmp.toFixed(4),
+                            conf:+Breath.conf.toFixed(3), flipped:!!Breath.flipped});
   }
 
   // rolling trace at ~10 Hz

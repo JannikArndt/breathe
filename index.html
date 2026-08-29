@@ -660,13 +660,6 @@
   </div>
 
   <div class="row">
-    <label for="mTone">Tone
-      <span class="hint">the pitch under the water</span>
-    </label>
-    <input type="range" id="mTone" min="0" max="150" value="100" aria-label="Tone">
-  </div>
-
-  <div class="row">
     <label for="mBright">Brightness
       <span class="hint">dark and near, or open and airy</span>
     </label>
@@ -675,7 +668,7 @@
 
   <div class="row">
     <label for="mSpace">Space
-      <span class="hint">how large the room around it is</span>
+      <span class="hint">narrow and close, or wide and open</span>
     </label>
     <input type="range" id="mSpace" min="0" max="100" value="50" aria-label="Space">
   </div>
@@ -857,7 +850,7 @@ function notice(title, body, ms){
    ------------------------------------------------------------
    One voice: a shoreline. Surf gathers as you draw in, breaks at the
    top, and drains through the exhale. There were three; the other two
-   were dropped rather than kept as also-rans, and the eight controls
+   were dropped rather than kept as also-rans, and the seven controls
    in Adjust are the depth that replaced the breadth.
 
    Direction is the whole point of this rewrite. The old engine only
@@ -890,11 +883,12 @@ const Audio = {
   // User-facing sound controls, 0..1 unless noted. The layer gains run to 1.5
   // so a layer can be pushed past its designed level, which is the point of
   // having the control at all.
-  mix:{ swell:1, brk:1, foam:1, spray:1, under:1, tone:1, bright:0.5, space:0.5 },
+  mix:{ swell:1, brk:1, foam:1, spray:1, under:1, bright:0.5, space:0.5 },
 
+  widthG:null,                  // the mid/side width gain, Space's real work
   v:null,                       // built voices, keyed by id
   m:null,                       // the per-frame bundle, allocated once
-  dir:-1, wasIn:false,          // held breath direction
+  dir:-1, wasIn:false, hit:0,   // held breath direction, break-to-foam decay
   lastTop:0, lastBottom:0,
   fadeFrom:null, fadeUntil:0,
 
@@ -941,6 +935,23 @@ const Audio = {
     const mix    = G(1);                 mix.connect(duckG);
     const dry    = G(0.85);              dry.connect(mix);
 
+    // Space. A reverb send on its own is nearly inaudible here, because the
+    // whole voice is noise and convolved noise still sounds like noise: there
+    // is no transient for a room to smear. What does read as a room on a noise
+    // bed is width, so Space opens the stereo field as well as the send.
+    // Mid/side: L' = M + w*S, R' = M - w*S, with w the one moving gain.
+    const wIn = G(1), wSplit = ctx.createChannelSplitter(2),
+          wMerge = ctx.createChannelMerger(2),
+          wMid = G(1), wSide = this.widthG = G(1), wSideNeg = G(-1),
+          wML = G(0.5), wMR = G(0.5), wSL = G(0.5), wSR = G(-0.5);
+    wIn.connect(wSplit);
+    wSplit.connect(wML, 0); wSplit.connect(wMR, 1);
+    wML.connect(wMid);      wMR.connect(wMid);
+    wSplit.connect(wSL, 0); wSplit.connect(wSR, 1);
+    wSL.connect(wSide);     wSR.connect(wSide);
+    wMid.connect(wMerge, 0, 0);  wMid.connect(wMerge, 0, 1);
+    wSide.connect(wMerge, 0, 0); wSide.connect(wSideNeg); wSideNeg.connect(wMerge, 0, 1);
+
     // One room for all three voices. Per-voice convolvers would suit them
     // better — shore wants a longer tail than harmonium — but a convolver is
     // by far the most expensive node here and this runs with the screen
@@ -964,8 +975,9 @@ const Audio = {
                  pinkBuf:this.pinkBuf, surfBuf:this.surfBuf};
 
     this.voice = this.buildShore(kit);
-    this.voice.out.connect(dry);
-    this.voice.out.connect(this.voice.send);
+    this.voice.out.connect(wIn);
+    wMerge.connect(dry);
+    wMerge.connect(this.voice.send);
     this.voice.send.connect(conv);
     this.voice.out.gain.value = this.voice.trim;
 
@@ -973,7 +985,7 @@ const Audio = {
     // lasts, and allocating a bundle plus four closures each time is the one
     // avoidable piece of garbage in the render path.
     this.m = {
-      t:0, dt:1/60, lvl:0.5, vel:0, up:0, dn:0, spd:0,
+      t:0, dt:1/60, lvl:0.5, vel:0, up:0, dn:0, spd:0, hit:0,
       rich:0, inG:0, outG:1, bpm:10,
       // Every render-loop write goes through one of these four: setTargetAtTime
       // only, and clamped into a range the node can actually accept, so no
@@ -984,7 +996,7 @@ const Audio = {
       stC(p,v,tc){ p.setTargetAtTime(clamp(v, -1200, 1200), this.t, tc); }
     };
 
-    this.dir=-1; this.pdir=-1; this.wasIn=false;
+    this.dir=-1; this.pdir=-1; this.wasIn=false; this.hit=0;
     this.lastTop=0; this.lastBottom=t;
     this.fadeFrom=null; this.fadeUntil=0;
 
@@ -1101,24 +1113,22 @@ const Audio = {
     const unF=F('lowpass',90,1.1), unG=G(0);
     surf.connect(unF); unF.connect(unG); unG.connect(out);
 
-    // The only pitch in the voice: A1 and A2 under the water, and a pair of
-    // quiet upper tones that appear only once rich is high. Same tonal centre
-    // as the other two voices, so changing voice is not a change of key.
-    const subG=G(0);
-    O(55,'sine',0.62,subG); O(110,'sine',0.32,subG);
-    subG.connect(out);
-    const waF=F('lowpass',700,0.6), waG=G(0);
-    O(164.81,'sine',0.55,waF); O(220,'sine',0.45,waF,7);
-    waF.connect(waG); waG.connect(out);
+    // There is no pitch in this voice. A sub-bass sine and a pair of upper
+    // tones used to sit under the water; they read as a drone laid over the
+    // sea rather than as part of it, and they were the one thing in the mix
+    // that could not be mistaken for weather. Removed rather than defaulted
+    // to zero — a control nobody wants at anything but zero is not a control.
 
     return {
       out, send, trim,
       frame(m){
         lastRich = m.rich;
         const X = m.mix;
-        // Brightness shifts every filter corner together, up or down about an
-        // octave, so the whole voice moves rather than one layer detaching.
-        const br = Math.pow(2, (X.bright - 0.5)*2.0);
+        // Brightness shifts every filter corner together, up or down about
+        // one and a half octaves, so the whole voice moves rather than one
+        // layer detaching. One octave each way was too small a span to hear
+        // as a change of character rather than a change of level.
+        const br = Math.pow(2, (X.bright - 0.5)*3.1);
 
         // 170 Hz to 1.6 kHz. The swell is the loudest thing at the top of the
         // inhale and drops by nearly half the moment you turn.
@@ -1126,24 +1136,24 @@ const Audio = {
         m.stQ(swF.Q,         2.0 + 3.0*m.up*m.inG, 0.20);
         // the resonance is worth up to ~10 dB at the corner, so take it back
         // out of the level or the wave stabs every time it gathers
-        m.stG(swG.gain, X.swell*0.167*(0.15+0.85*m.lvl)*(0.55+0.45*m.inG)/(1+0.55*m.up*m.inG), 0.12);
+        m.stG(swG.gain, X.swell*0.250*(0.15+0.85*m.lvl)*(0.55+0.45*m.inG)/(1+0.55*m.up*m.inG), 0.12);
 
-        m.stF(foF.frequency, br*900*Math.pow(2, 2.32*m.lvl), 0.13);
+        // The foam opens an extra octave and a quarter at the break and falls
+        // back through the first second of the exhale, so the hiss arrives with
+        // the wave and then drains rather than sitting at one pitch.
+        m.stF(foF.frequency, br*900*Math.pow(2, 2.32*m.lvl + 1.25*m.hit), 0.13);
         m.stG(foG.gain,      X.foam*0.123*m.dn*m.outG*(0.65+0.35*m.rich), 0.10);
 
         m.stF(spF.frequency, br*1400*Math.pow(2, 1.6*m.lvl), 0.15);
-        m.stG(spG.gain,      X.spray*0.065*m.dn*m.outG, 0.14);
+        m.stG(spG.gain,      X.spray*0.145*m.dn*m.outG, 0.14);
 
         // The undertow is the floor of the sound, so brightness moves it much
         // less than the layers above it — otherwise turning down the brightness
         // takes the bottom out too and the whole thing gets thinner, not darker.
         m.stF(unF.frequency, (60 + 70*(1-m.lvl))*Math.pow(br, 0.35), 0.30);
-        m.stG(unG.gain,      X.under*0.130*m.outG*(0.30+0.70*(1-m.lvl)), 0.20);
+        m.stG(unG.gain,      X.under*0.195*m.outG*(0.30+0.70*(1-m.lvl)), 0.20);
 
-        m.stG(subG.gain,     X.tone*0.058*(0.25+0.75*m.rich)*(0.35+0.65*m.outG), 0.35);
-        m.stG(waG.gain,      X.tone*0.030*m.rich*m.rich*(0.40+0.60*m.outG), 0.45);
-        m.stF(waF.frequency, br*500*Math.pow(2, 1.4*m.rich), 0.50);
-        m.stG(send.gain,     (0.34+0.26*m.rich)*(0.35+1.30*X.space), 0.50);
+        m.stG(send.gain,     (0.34+0.26*m.rich)*(0.20+1.60*X.space), 0.50);
       },
 
       /** top of the inhale: the break. The loudest event in the app, and the
@@ -1236,7 +1246,7 @@ const Audio = {
     if(inh && !this.wasIn && (t - this.lastBottom) > 1.6){
       this.lastBottom = t;
       const outDur = this.lastTop ? (t - this.lastTop) : 0;
-      this.dispatch('bottom', 0.35 + 0.65*clamp((outDur-2.5)/4.0, 0, 1));
+      this.dispatch('bottom', 0.55 + 0.45*clamp((outDur-2.5)/4.0, 0, 1));
     }
     this.wasIn = inh;
 
@@ -1244,8 +1254,20 @@ const Audio = {
     m.t=t; m.dt=dt; m.lvl=lvl; m.vel=vel; m.up=up; m.dn=dn; m.spd=spd;
     m.rich=rich; m.inG=inG; m.outG=outG; m.bpm=bpm;
 
+    // The break opens the foam an octave and lets it fall. tau = 0.55 s puts
+    // most of the drop inside the first second of the exhale.
+    this.hit *= Math.exp(-dt/0.55);
+    m.hit = this.hit;
+
     m.mix = this.mix;
     if(this.voice) this.voice.frame(m);
+
+    // 0.35 is narrower than the source, 1.9 well past it: at the top of the
+    // range the two noise channels pull apart far enough to sound like a beach
+    // rather than a speaker.
+    if(this.widthG)
+      this.widthG.gain.setTargetAtTime(
+        clamp(0.35 + 1.55*fin(this.mix.space, 0.5), 0.1, 2.2), t, 0.5);
 
   },
 
@@ -1259,6 +1281,7 @@ const Audio = {
   bell(strength){
     if(!this.ready) return;
     this.lastTop = this.ctx.currentTime;
+    this.hit = 1;
     this.dispatch('top', strength);
   },
 
@@ -3903,7 +3926,7 @@ async function begin(sensorP, audioP){
 
   Breath.onExhaleStart = (inD)=>{
     const slow = clamp((inD-2.0)/3.0, 0, 1);
-    Audio.bell((0.35 + 0.65*slow*UI.rich) * Breath.follow);
+    Audio.bell((0.55 + 0.45*slow*UI.rich) * Breath.follow);
     // Only count it as a breath once the rhythm backs the claim. A phone being
     // moved about produced 248 "breaths" at 26 a minute before this line.
     if(Breath.conf > 0.45)
@@ -4184,12 +4207,23 @@ $('sens').addEventListener('input', e=>{
   Breath.sensitivity = clamp(parseInt(e.target.value,10)/100, 0, 1);
 });
 
-// The eight sound controls. Layer gains run past 1 on purpose: being able to
+// The seven sound controls. Layer gains run past 1 on purpose: being able to
 // push a layer beyond its designed level is most of the point.
 [['mSwell','swell'],['mBreak','brk'],['mFoam','foam'],['mSpray','spray'],
- ['mUnder','under'],['mTone','tone'],['mBright','bright'],['mSpace','space']
+ ['mUnder','under'],['mBright','bright'],['mSpace','space']
 ].forEach(([id,key])=>{
   $(id).addEventListener('input', e=>Audio.setMix(key, parseInt(e.target.value,10)/100));
+});
+
+// The break only sounds at the top of a breath, so moving its slider while
+// sitting up holding the phone changed nothing audible and read as a dead
+// control. Moving it now plays the crest, at the level being set.
+let breakPreviewAt = 0;
+$('mBreak').addEventListener('input', ()=>{
+  const now = Date.now();
+  if(now - breakPreviewAt < 900) return;
+  breakPreviewAt = now;
+  Audio.dispatch('top', 0.85);
 });
 
 function bindToggle(id, fn){

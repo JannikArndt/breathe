@@ -255,12 +255,27 @@ recording predates the export fix and carries no motion rows.
   exactly as the user slowed down — the app rewarded slowness with `rich` while fading
   out its most breath-like layer. `frame()` divides by the peak the current rate
   implies. Do not replace that with a constant.
-- **One voice, eight controls.** Shore is the only sound; Tide and Harmonium were deleted
-  rather than kept as also-rans. `Audio.mix` carries swell, brk, foam, spray, under, tone
+- **One voice, seven controls.** Shore is the only sound; Tide and Harmonium were deleted
+  rather than kept as also-rans. `Audio.mix` carries swell, brk, foam, spray, under
   (0–1.5, so a layer can be pushed past its designed level), and bright/space (0–1).
-  `setMix(key, v)` is safe at any time. Brightness moves every filter corner together
-  **except the undertow, which follows at `br^0.35`** — taking the bottom out along with
-  everything else makes the sound thinner rather than darker.
+  `setMix(key, v)` is safe at any time. Brightness moves every filter corner together over
+  ±1.55 octaves, **except the undertow, which follows at `br^0.35`** — taking the bottom
+  out along with everything else makes the sound thinner rather than darker.
+- **There is no pitched layer.** A 55/110 Hz sub and a pair of upper tones sat under the
+  water behind a `tone` control; the owner called them annoying and asked what they were
+  for, which is the right question — they read as a drone laid over the sea rather than as
+  part of it. Deleted, control and all. Do not reintroduce a pitch centre "for warmth";
+  `rich` is the warmth channel.
+- **Space is width first, reverb second.** A send alone was inaudible, and correctly so:
+  the voice is entirely noise, and convolved noise still sounds like noise because there is
+  no transient for a room to smear. Space now drives a mid/side width gain (0.35 narrow,
+  1.9 wide) on the whole voice as well as the send. If the width network is ever removed,
+  the control goes back to doing nothing you can hear.
+- **The break announces itself when its slider moves.** It only ever sounds at the top of a
+  breath, so a user adjusting it while sitting up holding the phone heard no difference
+  between 0 and 150 — the event was simply never firing. Moving `#mBreak` previews the
+  crest, debounced at 900 ms. Any control whose sound is an event rather than a level needs
+  the same treatment.
 - **Everything is a `setTargetAtTime` on a smoothed parameter.** Never set an
   `AudioParam.value` directly in the render loop; it produces zipper noise on a signal this
   slow. Time constants in `Audio.frame()` are 0.09–0.5 s and are part of how the instrument

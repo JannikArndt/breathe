@@ -1543,15 +1543,33 @@ const Audio = {
 
    raw --(lp 0.35s)--> smooth --(lp 12s)--> baseline
    d = smooth - baseline                        // 0.013 .. 0.45 Hz
-   s = d . u                                    // u from calibration PCA
+   s = d . u                                    // u tracked continuously
+
+   There is no calibration step. The breath axis is the dominant
+   direction of a covariance kept with exponential forgetting, so it
+   is available from the first samples, sharpens as breaths arrive,
+   and follows the user if they shift position.
    ============================================================ */
 const Breath = {
   smooth:[NaN,NaN,NaN], base:[NaN,NaN,NaN],
   u:[0,0,1], invert:false,
   s:0, sPrev:0, dsLp:0, rms:0.02,
   lastT:0, lastDt:1/60, samples:0, lastEventT:0,
-  cal:[], calibrating:false, calStart:0, motionRms:0, breathRms:0,
-  lastProv:0, haveProv:false,     // provisional axis refresh while calibrating
+  motionRms:0, breathRms:0,
+
+  // ---- continuous axis tracking
+  // Exponentially-forgetting covariance of d. tau = 25 s spans one or two
+  // breaths at the rates this is used at, which is long enough to be a
+  // direction rather than an instant and short enough to follow a shift.
+  cov:[[0,0,0],[0,0,0],[0,0,0]], dMean:[0,0,0],
+  covSeen:0, lastTrack:0,
+  axisAmp:0,            // RMS of the projection, in m/s^2 — a physical quantity
+  signSet:false, lostFor:0,
+  periods:[], conf:0,   // recent cycle lengths, and how much this looks like breathing
+  // 0..1, user-facing. Low: only clear, deep, steady breathing gets through.
+  // High: follow almost anything. The right value depends on the person and
+  // where the phone sits, and is not something to guess from two recordings.
+  sensitivity:0.5,
 
   // cycle bookkeeping
   rising:true, extreme:0, extremeT:0,
@@ -1578,9 +1596,12 @@ const Breath = {
     this.restGate=1;
   },
 
-  beginCalibration(now){
-    this.reset(); this.cal=[]; this.calibrating=true; this.calStart=now;
-    this.lastProv=0; this.haveProv=false; this.u=[0,0,1];
+  begin(now){
+    this.reset();
+    this.cov=[[0,0,0],[0,0,0],[0,0,0]]; this.dMean=[0,0,0];
+    this.covSeen=0; this.lastTrack=now; this.axisAmp=0;
+    this.u=[0,0,1]; this.signSet=false; this.lostFor=0;
+    this.periods=[]; this.conf=0;
   },
 
   /** feed one sensor sample. t in seconds. */
@@ -1604,16 +1625,7 @@ const Breath = {
     const d = [this.smooth[0]-this.base[0], this.smooth[1]-this.base[1], this.smooth[2]-this.base[2]];
     if(!isFinite(d[0])) return;
 
-    if(this.calibrating){
-      this.cal.push(d);
-      if(this.cal.length>4000) this.cal.shift();
-      let m=0; for(let i=0;i<3;i++) m+=d[i]*d[i];
-      this.breathRms = lp(this.breathRms, Math.sqrt(m), dt, 2.0);
-      this.provisionalAxis(t);
-      // and fall through: the trace and the sound follow the provisional axis
-      // rather than sitting flat for twenty seconds. Only detectCycle() is
-      // skipped below, so breaths taken while learning are not counted.
-    }
+    this.trackAxis(d, dt, t);
 
     // ---- project onto the breath axis
     let s = d[0]*this.u[0] + d[1]*this.u[1] + d[2]*this.u[2];
@@ -1631,7 +1643,8 @@ const Breath = {
     this.s = sN;
 
     this.detectRest(dt);
-    if(!this.calibrating) this.detectCycle(sN, t);
+    this.detectCycle(sN, t);
+    this.scoreConfidence(dt);
 
     // ---- instantaneous phase from the signal and its derivative
     // s = sin(wt) => -ds/w = -cos(wt); atan2 gives 0 at the top of the inhale
@@ -1694,7 +1707,9 @@ const Breath = {
         if(this.lastPeakT) this.exhaleDur = this.lastTroughT - this.lastPeakT;
         if(prevTrough){
           const p = this.lastTroughT - prevTrough;
-          if(p>2 && p<25){
+          if(p>3 && p<30){
+            this.periods.push(p);
+            if(this.periods.length > 6) this.periods.shift();
             this.period = this.period ? lerp(this.period, p, 0.45) : p;
             this.bpm = 60/this.period;
             this.bpmSmooth = this.bpmSmooth ? lerp(this.bpmSmooth, this.bpm, 0.4) : this.bpm;
@@ -1716,81 +1731,139 @@ const Breath = {
     if(amp > 0.35 && amp < 3.6) this.strokeAmp = lerp(this.strokeAmp, amp, 0.25);
   },
 
-  /** dominant axis of a set of deviation vectors: power iteration on the 3x3
-      covariance. Shared by the provisional estimate taken while calibration is
-      still running and the authoritative one taken at the end. */
-  axisFrom(samples){
-    const n = samples.length;
-    if(n < 12) return null;
-    const C=[[0,0,0],[0,0,0],[0,0,0]];
-    for(const d of samples)
-      for(let i=0;i<3;i++) for(let j=0;j<3;j++) C[i][j]+=d[i]*d[j];
-    for(let i=0;i<3;i++) for(let j=0;j<3;j++) C[i][j]/=n;
+  /** Follow the dominant direction of belly movement, continuously.
 
-    let v=[1,1,1];
-    for(let k=0;k<60;k++){
+      The covariance forgets exponentially, so the axis is an estimate over the
+      last half-minute rather than a decision taken once at the start. Early on
+      it averages everything it has seen instead (1/n), which converges in a
+      few seconds rather than a few time constants — the sound needs a
+      direction to follow before the user has taken two breaths.
+
+      The power iteration is warm-started from the axis already in use, so it
+      costs a handful of rounds and the estimate cannot jump between refreshes.
+  */
+  trackAxis(d, dt, t){
+    this.covSeen++;
+    const a = Math.max(1/this.covSeen, 1 - Math.exp(-dt/25.0));
+    // Covariance about the mean, not about zero. Steady postural drift leaves a
+    // standing offset in d — 0.6 m/s^2 per minute puts 0.12 m/s^2 through a
+    // 12 s high-pass, which is larger than a breath — and a covariance taken
+    // about zero locks the axis onto that offset instead of onto the breathing.
+    for(let i=0;i<3;i++) this.dMean[i] += (d[i] - this.dMean[i])*a;
+    const c = [d[0]-this.dMean[0], d[1]-this.dMean[1], d[2]-this.dMean[2]];
+    for(let i=0;i<3;i++)
+      for(let j=0;j<3;j++)
+        this.cov[i][j] += (c[i]*c[j] - this.cov[i][j])*a;
+
+    if(t - this.lastTrack < 0.4) return;
+    this.lastTrack = t;
+
+    const C = this.cov;
+    let v = this.u.slice();
+    for(let k=0;k<8;k++){
       const w=[
         C[0][0]*v[0]+C[0][1]*v[1]+C[0][2]*v[2],
         C[1][0]*v[0]+C[1][1]*v[1]+C[1][2]*v[2],
         C[2][0]*v[0]+C[2][1]*v[1]+C[2][2]*v[2]
       ];
       const m=Math.hypot(w[0],w[1],w[2]);
-      if(m<1e-12) return null;
+      if(m<1e-14) return;                 // nothing has moved yet
       v=[w[0]/m,w[1]/m,w[2]/m];
     }
-    return v;
-  },
+    // The eigenvalue is the variance along the axis, so its root is the size of
+    // a breath in m/s^2 — the one number here that means something physical,
+    // and the one that tells a belly from a table.
+    const Av=[
+      C[0][0]*v[0]+C[0][1]*v[1]+C[0][2]*v[2],
+      C[1][0]*v[0]+C[1][1]*v[1]+C[1][2]*v[2],
+      C[2][0]*v[0]+C[2][1]*v[1]+C[2][2]*v[2]
+    ];
+    this.axisAmp = Math.sqrt(Math.max(0, v[0]*Av[0]+v[1]*Av[1]+v[2]*Av[2]));
 
-  /** The eigenvector's sign is arbitrary. Relaxed breathing usually exhales
-      more slowly than it inhales, so orient the axis to make the slower half
-      the falling one. */
-  wantsFlip(samples, v){
-    let up=0, down=0, prev=null;
-    for(const d of samples){
-      const p = d[0]*v[0]+d[1]*v[1]+d[2]*v[2];
-      if(prev!==null){ (p>prev) ? up++ : down++; }
-      prev = p;
-    }
-    return up > down*1.12;
-  },
-
-  /** Refresh the axis while calibration is still collecting, at most twice a
-      second and only once there are three seconds to work with. Rough at first
-      and converging; finishCalibration() still does the authoritative pass. */
-  provisionalAxis(t){
-    if(this.cal.length < 180 || (t - this.lastProv) < 0.5) return;
-    this.lastProv = t;
-    const v = this.axisFrom(this.cal);
-    if(!v) return;
-    if(!this.haveProv){
-      // First estimate: pick the sign properly, so the trace is usually the
-      // right way up from the start and does not flip when calibration ends.
-      this.haveProv = true;
-      this.u = this.wantsFlip(this.cal, v) ? [-v[0],-v[1],-v[2]] : v;
-      return;
-    }
-    // After that, stay consistent with what is already on screen. Re-running
-    // the sign heuristic on a part-filled window makes the trace flip about.
+    // Keep the sign continuous with what is already playing. An axis that
+    // flips inverts the sound mid-breath, which is far worse than being
+    // upside down consistently.
     const dot = v[0]*this.u[0] + v[1]*this.u[1] + v[2]*this.u[2];
     this.u = dot < 0 ? [-v[0],-v[1],-v[2]] : v;
   },
 
-  finishCalibration(){
-    this.calibrating = false;
-    const n = this.cal.length;
-    if(n < 60) return false;
-    const v = this.axisFrom(this.cal);
-    if(!v) return false;
+  /** Which way round is the axis? Relaxed breathing usually exhales more
+      slowly than it inhales, so the slower half should be the falling one.
+      Decided once, when there is finally enough signal to decide it on, and
+      then left alone unless tracking is lost for a good while — a sign that
+      changes mid-session is indistinguishable from the user turning over. */
+  resolveSign(){
+    if(this.signSet || this.periods.length < 2) return;
+    this.signSet = true;
+    if(this.exhaleDur > 0 && this.inhaleDur > 0 && this.exhaleDur < this.inhaleDur*0.8){
+      this.u = [-this.u[0],-this.u[1],-this.u[2]];
+      this.flipped = true;
+    }
+  },
 
-    this.flipped = this.wantsFlip(this.cal, v);   // recorded so an export can say so
-    this.u = this.flipped ? [-v[0],-v[1],-v[2]] : v;
+  /** Track how deep this user's breaths are, so the hysteresis can scale with
+      them. Bounds reject a half-stroke caught mid-drift and a sigh; alpha 0.25
+      settles over about four breaths, slow enough that one deep sigh does not
+      move the threshold out from under the next ordinary breath. */
+  learnAmp(){
+    if(this.peakS === null || this.troughS === null) return;
+    const amp = Math.abs(this.peakS - this.troughS);
+    if(amp > 0.35 && amp < 3.6) this.strokeAmp = lerp(this.strokeAmp, amp, 0.25);
+  },
 
-    let amp=0;
-    for(const d of this.cal){ const p = d[0]*v[0]+d[1]*v[1]+d[2]*v[2]; amp += p*p; }
-    this.calAmplitude = Math.sqrt(amp/n);
-    this.rms = this.calAmplitude*this.calAmplitude;
-    this.cal = [];
-    return true;
+  /** How much is this actually breathing?
+
+      The app used to sonify whatever the accelerometer produced. A recording
+      made with the phone on a table, then waved about, came back claiming 248
+      breaths at 26 a minute. Three things separate that from a real session,
+      each measured on real recordings before being written down here:
+
+        size     a belly moves the gravity vector by 0.32-0.46 m/s^2 RMS along
+                 the breath axis; a phone on a table managed 0.011
+        pace     real sessions ran 11.8 s and 23.1 s per breath; the table and
+                 the waving both produced 1.2-1.3 s
+        rhythm   consecutive breaths differ by 1.09-1.29x when someone is
+                 breathing, and 1.66-6.03x when the phone is just being moved
+
+      Any one of them is enough to reject the bogus recording. Together they
+      leave a wide margin, which matters because the cost of a false positive
+      is the app confidently sonifying nothing.
+  */
+  scoreConfidence(dt){
+    // size: how big the movement is, in m/s^2 on the breath axis. The sessions
+    // recorded so far measured 0.32 and 0.45; a phone left on a table measured
+    // 0.007. Where to put the line between them depends on the body and where
+    // the phone sits, so sensitivity moves it rather than a constant deciding.
+    const floor = lerp(0.030, 0.004, this.sensitivity);
+    const size = clamp((this.axisAmp - floor)/(floor*1.9), 0, 1);
+
+    // rhythm: how alike are consecutive breaths? Needs three periods before it
+    // says anything, and 1.25x apart still counts as steady breathing.
+    let rhythm = 0;
+    const P = this.periods;
+    if(P.length >= 3){
+      const tol = lerp(1.45, 2.70, this.sensitivity);
+      let sum = 0;
+      for(let i=1;i<P.length;i++){
+        const r = Math.max(P[i],P[i-1])/Math.min(P[i],P[i-1]);
+        sum += clamp((tol - r)/(tol*0.34), 0, 1);
+      }
+      rhythm = sum/(P.length-1);
+    }
+
+    // stillness: a phone being carried or waved is not reporting a breath.
+    const calm = clamp((1.1 - this.motionRms)/0.7, 0, 1);
+
+    const want = size * rhythm * calm;
+    // Rises over a couple of breaths and falls faster, so the sound does not
+    // keep following a signal that has already stopped making sense.
+    this.conf = lp(this.conf, want, dt, want > this.conf ? 4.0 : 2.0);
+
+    if(this.conf > 0.5) this.resolveSign();
+    // If it has been lost for a long time the user has probably moved, so let
+    // the next lock decide the direction again.
+    this.lostFor = this.conf < 0.15 ? this.lostFor + dt : 0;
+    if(this.lostFor > 45) this.signSet = false;
   },
 
   /** 0 = fully exhaled, 1 = fully inhaled */

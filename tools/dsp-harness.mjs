@@ -57,7 +57,13 @@ function tilt(u, inShare) {
  * Feed synthetic motion samples.
  * @param opts.bpm       breaths per minute
  * @param opts.secs      duration
- * @param opts.amp       peak-to-peak tilt in m/s^2 (0.09 ~ a relaxed adult belly)
+ * @param opts.amp       peak-to-peak tilt in m/s^2. 0.9 is what real sessions
+ *                        measure: the two recordings in recordings/ came back
+ *                        at 0.32 and 0.45 m/s^2 RMS along the breath axis,
+ *                        which is about 0.9-1.3 peak-to-peak. This used to say
+ *                        0.09 and call it "a relaxed adult belly" — an
+ *                        assumption nobody had checked against a recording,
+ *                        and wrong by a factor of ten.
  * @param opts.inShare   fraction of the cycle spent inhaling
  * @param opts.axis      unit vector the breath moves along
  * @param opts.flip      invert the physical signal (phone upside down)
@@ -65,7 +71,7 @@ function tilt(u, inShare) {
  * @param opts.drift     baseline drift in m/s^2 per minute
  */
 function feed(state, opts) {
-  const { bpm, secs, amp = 0.09, inShare = 0.45, axis = [0.81, 0, 0.58],
+  const { bpm, secs, amp = 0.9, inShare = 0.45, axis = [0.81, 0, 0.58],
           flip = false, noise = 0.004, drift = 0 } = opts;
   const dt = 1 / 60, period = 60 / bpm;
   for (let i = 0; i < secs / dt; i++) {
@@ -84,11 +90,12 @@ function feed(state, opts) {
 
 function session(opts) {
   const state = { t: 0, u: 0 };
-  Breath.beginCalibration(0);
+  Breath.begin(0);
+  // There is no calibration step any more. The first 20 s are just the first
+  // 20 s: the axis is tracked from the start and sharpens as breaths arrive.
   feed(state, { ...opts, secs: 20 });
-  const calOk = Breath.finishCalibration();
   feed(state, { ...opts, secs: opts.secs ?? 90 });
-  return { calOk, state };
+  return { state };
 }
 
 // ---------------------------------------------------------------- tests
@@ -97,18 +104,23 @@ console.log('source: ' + htmlPath + '\n');
 // 1. axis recovery
 {
   const axis = [0.81, 0, 0.58];
-  const { calOk } = session({ bpm: 12, axis });
+  session({ bpm: 12, axis });
   const dot = Math.abs(Breath.u[0] * axis[0] + Breath.u[1] * axis[1] + Breath.u[2] * axis[2]);
-  check('calibration succeeds', calOk === true);
-  check('breath axis recovered', dot > 0.97, `|u.axis| = ${dot.toFixed(3)}`);
+  check('breath axis recovered with no calibration step', dot > 0.97, `|u.axis| = ${dot.toFixed(3)}`);
+
+  // and it is usable early, which is the point of tracking it continuously
+  const st = { t: 0, u: 0 };
+  Breath.begin(0);
+  feed(st, { bpm: 12, axis, secs: 12 });
+  const early = Math.abs(Breath.u[0]*axis[0] + Breath.u[1]*axis[1] + Breath.u[2]*axis[2]);
+  check('axis is close after 12 s', early > 0.95, `|u.axis| = ${early.toFixed(3)}`);
 }
 
 // 2. rate tracking, fast then slow
 {
   const state = { t: 0, u: 0 };
-  Breath.beginCalibration(0);
+  Breath.begin(0);
   feed(state, { bpm: 12, secs: 20 });
-  Breath.finishCalibration();
   feed(state, { bpm: 12, secs: 90 });
   const fast = Breath.bpmSmooth;
   feed(state, { bpm: 6, secs: 120 });
@@ -155,9 +167,11 @@ console.log('source: ' + htmlPath + '\n');
 
 // 6. quality meter falls when the body is fidgeting
 {
-  session({ bpm: 6, noise: 0.004, secs: 60 });
+  // Noise scales with the signal it is judged against: these were 0.004 and
+  // 0.09 when the synthetic breath was ten times smaller than a real one.
+  session({ bpm: 6, noise: 0.04, secs: 60 });
   const clean = Breath.quality();
-  session({ bpm: 6, noise: 0.09, secs: 60 });
+  session({ bpm: 6, noise: 0.9, secs: 60 });
   const noisy = Breath.quality();
   check('quality distinguishes still from restless',
     clean > 0.6 && noisy < clean * 0.75, `clean ${clean.toFixed(2)} / noisy ${noisy.toFixed(2)}`);
@@ -166,9 +180,8 @@ console.log('source: ' + htmlPath + '\n');
 // 7. phase convention: 0 at the top of the inhale, positive while exhaling
 {
   const state = { t: 0, u: 0 };
-  Breath.beginCalibration(0);
+  Breath.begin(0);
   feed(state, { bpm: 6, inShare: 0.5, secs: 20 });
-  Breath.finishCalibration();
   feed(state, { bpm: 6, inShare: 0.5, secs: 60 });
 
   const dt = 1 / 60, obs = [];
@@ -187,23 +200,59 @@ console.log('source: ' + htmlPath + '\n');
     `${(badSign * 100).toFixed(1)}% wrong sign`);
 }
 
-// 7b. the signal moves while calibration is still running
+// 7b. the signal is live from the start
 {
-  // The trace and the sound follow Breath.s. push() used to return early while
-  // calibrating, so s stayed 0 and the user watched a flat line for 20 seconds.
   const state = { t: 0, u: 0 };
-  Breath.beginCalibration(0);
+  Breath.begin(0);
   feed(state, { bpm: 10, secs: 4 });
   const early = [];
   for (let i = 0; i < 60 * 8; i++) { feed(state, { bpm: 10, secs: 1 / 60 }); early.push(Breath.s); }
   const span = Math.max(...early) - Math.min(...early);
-  check('the signal moves during calibration', span > 0.5, `range ${span.toFixed(2)}`);
-  check('still calibrating while it does', Breath.calibrating === true);
-  // ...but breaths taken while learning must not be counted as cycles
-  const before = Breath.lastPeakT;
-  feed(state, { bpm: 10, secs: 8 });
-  check('no cycles are detected while calibrating', Breath.lastPeakT === before);
-  Breath.finishCalibration();
+  check('the signal is live in the first seconds', span > 0.5, `range ${span.toFixed(2)}`);
+}
+
+// 7c. confidence tells breathing from everything else
+{
+  // Real breathing, at the depth a relaxed adult produces.
+  session({ bpm: 10, secs: 180 });
+  const real = Breath.conf;
+  check('confident on real breathing', real > 0.6, `conf = ${real.toFixed(2)}`);
+
+  // A phone on a table: sensor noise, no breath. The first real recording of
+  // this measured 0.011 m/s^2 against 0.32-0.46 for a belly.
+  {
+    const st = { t: 0 };
+    Breath.begin(0);
+    for (let i = 0; i < 60 * 180; i++) {
+      st.t = (st.t || 0) + 1 / 60;
+      const n = () => (Math.random() - 0.5) * 0.008;
+      Breath.push(0.30 + n(), 0.15 + n(), 9.79 + n(), st.t);
+    }
+    check('not fooled by a phone on a table', Breath.conf < 0.05, `conf = ${Breath.conf.toFixed(3)}`);
+  }
+
+}
+
+// 7d. the same question, against a real recording rather than an imitation of one
+// A phone left on a table and then waved around by hand. Synthetic "not
+// breathing" is easy to get wrong in the app's favour, so this reads the actual
+// sensor stream. Skipped, not failed, when the file is not checked out.
+{
+  const path = `${here}/../recordings/breathe-20260829T115717-bogus.json`;
+  let S = null;
+  try { S = JSON.parse(readFileSync(path, 'utf8')); } catch { /* not present */ }
+  const rows = S && S.motion && S.motion.rows;
+  if (!rows || !rows.length) {
+    console.log('skip  real not-breathing recording (recordings/ not checked out)');
+  } else {
+    Breath.begin(rows[0][0]);
+    let peak = 0;
+    for (const r of rows) { Breath.push(r[1], r[2], r[3], r[0]); peak = Math.max(peak, Breath.conf); }
+    // This recording is what motivated the confidence gate: before it existed
+    // the app reported 248 breaths at 26/min from this file.
+    check('a real not-breathing recording stays rejected', peak < 0.2,
+      `peak conf = ${peak.toFixed(3)} over ${(S.durationSec).toFixed(0)} s`);
+  }
 }
 
 // 8. the learned stroke amplitude tracks the signal, and scales the hysteresis
@@ -224,9 +273,8 @@ console.log('source: ' + htmlPath + '\n');
   // case the first real recording is full of. `resting` must fire during the
   // hold and the gate must fall; mid-stroke it must do neither.
   const state = { t: 0, u: 0 };
-  Breath.beginCalibration(0);
+  Breath.begin(0);
   feed(state, { bpm: 8, secs: 20 });
-  Breath.finishCalibration();
   feed(state, { bpm: 8, secs: 60 });
 
   // sample the gate through a normal stroke

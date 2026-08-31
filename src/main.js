@@ -15,6 +15,13 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.9', date:'2026-08-31', notes:[
+    'A new Try section in Adjust holds three things that are not sure of themselves yet. All three are off until you turn them on, and stay on once you have.',
+    'Show what it hears shades the trace where the app thinks you are holding, and ticks each breath it counted — so you can check it against your own body instead of taking the sound\u2019s word for it.',
+    'Dim the screen fades the display while you breathe. A tap brings it back, and that tap cannot press End by accident.',
+    'Crest follows depth breaks the wave harder after a deeper breath rather than a longer one.',
+    'Demo mode now breathes the way a person does — a long flat bottom, a quick rise, a pause at the top — instead of a sine wave. It runs at six a minute.'
+  ]},
   {v:'0.9.8', date:'2026-08-31', notes:[
     'Very slow breathing is followed properly. Below four breaths a minute the sound was reading your movement as about a quarter weaker than it was, so the layers that follow the stroke faded exactly as you slowed down.',
     'Breaths longer than thirty seconds are counted instead of discarded.'
@@ -206,13 +213,15 @@ const Log = {
   }
 };
 
-const UI = {
+export const UI = {
   state:'idle',                       // idle | running
   demo:false, demoPhase:0,
   wakeLock:null, silentEl:null,
   rich:0.4, lastFrame:0, sensorSeen:false, toldSaveTrouble:false,
   badSince:0,
-  trace:[], traceAcc:0, axisAcc:29,
+  // trace is the signal; held and marks are what "Show what it hears" draws
+  // over it. They share the trace's index, so they shift together.
+  trace:[], held:[], marks:[], traceAcc:0, axisAcc:29,
   sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
 };
 
@@ -363,7 +372,8 @@ async function begin(sensorP, audioP){
   el.main.textContent = 'End'; el.main.classList.remove('primary'); el.main.disabled = false;
 
   UI.state = 'running';
-  UI.trace = [];
+  UI.trace = []; UI.held = []; UI.marks = [];
+  Dim.arm();
   Breath.invert = $('tglInvert').getAttribute('aria-checked')==='true';
   Breath.begin(performance.now()/1000);
   el.statusTag.textContent = 'listening';
@@ -371,12 +381,22 @@ async function begin(sensorP, audioP){
   el.sub.textContent = '';
 
   Breath.onExhaleStart = (inD)=>{
-    const slow = clamp((inD-2.0)/3.0, 0, 1);
-    Audio.bell((0.55 + 0.45*slow*UI.rich) * Breath.follow);
+    // How much of a crest this breath earned. By default that is how long the
+    // inhale ran; the experiment reads how deep it went instead, measured
+    // against this user's own learned stroke, so a big breath breaks harder
+    // than a slow shallow one. Duration and depth are only loosely related —
+    // a long, shallow inhale is a real thing and sounds wrong rewarded.
+    const size = Flags.depthBreak
+      ? clamp((Math.abs((Breath.peakS ?? 0) - (Breath.troughS ?? 0)) / Breath.strokeAmp - 0.7) / 0.6, 0, 1)
+      : clamp((inD - 2.0)/3.0, 0, 1);
+    Audio.bell((0.55 + 0.45*size*UI.rich) * Breath.follow);
     // Only count it as a breath once the rhythm backs the claim. A phone being
     // moved about produced 248 "breaths" at 26 a minute before this line.
-    if(Breath.conf > 0.45)
+    if(Breath.conf > 0.45){
       Recorder.event('breath', {inhaleSec:inD, exhaleSec:Breath.exhaleDur});
+      UI.marks.push(UI.trace.length);
+      while(UI.marks.length && UI.marks[0] < 0) UI.marks.shift();
+    }
   };
 
   // If nothing arrives at all, say which of the two possible causes it is.
@@ -444,20 +464,49 @@ function reportSaveTrouble(){
 }
 
 /* ---------- main loop ---------- */
+/* Demo mode simulates the sensor. It used to be a sine wave, which is not how
+   anyone breathes and is precisely the case the tracker finds easy: a sinusoid
+   has no holds in it, and holds are what has broken twice. The shape below is
+   the one the owner described from their own trace — a long flat bottom, a
+   quick rise, a pause at the top, a slower fall — at 6 a minute:
+
+     0.00 - 0.18   inhale, 1.8 s
+     0.18 - 0.38   held at the top, 2.0 s
+     0.38 - 0.68   exhale, 3.0 s
+     0.68 - 1.00   held at the bottom, 3.2 s
+
+   Smootherstep on the two strokes, so the turnarounds have no corner in them
+   for the tau = 0.35 s filter to ring on. Returns -1..1. */
+const PHASES = [[0.18, 1], [0.38, 0], [0.68, -1], [1.00, 0]];
+function demoBreath(dt, state){
+  state.demoPhase = (state.demoPhase + dt/10) % 1;
+  const u = state.demoPhase;
+  let from = 0, base = -1;
+  for(const [to, dir] of PHASES){
+    if(u < to){
+      if(dir === 0) return base;                 // a hold: the level does not move
+      const k = (u - from)/(to - from);
+      const e = k*k*k*(k*(k*6 - 15) + 10);       // smootherstep
+      return dir > 0 ? -1 + 2*e : 1 - 2*e;
+    }
+    from = to;
+    if(dir !== 0) base = dir;
+  }
+  return base;
+}
+
 function loop(now){
   if(UI.state==='idle') return;
   const dt = clamp((now-UI.lastFrame)/1000, 0.001, 0.1);
   UI.lastFrame = now;
 
   if(UI.demo){
-    // demo breathes at a steady, plausible rate; nothing is steering it now
-    const p = 60/9;
-    UI.demoPhase = (UI.demoPhase + dt/p) % 1;
-    const s = Math.sin(UI.demoPhase*TAU - Math.PI/2);
+    const dt0 = now/1000;
+    const s = demoBreath(dt, UI);
     // 0.45 m/s^2 on each of two axes: the amplitude real sessions actually
     // measured. It was 0.05, which the confidence gate would now read as a
     // phone lying on a table.
-    const dx = s*0.45, dy = 0.2, dz = 9.79 + s*0.45, dt0 = now/1000;
+    const dx = s*0.45, dy = 0.2, dz = 9.79 + s*0.45;
     Breath.push(dx, dy, dz, dt0);
     Recorder.sample(dx, dy, dz, dt0);   // or a demo session has no raw channel to replay
   }
@@ -511,7 +560,12 @@ function loop(now){
   if(UI.traceAcc>0.1){
     UI.traceAcc-=0.1;              // carry the remainder: resetting to 0 ran the tick at ~8.6 Hz
     UI.trace.push(clamp(Breath.s,-1.6,1.6));
-    if(UI.trace.length>620) UI.trace.shift();
+    UI.held.push(Breath.restGate < 0.5);
+    if(UI.trace.length>620){
+      UI.trace.shift(); UI.held.shift();
+      for(let i=0;i<UI.marks.length;i++) UI.marks[i]--;
+      while(UI.marks.length && UI.marks[0] < 0) UI.marks.shift();
+    }
     Recorder.derived({t:now/1000, s:Breath.s, level:level, phase:Breath.phase,
                       bpm:(Breath.conf>0.45 ? Breath.bpmSmooth : 0)||0,
                       quality:Breath.quality(), rich:UI.rich,
@@ -604,6 +658,32 @@ function drawTrace(){
 
   const n=UI.trace.length; if(n<2) return;
   const step=w/620, x0=w-n*step;
+
+  // "Show what it hears": the stretches the app read as held, and a tick for
+  // every breath it actually counted. The point is that you can check it
+  // against your own body rather than taking the sound's word for it — the
+  // one complaint about this app so far was about timing.
+  if(Flags.heard){
+    ctx.fillStyle = alpha(P.sand, 0.13);
+    let from = -1;
+    for(let i=0;i<=n;i++){
+      const held = i<n && UI.held[i];
+      if(held && from<0) from = i;
+      else if(!held && from>=0){
+        ctx.fillRect(x0+from*step, 0, (i-from)*step, h);
+        from = -1;
+      }
+    }
+    ctx.strokeStyle = alpha(P.foam, 0.34); ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(const m of UI.marks){
+      if(m < 0 || m >= n) continue;
+      const x = Math.round(x0+m*step) + 0.5;
+      ctx.moveTo(x, h-9); ctx.lineTo(x, h);
+    }
+    ctx.stroke();
+  }
+
   ctx.beginPath();
   for(let i=0;i<n;i++){
     const y=h/2 - clamp(UI.trace[i],-1.6,1.6)*(h/2-5)/1.6;
@@ -668,6 +748,18 @@ const SLIDERS = [
   ['mSpace',  'space',       50,  v => Audio.setMix('space', v/100)],
 ];
 
+/* This module is the entry point and nothing in the app imports it — that is
+   what lets the tools load the tracker in Node with no DOM. The three exports
+   below are for tools/smoke.mjs, which drives the app the way a finger would
+   and needs to see the state a finger cannot: a timer that is armed, a flag
+   that is set. Do not import them from another module in src/. */
+
+/* Experiments. Off by default and saved with everything else, so trying one
+   costs a tap and keeping it costs nothing. They are grouped under "Try" in
+   Adjust rather than mixed in with the settled controls, because a control the
+   app is not sure of should say so. */
+export const Flags = { heard:false, dim:false, depthBreak:false };
+
 const TOGGLES = [
   // Demo mode is deliberately absent: it is a way to hear the sound without
   // lying down, and a phone that silently starts a fake session a week later
@@ -678,7 +770,49 @@ const TOGGLES = [
     el.cellHr.classList.toggle('hidden', !on);
   }],
   ['tglInvert', 'invert', on => { Breath.invert = on; }],
+
+  ['tglHeard',  'heard',  on => { Flags.heard = on; }],
+  ['tglDim',    'dim',    on => {
+    Flags.dim = on;
+    if(!on) Dim.wake();
+    else if(UI.state === 'running') Dim.arm();
+  }],
+  ['tglDepth',  'depthBreak', on => { Flags.depthBreak = on; }],
 ];
+
+/* ---------- dimming ----------
+   Lying in a dark room with a phone on your belly, the screen is the brightest
+   thing in the room and there is nothing on it you need. It fades out after a
+   while and a tap brings it back — but the tap that brings it back must not
+   also press End, so a transparent catcher takes that one. */
+export const Dim = {
+  timer:null, on:false,
+  AFTER: 25,                       // seconds of no touch; long enough to settle
+
+  arm(){
+    clearTimeout(this.timer);
+    if(!Flags.dim || UI.state !== 'running') return;
+    this.timer = setTimeout(()=>this.sleep(), this.AFTER*1000);
+  },
+  sleep(){
+    if(!Flags.dim || UI.state !== 'running') return;
+    this.on = true;
+    document.body.classList.add('dimmed');
+    $('dimCatch').classList.remove('hidden');
+  },
+  wake(){
+    clearTimeout(this.timer);
+    if(this.on){
+      this.on = false;
+      document.body.classList.remove('dimmed');
+      $('dimCatch').classList.add('hidden');
+    }
+    this.arm();
+  }
+};
+// pointerdown rather than click: the screen should come back as the finger
+// lands, not when it lifts.
+document.addEventListener('pointerdown', ()=>Dim.wake(), true);
 
 /** Read every control and hand back the object that goes to the store. */
 function collectSettings(){

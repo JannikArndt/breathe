@@ -125,9 +125,13 @@ export class El {
   /** Canvases: enough of a 2D context that the draw calls run and go nowhere. */
   getContext(){
     if(this._ctx) return this._ctx;
+    // Count every drawing call, so a test can assert that a layer was actually
+    // painted rather than that painting it did not throw.
+    const calls = Object.create(null);
     const noop = () => {};
     const ctx = new Proxy({
       canvas: this,
+      calls,
       measureText: () => ({width: 10}),
       createLinearGradient: () => ({addColorStop: noop}),
       createRadialGradient: () => ({addColorStop: noop}),
@@ -136,7 +140,8 @@ export class El {
     }, {
       get(o, k){
         if(k in o) return o[k];
-        return typeof k === 'string' ? noop : undefined;
+        if(typeof k !== 'string') return undefined;
+        return (...a) => { calls[k] = (calls[k] || 0) + 1; return noop(...a); };
       },
       set(o, k, v){ o[k] = v; return true; }
     });

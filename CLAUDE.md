@@ -97,6 +97,24 @@ and rewarded them for staying phase-locked to a guide tone; that was removed bec
 competes for attention with the breathing itself. Nothing should reintroduce a target
 rate, a guide tone, or a sync reward.
 
+**Experiments live under "Try" and default to off.** `Flags` in `src/main.js` holds them;
+they are ordinary rows in `TOGGLES`, so they save and restore like everything else. The
+heading says out loud that they are not sure of themselves. This is where to put something
+worth trying that is not worth defaulting on — it is not a place to park a half-finished
+feature, and a flag that has earned its keep should graduate out of the section rather
+than live there forever.
+
+**`src/main.js` exports `UI`, `Flags` and `Dim`, for `tools/smoke.mjs` only.** The test
+drives the app the way a finger does and needs to see state a finger cannot — a timer that
+is armed, a flag that is set. Nothing in `src/` may import them; see §3.
+
+**Demo mode is not a sine wave.** It is the shape the owner described from their own
+trace — a long flat bottom, a quick rise, a pause at the top, a slower fall — at 6/min,
+with smootherstep on the two strokes so the turnarounds have no corner for the τ = 0.35 s
+filter to ring on. It was a sinusoid, which is exactly the case the tracker finds easy and
+which hid both of the timing bugs this app has shipped. Do not put the sine back: demo mode
+is how the sound gets auditioned, and it should audition against something breathable.
+
 **Every control in Adjust belongs in `SLIDERS` or `TOGGLES` in `src/main.js`.** Each row
 of those tables says what the control drives, what its default is, and what key it saves
 under; the wiring, the restore, the save and the reset are all generated from them. A

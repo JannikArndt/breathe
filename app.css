@@ -181,6 +181,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .prep-arrow path{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .lede{margin:0;font-size:16px;line-height:1.5;color:var(--foam)}
 
+.sub-note{
+  display:block;margin-top:5px;
+  font-family:var(--data);font-size:10px;letter-spacing:.06em;
+  color:var(--mute);text-transform:none;
+}
 .panel-sub{
   margin:22px 0 2px;font-family:var(--display);font-size:11px;font-weight:500;
   letter-spacing:.22em;text-transform:uppercase;color:var(--sand);
@@ -237,6 +242,20 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .sheet-head h2{margin:0;flex:1 1 auto}
 
 .hidden{display:none !important}
+
+/* ---------- dimming ----------
+   The page fades rather than the backlight, because a web page cannot touch
+   the backlight. 0.10 is dark enough to stop lighting a room and bright enough
+   that the End button is still findable without a tap.
+
+   Everything but the catcher goes down together: a notice left on screen is a
+   sibling of #app, so dimming only the app would leave the toast as the
+   brightest thing in a dark room. Down slowly, back quickly. */
+body > :not(.dim-catch){transition:opacity .35s ease}
+body.dimmed > :not(.dim-catch){opacity:.10;transition:opacity 2.4s ease}
+
+/* Swallows the tap that wakes the screen, so waking cannot also press End. */
+.dim-catch{position:fixed;inset:0;z-index:40;background:transparent}
 
 @media (prefers-reduced-motion:reduce){
   *{transition-duration:.01ms !important}

@@ -199,6 +199,41 @@ check('the ratio readout fills in', $('vRatio').textContent !== '—',
 check('the header shows the sample rate', /demo|Hz/.test($('statusTag').textContent),
       JSON.stringify($('statusTag').textContent));
 
+/* ---------------------------------------------------------------- try */
+const { Flags, Dim } = mod;
+
+const traceCtx = $('trace').getContext('2d');
+const rectsBefore = traceCtx.calls.fillRect || 0;
+run(20, 60);
+const rectsPlain = (traceCtx.calls.fillRect || 0) - rectsBefore;
+
+$('tglHeard').click();
+check('an experiment can be switched on', Flags.heard === true);
+const rectsAt = traceCtx.calls.fillRect || 0;
+run(20, 60);
+const rectsHeard = (traceCtx.calls.fillRect || 0) - rectsAt;
+// The trace paints its own ground every frame either way; the held stretches
+// are extra rectangles on top, so "more than before" is the signal.
+check('showing what it hears paints the held stretches',
+      rectsHeard > rectsPlain, `${rectsPlain} rects off, ${rectsHeard} on`);
+
+$('tglDepth').click();
+check('the crest can be told to follow depth', Flags.depthBreak === true);
+
+$('tglDim').click();
+check('dimming arms itself when switched on mid-session', Dim.timer !== null);
+Dim.sleep();
+check('the screen dims', document.body.classList.contains('dimmed'));
+check('and a catcher takes the tap that wakes it',
+      !$('dimCatch').classList.contains('hidden'));
+document.dispatch('pointerdown', {});
+check('a touch brings it back', !document.body.classList.contains('dimmed') && !Dim.on);
+check('and the catcher steps aside', $('dimCatch').classList.contains('hidden'));
+
+$('tglDim').click();
+check('switching dimming off leaves the screen up', Flags.dim === false && Dim.on === false);
+$('tglHeard').click(); $('tglDepth').click();
+
 /* ---------------------------------------------------------------- audio */
 check('an audio graph was built', !!ctx && ctx.nodes.length > 20, ctx ? ctx.nodes.length + ' nodes' : 'none');
 check('the output ends in a limiter', !!ctx && ctx.nodes.some(n =>

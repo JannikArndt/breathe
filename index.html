@@ -170,6 +170,31 @@
     <button class="ghost rowbtn" id="resetMixBtn">Reset</button>
   </div>
 
+  <h3 class="panel-sub">Try
+    <span class="sub-note">off by default, and not sure of themselves yet</span>
+  </h3>
+
+  <div class="row">
+    <label>Show what it hears
+      <span class="hint">shades the trace where it reads you as holding</span>
+    </label>
+    <button class="toggle" id="tglHeard" role="switch" aria-checked="false" aria-label="Show what it hears"></button>
+  </div>
+
+  <div class="row">
+    <label>Dim the screen
+      <span class="hint">fades the display while you breathe; a tap brings it back</span>
+    </label>
+    <button class="toggle" id="tglDim" role="switch" aria-checked="false" aria-label="Dim the screen"></button>
+  </div>
+
+  <div class="row">
+    <label>Crest follows depth
+      <span class="hint">the wave breaks harder after a deeper breath, not a longer one</span>
+    </label>
+    <button class="toggle" id="tglDepth" role="switch" aria-checked="false" aria-label="Crest follows depth"></button>
+  </div>
+
   <h3 class="panel-sub">Sensor</h3>
 
   <div class="row">
@@ -311,6 +336,8 @@
   </div>
 
 </div>
+
+<div class="dim-catch hidden" id="dimCatch" aria-hidden="true"></div>
 
 <div class="notice" id="notice"><b id="noticeTitle">Note</b><span id="noticeBody"></span></div>
 

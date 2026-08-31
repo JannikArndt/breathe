@@ -63,7 +63,7 @@ function tilt(u, inShare) {
  */
 function feed(state, opts) {
   const { bpm, secs, amp = 0.9, inShare = 0.45, axis = [0.81, 0, 0.58],
-          flip = false, noise = 0.004, drift = 0 } = opts;
+          flip = false, noise = 0.004, drift = 0, lead = false } = opts;
   const dt = 1 / 60, period = 60 / bpm;
   for (let i = 0; i < secs / dt; i++) {
     state.t += dt;
@@ -76,6 +76,12 @@ function feed(state, opts) {
       axis[1] * s + 0.15 + n(),
       axis[2] * s + 9.79 + n()
     , state.t);
+    // The lead-in: a wave the user is breathing along with, so the tracker can
+    // see which way round its axis is instead of guessing. Here the synthetic
+    // breather follows it exactly; a real one follows it roughly, which is why
+    // resolveSign() wants a correlation well clear of zero rather than any
+    // correlation at all.
+    if (lead) Breath.lead(tilt(state.u, inShare));
   }
 }
 
@@ -209,12 +215,29 @@ console.log('source: ' + srcDir + '\n');
     `ratio ${(o / i).toFixed(2)}`);
 }
 
-// 4. sign heuristic: phone mounted either way up must give the same split
+// 4. direction: the axis is a line, and only the lead-in says which way along it
+//
+// An eigenvector has no sign and the shape of a breath does not carry one, so
+// the app no longer guesses. It watches the user breathe along with the wave
+// the session opens on, and reads the direction off that. Mounted either way
+// up, the same lead-in must produce the same split.
 {
+  session({ bpm: 60 / 7, inShare: 2 / 7, flip: true, lead: true, secs: 90 });
+  check('direction resolved from the lead-in, phone upside down',
+    Breath.flipped && Breath.exhaleDur > Breath.inhaleDur * 1.5,
+    `flipped ${Breath.flipped}, in ${Breath.inhaleDur.toFixed(2)} s / out ${Breath.exhaleDur.toFixed(2)} s`);
+
+  session({ bpm: 60 / 7, inShare: 2 / 7, flip: false, lead: true, secs: 90 });
+  check('and left alone when it was already right',
+    !Breath.flipped && Breath.exhaleDur > Breath.inhaleDur * 1.5,
+    `flipped ${Breath.flipped}, in ${Breath.inhaleDur.toFixed(2)} s / out ${Breath.exhaleDur.toFixed(2)} s`);
+
+  // Without a reference there is nothing to resolve it against, and the app
+  // says so by leaving it alone rather than by flipping a coin. The user's
+  // Flip direction toggle is the answer in that case.
   session({ bpm: 60 / 7, inShare: 2 / 7, flip: true, secs: 90 });
-  check('sign corrected when flipped',
-    Breath.exhaleDur > Breath.inhaleDur * 1.5,
-    `in ${Breath.inhaleDur.toFixed(2)} s / out ${Breath.exhaleDur.toFixed(2)} s`);
+  check('no reference, no guess', !Breath.signSet && !Breath.flipped,
+    `signSet ${Breath.signSet}, flipped ${Breath.flipped}`);
 }
 
 // 5. rejection: postural drift must not register as breathing

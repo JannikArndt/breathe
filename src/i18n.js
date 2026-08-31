@@ -36,6 +36,7 @@ const STRINGS = {
     'tag.listening':  'hört zu',
     'tag.demo':       'Demo',
     'cue.breathe':    'Atme',
+    'cue.with':       'Atme mit den Wellen',
 
     /* ---- live readout */
     'read.rate':      'Dein Tempo',
@@ -83,6 +84,8 @@ const STRINGS = {
     'adj.depth':      'Kamm folgt der Tiefe',
     'adj.depth.hint': 'die Welle bricht kräftiger nach einem tieferen Atemzug, nicht nach einem längeren',
     'adj.sensor':     'Sensor',
+    'adj.lead':       'Mit den Wellen beginnen',
+    'adj.lead.hint':  'eine Welle zum Mitatmen für die erste halbe Minute, bis dich die App h\u00f6rt',
     'adj.flip':       'Richtung umkehren',
     'adj.flip.hint':  'nutzen, wenn der Klang beim Einatmen fällt',
     'adj.pulse':      'Herzfrequenz',

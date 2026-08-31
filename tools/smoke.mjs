@@ -352,6 +352,26 @@ await Promise.resolve(); await new Promise(r => setTimeout(r, 0));
 await new Promise(r => setTimeout(r, 0));   // begin() awaits two promises
 
 check('the shore stops once a session starts', mod.Shore.on === false);
+
+/* The lead-in. A session used to open in silence while the tracker worked out
+   what it was looking at — 91 s before it first reported a rate in the best of
+   the recorded sessions, and never in one of them. It now opens on the same
+   wave the home screen was playing and steps aside once it can hear you. */
+const { Lead } = mod;
+check('the session opens on the lead wave', Lead.on === true && Lead.mix === 0);
+const leadPhase0 = Lead.phase;
+run(3, 60);
+check('the lead wave is what drives the sound at first',
+      Lead.on === true && Lead.blend() === 0, `mix ${Lead.mix.toFixed(2)}`);
+check('and it carried on from where the home screen left it',
+      Math.abs(leadPhase0 - mod.Shore.phase) < 0.5,
+      `${leadPhase0.toFixed(2)} vs ${mod.Shore.phase.toFixed(2)}`);
+run(55, 60);                                // three waves, then one to cross over
+check('it hands over to your own breathing', Lead.on === false,
+      `after ${Lead.breaths} waves, mix ${Lead.mix.toFixed(2)}`);
+check('and the cue stops asking you to follow it',
+      $('cue').textContent !== 'Breathe with the waves',
+      JSON.stringify($('cue').textContent));
 check('Start switches the button to End', $('mainBtn').textContent === 'End',
       JSON.stringify($('mainBtn').textContent));
 check('the intro is hidden while breathing', $('intro').classList.contains('hidden'));
@@ -656,8 +676,11 @@ await settle();
    runs a silent session that records nothing. */
 $('tglDemo').click();                          // demo off
 check('demo mode is off for the sensor run', mod.UI.demo === false);
+$('tglLead').click();                          // and the lead-in off, to prove it can be
+check('the lead-in can be switched off', mod.Flags.lead === false);
 $('mainBtn').click();
 await settle();
+check('a session started with it off has no lead wave', Lead.on === false);
 check('a session starts with the real sensor path', $('mainBtn').textContent === 'End',
       JSON.stringify($('mainBtn').textContent));
 

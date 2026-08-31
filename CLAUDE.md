@@ -72,7 +72,7 @@ comment in the codebase refers to them.
 | `src/pulse.js` | `Pulse` — experimental heart rate from the same accelerometer |
 | `src/store.js` | `Recorder` (typed-array capture) and `Store` (IndexedDB: recordings, settings, eviction, export) |
 | `src/review.js` | `Review` — the summary End lands on, the session browser, labelling |
-| `src/main.js` | `RELEASES`/`Updater`/`Log`, `UI`/`el`, the control table, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
+| `src/main.js` | `RELEASES`/`Updater`/`Log`, `UI`/`el`, `Shore` and `Lead`, the control table, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
 
 The dependency graph is a DAG and should stay one. Everything imports `util`; `review`
 imports `store`; `main` imports the rest. **Nothing imports `main`** — that is what keeps
@@ -98,6 +98,18 @@ and rewarded them for staying phase-locked to a guide tone; that was removed bec
 competes for attention with the breathing itself. Nothing should reintroduce a target
 rate, a guide tone, or a sync reward.
 
+**The lead-in is not that, and must not be allowed to become it.** `Lead` in `src/main.js`
+carries the home screen's wave into the session at 6/min and hands over after three waves,
+or sooner once `Breath.follow` clears 0.6. Four things keep it on the right side of the
+line: it is the same single voice rather than a tone laid over one, it never adapts to
+what the user does, nothing scores them against it, and **it ends** — thirty seconds in,
+the sound is theirs. Growing any one of those back is how this becomes the pacer again.
+
+It exists because a session used to open in silence. Measured on the 31 Aug recordings,
+the tracker first reported a rate 91 s into the session the owner called great, 192 s into
+the next, and never in a third that ran 109 s. It also earns its keep twice, because it is
+what makes the direction observable — see below.
+
 **Experiments live under "Try" and default to off.** `Flags` in `src/main.js` holds them;
 they are ordinary rows in `TOGGLES`, so they save and restore like everything else. The
 heading says out loud that they are not sure of themselves. This is where to put something
@@ -105,7 +117,7 @@ worth trying that is not worth defaulting on — it is not a place to park a hal
 feature, and a flag that has earned its keep should graduate out of the section rather
 than live there forever.
 
-**`src/main.js` exports `UI`, `Flags` and `Dim`, for `tools/smoke.mjs` only.** The test
+**`src/main.js` exports `UI`, `Flags`, `Dim`, `Shore` and `Lead`, for `tools/smoke.mjs` only.** The test
 drives the app the way a finger does and needs to see state a finger cannot — a timer that
 is armed, a flag that is set. Nothing in `src/` may import them; see §3.
 
@@ -216,13 +228,37 @@ to 6.00/min when this was fixed.
 `√λ₁` is `axisAmp`, the size of a breath in m/s². It is the only physical quantity in the
 chain and the one that tells a belly from a table.
 
-**Sign** is resolved once, by `resolveSign()`, when confidence first passes 0.5, and then
-left alone — a sign that changes mid-session is indistinguishable from the user turning
-over. It re-arms only after 45 s of lost tracking. The *Flip direction* toggle remains the
-user-facing escape hatch. Sign is resolved by counting rising vs
-falling sample transitions and flipping when `up > down * 1.12`, on the assumption that
-relaxed breathing exhales more slowly than it inhales. The *Flip direction* toggle is the
-user-facing escape hatch — keep it.
+**Sign is observed, not guessed.** An eigenvector has no natural sign, and the seed the
+power iteration starts from — the screen normal — is very nearly orthogonal to the answer
+on a phone lying on a belly, so which of the two directions it lands on is settled by noise
+in the first seconds. Across the five recorded sessions the axis came out along the **same
+line every time** — 0.0°, 1.6°, 3.4° and 9.5° apart — and the sign was a coin flip. The two
+sessions the owner reported as inverted are exactly the two that came out negative.
+
+`resolveSign()` reads it off the lead-in instead: `Breath.lead(ref)` is fed the wave the
+user is breathing along with, once per sample, and accumulates `Σ s·ref` against
+`Σ |s|·|ref|`, weighted in m/s² so the seconds before the axis has converged count for
+little. It needs `leadMag > 1.0` and `|r| > 0.20`; below either it **leaves the sign alone**
+rather than flipping a coin. Resolved once and then left alone — a sign that changes
+mid-session is indistinguishable from the user turning over. It re-arms only after 45 s of
+lost tracking. *Flip direction* stays the user-facing escape hatch.
+
+The 1.0 threshold is measured, over the first 30 s of every recording against a 6/min
+reference at every phase (theirs is unknown): the three belly sessions accumulate 8.6, 77
+and 135, a phone on a table 0.11, the bogus recording 0.13. Eight times of margin either
+way.
+
+**Three things that cannot resolve the sign, so do not try them again.** Timing — the old
+test flipped when `exhaleDur < inhaleDur*0.8`, on the assumption that relaxed breathing
+exhales more slowly; it never fired in any of the five recordings, including both inverted
+ones, and it could not be trusted if it had, because the detector measures the interval
+between turning points and a pause lands inside whichever stroke it falls in (58% of the
+held time in the good session sits mid-wave, not at either end). Shape — the signal does
+linger at one end, but two recordings agree and a third is silent, which is not a sample.
+Orientation — whether the phone tilts toward the head or the feet as the belly rises
+depends on where it sits relative to the fullest part of the curve; the belly's upward
+travel would settle it and is placement-independent, but at 3/min and a centimetre it is
+~0.0005 m/s² against a tilt of 0.5, three orders of magnitude under.
 
 **AGC.** `rms = lp(s², τ = 14 s)`, `scale = max(√rms · 1.55, 0.006)`, output clamped to
 ±1.8. The 0.006 floor stops the gain running away when the phone is on a table. If you
@@ -494,8 +530,9 @@ node tools/smoke.mjs            # everything else
 
 ### The DSP harness
 
-30 checks against synthetic tilt: axis recovery with no calibration step, rate tracking at
-12, 6, 3 and ~2/min, inhale/exhale split, sign correction with the phone inverted, tolerance to
+36 checks against synthetic tilt: axis recovery with no calibration step, rate tracking at
+12, 6, 3 and ~2/min, inhale/exhale split, direction resolved from the lead-in with the phone
+inverted — and left alone when there is no lead-in to resolve it from — tolerance to
 0.6 m/s² per minute of postural drift, the quality meter, the phase convention, that the
 signal is live in the first seconds without detecting cycles, the learned stroke
 amplitude, and rest detection — that a hold reads as rest and closes the gate while an
@@ -522,9 +559,10 @@ regression.
 
 `tools/smoke.mjs` runs the whole app in Node — `src/main.js` and everything it pulls in —
 against a stub DOM built from `index.html`, a stub Web Audio and an in-memory IndexedDB,
-all in `tools/stub/`. Ninety-eight checks: it opens each panel, drives the update flow
+all in `tools/stub/`. A hundred and forty checks: it opens each panel, drives the update flow
 (check, nothing new, a version arriving, a failed install, the handover), turns on Demo
-mode, taps Start, breathes for three simulated minutes through the real render loop,
+mode, taps Start, watches the lead-in hand over to the tracker, breathes for three
+simulated minutes through the real render loop,
 switches each experiment on and looks at what changed, taps End, reads the summary, then
 browses, labels, exports and deletes the recording.
 

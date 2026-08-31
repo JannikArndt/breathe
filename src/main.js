@@ -16,6 +16,11 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.16.0', date:'2026-08-31', notes:[
+    'A session no longer opens in silence. The wave from the home screen carries on into the session at six breaths a minute, so there is something to breathe with while the app works out what it is looking at. It steps aside after three waves, or sooner if it can already hear you, and hands the sound over to your own breathing.',
+    'Breathing along with that wave is also how the app now works out which way round it is lying. It used to guess from the shape of a breath and got it backwards about half the time, which is why the sound sometimes rose when you breathed out.',
+    'You can turn the opening waves off under Adjust, in the Sensor section.'
+  ]},
   {v:'0.15.0', date:'2026-08-31', notes:[
     'The home screen is one wave now: it washes up the sand, throws spray ahead of itself, hangs, and drains back. It has its own space above the text rather than passing behind it.',
     'The sound comes on by itself, faded in, and it is the wave you are watching — the same signal draws the water and drives the surf.',
@@ -434,9 +439,14 @@ async function begin(sensorP, audioP){
   Dim.arm();
   Breath.invert = $('tglInvert').getAttribute('aria-checked')==='true';
   Breath.begin(performance.now()/1000);
+  // Carry the wave across at the phase it was already at, so pressing Start
+  // does not restart it mid-stroke.
+  Lead.begin(Shore.phase);
   el.statusTag.classList.remove('hidden');
   el.statusTag.textContent = t('tag.listening', null, 'listening');
-  el.cue.textContent = t('cue.breathe', null, 'Breathe');
+  el.cue.textContent = Lead.on
+    ? t('cue.with', null, 'Breathe with the waves')
+    : t('cue.breathe', null, 'Breathe');
   el.sub.textContent = '';
 
   Breath.onExhaleStart = (inD)=>{
@@ -590,6 +600,98 @@ function demoBreath(dt, state){
   return base;
 }
 
+/* ---------- the lead-in ----------
+   A session used to open in silence. Measured on the recordings from 31 Aug,
+   the tracker first reported a rate 91 s into the session the owner called
+   great, 192 s into the next one, and never in a third that ran 109 s. Lying
+   still waiting for a sound to appear is the worst part of using this app, and
+   it is also the part where the user has nothing to breathe to.
+
+   So the session opens with the same wave the home screen was playing, at six
+   breaths a minute, carried across without a jump in the phase. It hands over
+   to the user's own breathing after three of those waves, or sooner if there
+   is already enough movement to follow.
+
+   This is not the pacer that was removed, and must not be allowed to grow back
+   into one. That one ran for the whole session, moved a target rate toward a
+   goal, and rewarded the user for staying locked to it. This one is a
+   reference to start from: it is the same single voice, it never adapts to
+   what the user does, nothing scores them against it, and it ends — after
+   thirty seconds it is gone and the sound is theirs.
+
+   It also earns its keep twice over, because breathing along with a known wave
+   is what finally makes the *direction* observable. See Breath.resolveSign(). */
+export const Lead = {
+  PERIOD: 10,                  // seconds; demoBreath's own, six breaths a minute
+  BREATHS: 3,                  // before handing over on time alone
+  on:false, phase:0, breaths:0, mix:0, handing:false, wasRising:false,
+  s:-1, level:0, vel:0, prev:null,
+
+  begin(phase){
+    this.on = !!Flags.lead;
+    this.phase = phase || 0;   // carried from the home screen, so the wave does not jump
+    this.breaths = 0; this.mix = 0; this.handing = false;
+    this.wasRising = false; this.s = -1; this.prev = null;
+    this.level = 0.5; this.vel = 0;
+  },
+
+  /** Advance the wave and decide whether it is time to step aside. */
+  step(dt){
+    if(!this.on) return;
+    const s = demoBreath(dt, this);
+    const reach = (s + 1)/2;
+    const vel = this.prev === null ? 0 : (reach - this.prev)/dt;
+    this.prev = reach;
+    const rising = vel > 0;
+    // One wave counted at the crest, the same event the spray is thrown at.
+    if(this.wasRising && !rising) this.breaths++;
+    this.wasRising = rising;
+    this.s = s;
+    this.level = reach;
+    // 0.73/s is one full stroke of this wave — the same normalisation the home
+    // screen uses, and for the same reason: the loudest moment is the fastest.
+    this.vel = clamp(vel/0.73, -1, 1);
+
+    // The reference the user is breathing along with, fed to the tracker so it
+    // can see which way round the axis is.
+    Breath.lead(s);
+
+    if(!this.handing && this.ready()){
+      // Resolve the direction *before* the crossfade starts, while the lead is
+      // still at full volume — flipping the axis inverts the measured signal,
+      // and this is the one moment where nobody can hear it happen.
+      Breath.resolveSign();
+      // Start at the bottom of the wave, where a mismatch between the two is
+      // smallest, and take one full wave over it.
+      if(this.phase > 0.68) this.handing = true;
+    }
+    if(this.handing){
+      this.mix = clamp(this.mix + dt/this.PERIOD, 0, 1);
+      if(this.mix >= 1){
+        this.on = false;
+        Recorder.event('lead', {waves:this.breaths, follow:+Breath.follow.toFixed(3),
+                                flipped:!!Breath.flipped});
+        el.cue.textContent = t('cue.breathe', null, 'Breathe');
+      }
+    }
+  },
+
+  /** Three waves, or enough movement to follow before that — but never before
+      one full wave has gone by, because a single wave is the least reference
+      the direction can be read from. */
+  ready(){
+    if(this.breaths >= this.BREATHS) return true;
+    return this.breaths >= 1 && Breath.follow > 0.6;
+  },
+
+  /** Smootherstep, so the handover has no corner at either end. */
+  blend(){
+    if(!this.on) return 1;
+    const k = this.mix;
+    return k*k*k*(k*(k*6 - 15) + 10);
+  }
+};
+
 function loop(now){
   if(UI.state==='idle') return;
   const dt = clamp((now-UI.lastFrame)/1000, 0.001, 0.1);
@@ -615,17 +717,43 @@ function loop(now){
   // rather than chasing whatever the sensor happens to be doing. lvl goes to
   // mid-breath, velocity to nothing.
   const f = Breath.follow;
-  const level = 0.5 + (Breath.level() - 0.5)*f;
-  const speed = Breath.speed()*f;
+  let level = 0.5 + (Breath.level() - 0.5)*f;
+  let speed = Breath.speed()*f;
+  let vel   = Breath.vel()*f;
+  let rising = Breath.rising, resting = Breath.resting;
+
+  // The lead-in, and the crossfade out of it. Both halves are the same shape
+  // of number, so this is a blend rather than a switch.
+  Lead.step(dt);
+  if(Lead.on){
+    const k = Lead.blend();
+    level  = lerp(Lead.level, level, k);
+    vel    = lerp(Lead.vel,   vel,   k);
+    speed  = lerp(Math.abs(Lead.vel), speed, k);
+    rising = k < 0.5 ? Lead.vel > 0 : Breath.rising;
+    resting= k < 0.5 ? Math.abs(Lead.vel) < 0.03 : Breath.resting;
+  }
 
   // reward: slower breathing opens the sound up. bpmSmooth is 0 until the
   // second breath is timed, and reward(14) = 0 holds rich at its floor until
   // there is a rate to reward.
   UI.rich = lp(UI.rich, clamp(0.28 + 0.72*reward(Breath.bpmSmooth||14), 0, 1), dt, 3.0);
 
+  // The lead wave is six a minute, which is a real rate and the one the sound
+  // should be normalised against while it is playing — velocity is divided by
+  // the peak the rate implies, so leaving this at zero would over-scale every
+  // velocity-fed layer for the first half-minute. Warmth is carried across
+  // too, or pressing Start would audibly dull a sound that was already open.
+  let rich = UI.rich, bpm = Breath.bpmSmooth||0;
+  if(Lead.on){
+    const k = Lead.blend();
+    rich = lerp(0.80, UI.rich, k);
+    bpm  = lerp(60/Lead.PERIOD, Breath.bpmSmooth || 60/Lead.PERIOD, k);
+  }
+
   Audio.frame({
-    level, vel:Breath.vel()*f, speed, inhaling:Breath.rising, resting:Breath.resting,
-    rich:UI.rich, bpm:Breath.bpmSmooth||0, dt
+    level, vel, speed, inhaling:rising, resting,
+    rich, bpm, dt
   });
   if(UI.state==='running') updateReadout();
 
@@ -1068,7 +1196,7 @@ const SLIDERS = [
    costs a tap and keeping it costs nothing. They are grouped under "Try" in
    Adjust rather than mixed in with the settled controls, because a control the
    app is not sure of should say so. */
-export const Flags = { heard:false, dim:false, depthBreak:false };
+export const Flags = { heard:false, dim:false, depthBreak:false, lead:true };
 
 /* Pick-one controls. Neither a slider nor a switch, so a third table rather
    than a hand-wired exception — the point of the tables is that a control
@@ -1090,6 +1218,7 @@ const TOGGLES = [
     if(on) Pulse.reset();
     el.cellHr.classList.toggle('hidden', !on);
   }],
+  ['tglLead',   'lead',   on => { Flags.lead = on; }],
   ['tglInvert', 'invert', on => { Breath.invert = on; }],
 
   ['tglHeard',  'heard',  on => { Flags.heard = on; }],

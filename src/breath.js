@@ -30,7 +30,11 @@ export const Breath = {
   cov:[[0,0,0],[0,0,0],[0,0,0]], dMean:[0,0,0],
   covSeen:0, lastTrack:0,
   axisAmp:0,            // RMS of the projection, in m/s^2 — a physical quantity
+  sRaw:0,               // the projection before the AGC, so it stays in m/s^2
   signSet:false, lostFor:0,
+  // Direction, resolved by watching the user breathe along with a reference
+  // rather than by guessing from the shape of the breath. See resolveSign().
+  leadDot:0, leadMag:0,
   periods:[], conf:0, follow:0,
   // follow  — there is movement of a plausible size, so the sound should track
   //           it. Available within seconds, because the sound cannot wait.
@@ -71,6 +75,7 @@ export const Breath = {
     this.cov=[[0,0,0],[0,0,0],[0,0,0]]; this.dMean=[0,0,0];
     this.covSeen=0; this.lastTrack=now; this.axisAmp=0;
     this.u=[0,0,1]; this.signSet=false; this.lostFor=0;
+    this.leadDot=0; this.leadMag=0; this.sRaw=0; this.flipped=false;
     this.periods=[]; this.conf=0;
   },
 
@@ -119,6 +124,7 @@ export const Breath = {
     let s = d[0]*this.u[0] + d[1]*this.u[1] + d[2]*this.u[2];
     if(this.invert) s = -s;
     this.breathRms = lp(this.breathRms, Math.abs(s), dt, 2.0);
+    this.sRaw = s;
 
     // ---- automatic gain: normalise to roughly +/-1
     this.rms = lp(this.rms, s*s, dt, 14.0);
@@ -295,18 +301,70 @@ export const Breath = {
     this.u = dot < 0 ? [-v[0],-v[1],-v[2]] : v;
   },
 
-  /** Which way round is the axis? Relaxed breathing usually exhales more
-      slowly than it inhales, so the slower half should be the falling one.
-      Decided once, when there is finally enough signal to decide it on, and
-      then left alone unless tracking is lost for a good while — a sign that
-      changes mid-session is indistinguishable from the user turning over. */
+  /** Which way round is the axis, and how would anyone know?
+
+      An eigenvector has no natural sign, and the seed the power iteration
+      starts from — the screen normal — is very nearly orthogonal to the answer
+      on a phone lying on a belly, so which of the two directions it lands on
+      is settled by noise in the first seconds. Across five recorded sessions
+      the axis came out along the same line every time, within 0.0, 1.6, 3.4
+      and 9.5 degrees, and the *sign* was a coin flip. Both sessions the owner
+      reported as inverted are the two that came out negative.
+
+      What used to be here guessed from timing: relaxed breathing exhales more
+      slowly than it inhales, so flip if the falling half is the quicker one.
+      It never fired in any of the five recordings, including both inverted
+      ones, and it could not have been trusted if it had. The detector measures
+      the interval between turning points, so a pause lands inside whichever
+      stroke it falls in; in the session the owner called great, 58% of the
+      held time sits mid-wave rather than at either end. The asymmetry that
+      test reads is the detector's, not the body's.
+
+      The shape of the wave cannot answer it either, and neither can the
+      phone's orientation: whether the phone tilts toward the head or the feet
+      as the belly rises depends on where it is sitting relative to the fullest
+      part of the curve. The belly's upward travel would settle it and is
+      placement-independent, but at three breaths a minute and a centimetre of
+      movement it is about 0.0005 m/s^2 against a tilt of 0.5 — three orders
+      of magnitude under.
+
+      So stop guessing and observe it. The session opens with a wave the user
+      breathes along with (`lead()`), which means their inhale is a known
+      quantity for those first breaths: correlate the measured signal against
+      it and the direction falls out. Decided once and then left alone — a sign
+      that changes mid-session is indistinguishable from the user turning over.
+  */
   resolveSign(){
-    if(this.signSet || this.periods.length < 2) return;
+    if(this.signSet) return;
+    // Below this there is not enough reference to judge on. Measured over the
+    // first 30 s of each recording in recordings/, against a 6/min reference at
+    // every phase, because theirs is unknown: the three belly sessions
+    // accumulate 8.6, 77 and 135, a phone on a table 0.11 and the bogus
+    // recording 0.13. The threshold sits eight times under the quietest real
+    // session and eight times over a table, so it is not a close call either
+    // way. Do not raise it to "be sure" — a shallow breather is the case it
+    // would cost, and it already has eight times the margin it needs.
+    if(this.leadMag < 1.0) return;
+    const r = this.leadDot/this.leadMag;
+    // The user may simply not have followed it, in which case this says
+    // nothing and the Flip direction toggle stays the answer.
+    if(Math.abs(r) < 0.20) return;
     this.signSet = true;
-    if(this.exhaleDur > 0 && this.inhaleDur > 0 && this.exhaleDur < this.inhaleDur*0.8){
+    if(r < 0){
       this.u = [-this.u[0],-this.u[1],-this.u[2]];
       this.flipped = true;
     }
+  },
+
+  /** Feed the reference the user is breathing along with, -1..1, once per
+      motion sample. Weighted by the size of the measured signal in m/s^2, so
+      the seconds before the axis has converged — when the projection is small
+      because it is pointing the wrong way — count for little on their own. */
+  lead(ref){
+    if(!isFinite(ref) || !isFinite(this.sRaw)) return;
+    const dt = this.lastDt;
+    this.leadDot += this.sRaw*ref*dt;
+    this.leadMag += Math.abs(this.sRaw)*Math.abs(ref)*dt;
   },
 
   /** How much is this actually breathing?

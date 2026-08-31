@@ -603,7 +603,14 @@ build step, so the top entry of that array stamps the home screen and every reco
 version and a stale cache look identical on the phone — which is the whole reason it is
 there. Add an entry in the same commit as the change it describes, and write the notes for
 someone who has never read the code: what the sound or the screen does differently, never
-how. The changes screen and the build line hide during a session, like Recordings.
+how.
+
+**Fold a run of entries together before it reaches a phone.** The reader is someone opening
+Changes to find out what is different since the version they were running, and a list of
+fifteen internal steps answers that worse than one entry does. When several releases have
+gone out in a day with nobody having installed any of them, collapse them into a single
+minor bump and rewrite the notes as one list. This is not rewriting history — the commits
+are the history; `RELEASES` is a message to a person. The changes screen and the build line hide during a session, like Recordings.
 
 ## 7. Style
 

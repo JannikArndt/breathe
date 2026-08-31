@@ -15,51 +15,18 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
-  {v:'0.9.15', date:'2026-08-31', notes:[
-    'Waking a dimmed screen fades rather than flashing, for anyone whose phone is set to reduce motion.'
-  ]},
-  {v:'0.9.14', date:'2026-08-31', notes:[
-    'Dimming the screen no longer stops the Adjust sheet sliding up or the messages sliding in.'
-  ]},
-  {v:'0.9.13', date:'2026-08-31', notes:[
-    'The app no longer reloads itself a second after you open it for the first time.',
-    'A new version stays quiet until your session is over, rather than putting a message on screen while you are breathing.'
-  ]},
-  {v:'0.9.12', date:'2026-08-31', notes:[
-    'Show the numbers, under Try, puts the live sensor readings under the trace: how big your breathing is in m/s\u00b2, how sure the app is, how much other movement there is, and whether it currently reads you as holding. Useful when something looks wrong and you want to say what.',
-    'Opening a recording shades the holds on the whole-session lane too, where the pattern is easier to see.'
-  ]},
-  {v:'0.9.11', date:'2026-08-31', notes:[
-    'The summary reports how long your breaths were, in and out, and how much of the session the app read as held rather than moving.',
-    'Opening a recording shades the stretches where it thought you were holding, so you can check it against what you remember.',
-    'Ending a session while the screen is dimmed brings the screen back.'
-  ]},
-  {v:'0.9.10', date:'2026-08-31', notes:[
-    'Recordings take about a third less space on the phone. They were being stored padded out to the size of the buffer they were captured in, which also meant the oldest recording was deleted sooner than it needed to be.',
-    'Export builds the file a piece at a time instead of all at once. Export all could ask the phone for tens of megabytes in one go, which is more than it will hand over.'
-  ]},
-  {v:'0.9.9', date:'2026-08-31', notes:[
-    'A new Try section in Adjust holds three things that are not sure of themselves yet. All three are off until you turn them on, and stay on once you have.',
-    'Show what it hears shades the trace where the app thinks you are holding, and ticks each breath it counted — so you can check it against your own body instead of taking the sound\u2019s word for it.',
-    'Dim the screen fades the display while you breathe. A tap brings it back, and that tap cannot press End by accident.',
-    'Crest follows depth breaks the wave harder after a deeper breath rather than a longer one.',
-    'Demo mode now breathes the way a person does — a long flat bottom, a quick rise, a pause at the top — instead of a sine wave. It runs at six a minute.'
-  ]},
-  {v:'0.9.8', date:'2026-08-31', notes:[
-    'Very slow breathing is followed properly. Below four breaths a minute the sound was reading your movement as about a quarter weaker than it was, so the layers that follow the stroke faded exactly as you slowed down.',
-    'Breaths longer than thirty seconds are counted instead of discarded.'
-  ]},
-  {v:'0.9.7', date:'2026-08-31', notes:[
-    'The app works with no connection. It is kept on the phone whole, so nothing has to be fetched to start a session.',
-    'When a new version exists the app says so, and Changes offers to install it. No more deleting the icon and adding it again.',
-    'The Reload row is now a Check: it asks whether anything is new and tells you when nothing is.',
-    'Added to the Home Screen it gets a proper icon and name instead of a screenshot.'
-  ]},
-  {v:'0.9.6', date:'2026-08-31', notes:[
-    'Everything in Adjust is remembered on this phone. Volume, sensitivity, the seven sound controls and the two sensor switches all come back the way you left them.',
-    'A Reset button under the sound controls puts those seven back where they started. Volume and sensitivity are left alone.',
-    'Demo mode is deliberately not remembered, so a switch left on cannot quietly fake a session next week.',
-    'The trace drew a second, flat line down the middle of the graph. It belonged to the guide tone, which was removed a while ago.'
+  {v:'0.10.0', date:'2026-08-31', notes:[
+    'It works with no connection. The whole app is kept on the phone, so a session starts whether or not you have signal.',
+    'When there is a new version the app tells you, and Changes installs it. No more deleting the icon and adding it back. The Reload row is a Check now: it asks, and says so when there is nothing new.',
+    'Added to the Home Screen it gets its own icon and name instead of a screenshot.',
+    'Everything in Adjust is remembered. Volume, sensitivity, the seven sound controls and the sensor switches all come back the way you left them, and a Reset button puts the seven sound controls back where they started. Demo mode is deliberately not remembered, so a switch left on cannot quietly fake a session next week.',
+    'Very slow breathing is followed properly. Below four a minute the sound was reading your movement as about a quarter weaker than it was, so the layers that follow the stroke faded exactly as you slowed down. Breaths longer than thirty seconds are counted now instead of thrown away.',
+    'The summary says how long your breaths were, in and out, and how much of the session it read as held rather than moving.',
+    'Opening a recording shades the stretches where the app thought you were holding, on both lanes, so you can check it against what you remember.',
+    'A new Try section holds four things that are not sure of themselves yet, all off until you turn them on. Show what it hears shades the live trace where it reads you as holding and ticks each breath it counted. Dim the screen fades the display while you breathe, and the tap that brings it back cannot press End. Show the numbers puts the live sensor readings under the trace. Crest follows depth breaks the wave harder after a deeper breath rather than a longer one.',
+    'Recordings take about a third less space, and Export all no longer asks the phone for the whole file in one piece.',
+    'Demo mode breathes the way a person does now — a long flat bottom, a quick rise, a pause at the top — instead of a sine wave.',
+    'The trace was drawing a second, flat line down the middle of the graph for the whole session. It belonged to the guide tone, which was removed a while ago.'
   ]},
   {v:'0.9.5', date:'2026-08-31', notes:[
     'Changes has a Reload button. Added to the Home Screen the app runs without an address bar, so there was no way to pick up a new version short of deleting the icon.'

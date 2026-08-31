@@ -16,45 +16,21 @@ node tools/replay.mjs recordings/one.json --from 40 --to 200
 
 ## What is here
 
-| file | what it is |
-|---|---|
-| `tide-20260828T100652.json` | the first session, before the export carried raw motion |
-| `breathe-20260829T001709.json` | 7:35 that worked well, labelled. Its raw motion was destroyed by the labelling bug below |
-| `breathe-20260829T115717-bogus.json` | phone on a table, then waved by hand. Not breathing. The app once read 248 breaths at 26/min from it |
-| `breathe-20260830T223632.json` | 9:32 at ~3 breaths/min with long holds, full raw motion. The recording that showed the baseline filter was turning a hold into a ramp, and the two constants set for someone breathing three times faster |
-| `breathe-20260831-0853.json` | 7:00 on 0.10.0, labelled. Raw motion destroyed by the same bug |
+Three files, and each one is here for a reason that has not expired. Two others were
+deleted: a session from before the app was renamed, and one whose raw motion the labelling
+bug destroyed — neither could be replayed, and neither said anything the remaining three do
+not say better.
 
-**Every labelled recording in this folder has lost its raw motion, and the unlabelled one
-has kept it.** That is not a coincidence: until 0.10.1, adding a label wrote the whole
-recording back from the object on screen, and that object is fetched without the sample
-channels because materialising tens of thousands of rows to draw a summary is not worth
-the pause. So the one action taken to make a recording more useful was the action that
-threw most of it away — silently, on disk, permanently. Two things stop it now: labelling
-edits the metadata row and nothing else, and the store refuses any write that would replace
-samples with nothing.
+| file | what it is | why it stays |
+|---|---|---|
+| `breathe-20260829T115717-bogus.json` | phone on a table, then waved by hand | The negative control, and the only one that cannot go out of date: a table is still a table. `tools/dsp-harness.mjs` replays it and asserts confidence stays under 0.35. Deleting it removes a check. |
+| `breathe-20260830T223632.json` | 9:32 at ~3 breaths/min with long holds, **full raw motion** | The only recording with raw samples, so the only one `replay.mjs` and `onset.mjs` can say anything about. Four fixes came out of it: the baseline turning a hold into a ramp, the rest gate's reference, the period ceiling, and the audio's rate floor. |
+| `breathe-20260831-0853.json` | 7:00 on 0.10.0, derived channels only | The evidence for the reward curve: it descends 6.2 → 2.5 breaths a minute over seven minutes and `rich` sat pinned at 1.00 for 86% of it. Carries the `rest` channel. Its raw motion was destroyed by the labelling bug. |
 
-Two of these are not a sample. Use them to find bugs, not to set constants — the
-sensitivity control exists because where the line falls between a shallow breather and a
-still phone depends on the body, and no two recordings can settle it.
-
-That said, the one real session with raw motion in it has now produced four fixes that
-nothing else would have found: the baseline turning a hold into a ramp, the rest gate
-comparing velocity against the wrong reference, a period ceiling that discarded its longest
-breath, and an audio clamp that under-scaled every velocity-fed layer by a quarter at that
-person's rate. Finding a bug in one recording and setting a threshold from one recording
-are different things.
-
-## Reading one
-
-The `derived` block names its own columns, so read the index out of `columns` rather than
-assuming a position — the list has grown. As of `breathe-session/1` with a `rest` channel
-it is `t, s, level, phase, bpm, quality, rich, hr, hrConf, rest`. A recording made before a
-column existed simply does not list it. `motion` is always `t, x, y, z` in m/s², at
-whatever rate the device produced.
-
-`rest` is the gate the audio engine multiplies velocity by: 1 while you are moving, 0 while
-the app reads you as holding. Under 0.5 is what the summary, the review lanes and
-`tools/onset.mjs` all call "held".
+**What would be worth recording next:** one session on 0.12.0 or later, with the usable part
+marked, exported *without* being labelled on an older version. Two of the three files above
+have no raw motion, which means no future DSP change can be checked against them — only the
+0830 session can do that, and it is one body on one evening.
 
 Label a recording before exporting it. The first half-minute is always you getting
 settled, and a `lay-down` marker is the difference between data that can be trusted and

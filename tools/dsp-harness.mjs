@@ -49,8 +49,8 @@ function tilt(u, inShare) {
  * @param opts.bpm       breaths per minute
  * @param opts.secs      duration
  * @param opts.amp       peak-to-peak tilt in m/s^2. 0.9 is what real sessions
- *                        measure: the two recordings in recordings/ came back
- *                        at 0.32 and 0.45 m/s^2 RMS along the breath axis,
+ *                        measure: the real recordings in recordings/ came back
+ *                        at 0.41 and 0.49 m/s^2 RMS along the breath axis,
  *                        which is about 0.9-1.3 peak-to-peak. This used to say
  *                        0.09 and call it "a relaxed adult belly" — an
  *                        assumption nobody had checked against a recording,

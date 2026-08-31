@@ -361,6 +361,10 @@ come from the same cache and that cache is discarded whole.
   are the reliable path.
 - **Side-lying and prone positions are untested.** The axis-finding should cope, but the
   sign heuristic was designed for supine.
+- **Everything measured here comes from one body.** Three recordings, one person, one
+  phone, one mattress. Every constant that was moved because a recording said so was moved
+  because *that* recording said so. The sensitivity control exists for this reason and is
+  not a substitute for a second person.
 - **Very shallow chest breathers** may not move the phone enough. The signal line reports
   this and suggests moving the phone lower, but there is a floor below which there is no
   signal to find. The sensitivity control moves where that floor sits, because two

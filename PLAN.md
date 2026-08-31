@@ -65,8 +65,12 @@ It could not have fired correctly anyway. It flips when
 more slowly than it inhales. **This owner is the other way round**: 1131
 measures inhale 13.27 s against exhale 10.41 s, and 1122's inverted reading of
 inhale 5.81 / exhale 9.35 is a true inhale of 9.35 against an exhale of 5.81.
-The assumption in that heuristic is false for the one body this app has data
-for.
+**Correction (same day).** That last paragraph overstated it. The detector
+measures the interval between turning points, so a pause lands inside whichever
+stroke it falls in -- and in 1131, 58% of the held time sits mid-wave rather
+than at either end. Those figures do not show the owner's inhale is the longer
+one; they show the split is not a clean read of either. Which is reason enough
+to distrust the test, but not evidence about a body.
 
 ### 1.3 Locking takes one to three minutes
 
@@ -87,7 +91,21 @@ Three things stack up, and none of them is a bug on its own:
 
 Ordered by how much each is worth. Each is independently shippable.
 
-### 2.1 Remember the axis between sessions  -- fixes the inversion
+### 2.0 DONE (0.16.0) -- open on a wave, and read the direction off it
+
+The session now opens on the home screen's wave at 6/min and hands over after
+three waves, or sooner once there is enough movement to follow. Breathing along
+with a known reference is what makes the direction *observable*: `resolveSign()`
+correlates the measured signal against it, and leaves the sign alone when there
+is not enough reference to judge on. Measured over the first 30 s of each
+recording, belly sessions accumulate 8.6, 77 and 135 against a threshold of 1.0;
+a table manages 0.11.
+
+This supersedes 2.2 below and does most of what 2.5 was for. 2.1 is still worth
+having -- it would resolve the direction on the very first breath rather than
+after one wave, and it is the answer for anyone who turns the lead-in off.
+
+### 2.1 Remember the axis between sessions  -- would resolve it sooner still
 
 Store the settled axis, in device coordinates, in the existing `prefs` store,
 and seed `trackAxis` from it instead of from `[0,0,1]`. Because the axis is
@@ -102,7 +120,9 @@ resolves the sign for free and removes most of the convergence time with it.
   the phone is somewhere new: drop the memory and start cold
 - first ever session still needs a cold start, so 2.2 still matters
 
-### 2.2 Replace the sign heuristic with one that holds for this body
+### 2.2 SUPERSEDED by 2.0 -- the shape statistic
+
+Kept for the record, and as a warning against reviving it.
 
 The timing assumption is measurably wrong here. The shape statistic is better:
 the signal lingers at the exhaled bottom. On the correctly-signed 1131 the

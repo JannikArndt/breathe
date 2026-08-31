@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#08171E">
 <title>breathe — a breath instrument</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -82,7 +85,7 @@
 
   <div class="row">
     <label>Get the latest version
-      <span class="hint">fetches the page again, past the cache</span>
+      <span class="hint" id="reloadHint">fetches the page again, past the cache</span>
     </label>
     <button class="ghost rowbtn" id="reloadBtn">Reload</button>
   </div>

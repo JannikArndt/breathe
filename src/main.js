@@ -15,6 +15,12 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.7', date:'2026-08-31', notes:[
+    'The app works with no connection. It is kept on the phone whole, so nothing has to be fetched to start a session.',
+    'When a new version exists the app says so, and Changes offers to install it. No more deleting the icon and adding it again.',
+    'The Reload row is now a Check: it asks whether anything is new and tells you when nothing is.',
+    'Added to the Home Screen it gets a proper icon and name instead of a screenshot.'
+  ]},
   {v:'0.9.6', date:'2026-08-31', notes:[
     'Everything in Adjust is remembered on this phone. Volume, sensitivity, the seven sound controls and the two sensor switches all come back the way you left them.',
     'A Reset button under the sound controls puts those seven back where they started. Volume and sensitivity are left alone.',
@@ -66,11 +72,111 @@ function relDate(iso){
 
 /** The change log. Built once, on first open — there is no reason to put five
     releases in the DOM for a screen most sessions never visit. */
+/* ---------- keeping up to date ----------
+   Added to the Home Screen the app runs standalone: no address bar, no
+   pull-to-refresh, and iOS will go on serving the copy it has — including in
+   answer to location.reload(). The service worker turns that around: it holds
+   the whole app as one version-named set, a new version installs beside it
+   without disturbing a running session, and swapping over is a button.
+
+   The whole thing is optional. With no service worker (an old browser, a
+   private window, http://) the app runs exactly as it did; only this panel
+   changes what it says. */
+const Updater = {
+  reg:null, waiting:null, state:'unsupported',
+  // idle      — registered, nothing new
+  // checking  — asking the server
+  // ready     — a new version is installed and waiting
+  // unsupported
+
+  start(){
+    if(!('serviceWorker' in navigator) || !window.isSecureContext) return;
+    this.state = 'idle';
+    // updateViaCache:'none' keeps the HTTP cache from answering for the worker
+    // script itself, which would make the whole mechanism unable to notice a
+    // new version — the exact failure it exists to fix.
+    navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'}).then(reg=>{
+      this.reg = reg;
+      if(reg.waiting) this.arrived(reg.waiting);
+      reg.addEventListener('updatefound', ()=>{
+        const sw = reg.installing;
+        if(!sw) return;
+        sw.addEventListener('statechange', ()=>{
+          // A first-ever install has nothing to replace, so it is not an update.
+          if(sw.state === 'installed' && navigator.serviceWorker.controller) this.arrived(sw);
+        });
+      });
+    }).catch(()=>{ this.state = 'unsupported'; });
+
+    // The new worker takes over only when we ask it to, so this fires once,
+    // in answer to the button.
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+      if(reloading) return;
+      reloading = true;
+      location.reload();
+    });
+  },
+
+  arrived(sw){
+    this.waiting = sw;
+    this.state = 'ready';
+    this.paint();
+    notice('A new version is ready', 'Open Changes from the bottom of the home screen to install it.', 8000);
+  },
+
+  /** The Reload button. Asks the server, then says what it found — including
+      "nothing", which is the answer the old button could never give. */
+  check(){
+    if(this.state === 'ready'){ this.install(); return; }
+    if(!this.reg){
+      // No service worker to ask. Fall back to what the app did before it had
+      // one: a URL the phone has never seen cannot be answered from its cache.
+      location.replace(location.pathname + '?r=' + Date.now());
+      return;
+    }
+    this.state = 'checking'; this.paint();
+    this.reg.update()
+      .then(()=>new Promise(r=>setTimeout(r, 1200)))   // let an install settle
+      .then(()=>{
+        if(this.state === 'ready') return;             // arrived() already said so
+        this.state = 'idle'; this.paint();
+        notice('Up to date', 'This is the newest version. Nothing to install.', 4000);
+      })
+      .catch(()=>{
+        this.state = 'idle'; this.paint();
+        notice('Could not check', 'No answer from the network. The app keeps working offline.', 5000);
+      });
+  },
+
+  install(){
+    if(!this.waiting) return;
+    this.waiting.postMessage('skip-waiting');          // controllerchange reloads
+  },
+
+  /** Keep the row in Changes honest about what the button will do. */
+  paint(){
+    const btn = $('reloadBtn'), hint = $('reloadHint');
+    if(!btn || !hint) return;
+    const say = {
+      unsupported: ['Reload', 'fetches the page again, past the cache'],
+      idle:        ['Check',  'asks whether a newer version exists'],
+      checking:    ['…',      'asking'],
+      ready:       ['Install','a new version is ready to take over']
+    }[this.state];
+    btn.textContent = say[0];
+    btn.disabled = this.state === 'checking';
+    hint.textContent = say[1];
+    btn.classList.toggle('ready', this.state === 'ready');
+  }
+};
+
 const Log = {
   built:false,
   open(){
     if(!this.built){ this.render(); this.built = true; }
     el.panel.classList.remove('open');       // one sheet up at a time
+    Updater.paint();
     $('log').classList.add('open');
   },
   close(){ $('log').classList.remove('open'); },
@@ -524,14 +630,7 @@ $('recBtn').addEventListener('click', ()=>Review.showList());
 $('buildBtn').textContent = `${BUILD.v} · ${relDate(BUILD.date)}`;
 $('buildBtn').addEventListener('click', ()=>Log.open());
 $('closeLog').addEventListener('click', ()=>Log.close());
-$('reloadBtn').addEventListener('click', ()=>{
-  // Added to the Home Screen the app runs standalone: no address bar, no
-  // reload gesture, and iOS will go on serving the copy it already has. A
-  // plain location.reload() can be answered from that same cache. A URL the
-  // phone has never seen cannot be, so give it one. location.replace keeps
-  // the stale copy from sitting in history behind the fresh one.
-  location.replace(location.pathname + '?r=' + Date.now());
-});
+$('reloadBtn').addEventListener('click', ()=>Updater.check());
 $('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
 // Not a calibration step — there is none. This throws away the tracked axis
 // and the learned stroke depth, which is what you want after turning over or
@@ -699,6 +798,8 @@ Review.onDone = toIntro;
 Store.open()
   .then(()=>Store.readPrefs())
   .then(p=>{ applySettings(p); Review.refreshCount(); refreshStorageRow(); });
+
+Updater.start();
 
 // secure-context check up front — requestPermission simply will not fire otherwise
 if(!window.isSecureContext && location.hostname!=='localhost'){

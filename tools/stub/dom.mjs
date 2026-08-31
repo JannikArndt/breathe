@@ -233,8 +233,42 @@ export function installDom(htmlPath){
     globalThis.requestAnimationFrame = () => 0;
     globalThis.cancelAnimationFrame = () => {};
   }
+  /* A service worker registration the test can drive: `swUpdate()` plays out
+     an update arriving, `swRegistration.updates` counts the checks. */
+  const swListeners = new Map();
+  const on = (map, t, f) => { if(!map.has(t)) map.set(t, []); map.get(t).push(f); };
+  const fire = (map, t, e) => (map.get(t) || []).forEach(f => f(e));
+
+  const container = {
+    controller: {}, // pretend a worker is already in charge, so an install reads as an update
+    addEventListener: (t, f) => on(swListeners, t, f),
+    register: async () => registration,
+  };
+  const regListeners = new Map();
+  const registration = {
+    waiting: null, installing: null, updates: 0,
+    addEventListener: (t, f) => on(regListeners, t, f),
+    update: async () => { registration.updates++; },
+  };
+  globalThis.swRegistration = registration;
+  globalThis.swUpdate = () => {
+    const wListeners = new Map();
+    const worker = {
+      state: 'installing',
+      addEventListener: (t, f) => on(wListeners, t, f),
+      postMessage: m => { worker.posted = m; if(m === 'skip-waiting') fire(swListeners, 'controllerchange', {}); },
+    };
+    registration.installing = worker;
+    fire(regListeners, 'updatefound', {});
+    worker.state = 'installed';
+    fire(wListeners, 'statechange', {});
+    registration.waiting = worker;
+    return worker;
+  };
+
   Object.defineProperty(globalThis, 'navigator', {
-    value: {userAgent: 'node-smoke', storage: undefined, wakeLock: undefined},
+    value: {userAgent: 'node-smoke', storage: undefined, wakeLock: undefined,
+            serviceWorker: container},
     configurable: true, writable: true
   });
   globalThis.URL.createObjectURL = () => 'blob:node/0';

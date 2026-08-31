@@ -1,0 +1,14 @@
+{
+  "name": "breathe",
+  "short_name": "breathe",
+  "description": "A breath instrument. The phone lies on your belly and the sound follows it.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08171E",
+  "theme_color": "#08171E",
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

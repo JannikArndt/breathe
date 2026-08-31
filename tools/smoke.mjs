@@ -14,6 +14,7 @@
  *
  * Exit code 0 = every check passed.
  */
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { installDom } from './stub/dom.mjs';
@@ -55,6 +56,8 @@ function run(seconds, hz){
 
 /* ---------------------------------------------------------------- world */
 const { document } = installDom(resolve(root, 'index.html'));
+let reloaded = false;
+globalThis.location.reload = () => { reloaded = true; };
 installAudio();
 installIdb();
 
@@ -96,6 +99,45 @@ check('Changes lists the releases', $('logList').children.length >= 3,
       $('logList').children.length + ' entries');
 $('closeLog').click();
 check('Changes closes from Back', !$('log').classList.contains('open'));
+
+/* ---------------------------------------------------------------- worker */
+// There is no build step to keep these in step, so they are asserted instead.
+const swText = readFileSync(resolve(root, 'sw.js'), 'utf8');
+const swVersion = (swText.match(/const VERSION = '([^']+)'/) || [])[1];
+const appVersion = ($('buildBtn').textContent.split(' ')[0]) || '';
+check('the worker and the app agree on the version', swVersion === appVersion,
+      `sw ${swVersion} vs app ${appVersion}`);
+
+const shell = [...swText.matchAll(/'\.\/([^']*)'/g)].map(m => m[1]);
+const onDisk = ['index.html', 'app.css', 'manifest.webmanifest', 'icon.png',
+                ...readdirSync(resolve(root, 'src')).map(f => 'src/' + f)];
+const missing = onDisk.filter(f => !shell.includes(f));
+check('the worker precaches every file the app is made of', missing.length === 0, missing.join(' '));
+const phantom = shell.filter(f => f && !existsSync(resolve(root, f)));
+check('the worker precaches nothing that is not there', phantom.length === 0, phantom.join(' '));
+
+await settle();
+$('buildBtn').click();
+check('with a worker registered the row offers a check, not a blind reload',
+      $('reloadBtn').textContent === 'Check', JSON.stringify($('reloadBtn').textContent));
+
+$('reloadBtn').click();
+check('the button asks the server', swRegistration.updates === 1, String(swRegistration.updates));
+await new Promise(r => setTimeout(r, 1400));
+check('nothing new leaves it saying so', $('noticeTitle').textContent === 'Up to date',
+      JSON.stringify($('noticeTitle').textContent));
+
+const waiting = swUpdate();
+check('an arriving version turns the row into an install', $('reloadBtn').textContent === 'Install',
+      JSON.stringify($('reloadBtn').textContent));
+check('and says so out loud', $('noticeTitle').textContent === 'A new version is ready',
+      JSON.stringify($('noticeTitle').textContent));
+
+$('reloadBtn').click();
+check('installing tells the waiting worker to take over', waiting.posted === 'skip-waiting',
+      JSON.stringify(waiting.posted));
+check('and the app reloads itself when it does', reloaded, String(reloaded));
+$('closeLog').click();
 
 /* ---------------------------------------------------------------- settings */
 // Every slider's default has to match its `value` in the markup, or Reset

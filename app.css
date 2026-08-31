@@ -257,6 +257,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
   min-width:88px;
 }
 
+/* An update waiting to be installed. Glass rather than sand: this is an offer,
+   not a warning, and the fill separates it from every other ghost button in a
+   panel the user is scanning. */
+.row .rowbtn.ready{
+  color:var(--abyss);
+  background:var(--glass);
+  border-color:var(--glass);
+}
+
 /* Destructive action: the same sand the notice bar uses for attention,
    never a fill, so it cannot be mistaken for the primary button. */
 .row .rowbtn.danger{

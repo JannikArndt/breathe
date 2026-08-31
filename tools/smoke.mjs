@@ -61,15 +61,28 @@ globalThis.location.reload = () => { reloaded = true; };
 installAudio();
 installIdb();
 
-// Motion: granted, and delivered by dispatching on window the way Safari does.
-globalThis.DeviceMotionEvent = { requestPermission: async () => 'granted' };
+/* Two worlds, and every check below must pass in both.
+   iOS gates devicemotion behind DeviceMotionEvent.requestPermission() and a
+   real tap. Android Chrome has no such method at all, so requestSensor()
+   attaches the listener directly — a different branch, on the path that
+   decides whether the app works or does nothing. Run with --android to take
+   the other one. */
+const ANDROID = process.argv.includes('--android');
+globalThis.DeviceMotionEvent = ANDROID
+  ? function DeviceMotionEvent(){}
+  : { requestPermission: async () => 'granted' };
 globalThis.window.DeviceMotionEvent = globalThis.DeviceMotionEvent;
+if(ANDROID) globalThis.navigator.userAgent =
+  'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36';
+console.log(ANDROID ? 'world: Android Chrome (no permission gate)\n'
+                    : 'world: iOS Safari (requestPermission)\n');
 
 const $ = id => document.getElementById(id);
 
 /* ---------------------------------------------------------------- import */
 // The store is a module singleton, so this is the same object main.js drives.
 const { Store } = await import(resolve(root, 'src/store.js'));
+const { Breath } = await import(resolve(root, 'src/breath.js'));
 
 let mod;
 try{
@@ -252,6 +265,7 @@ check('Start switches the button to End', $('mainBtn').textContent === 'End',
       JSON.stringify($('mainBtn').textContent));
 check('the intro is hidden while breathing', $('intro').classList.contains('hidden'));
 check('the trace appears', !$('traceWrap').classList.contains('hidden'));
+
 check('Recordings is out of reach mid-session', $('recBtn').classList.contains('hidden'));
 check('the build line hides mid-session', $('buildLine').classList.contains('hidden'));
 
@@ -547,6 +561,44 @@ if(rows.length){
   check('and lands back on the list', !$('revList').classList.contains('hidden'));
 }
 $('revBack').click();
+await settle();
+
+/* ---------------------------------------------------------------- sensor */
+/* Everything above ran in Demo mode, which by design never asks for the
+   sensor at all. This is the real path, and it is the one branch that
+   genuinely differs between the two worlds: on iOS it goes through
+   requestPermission and a tap, on Android there is no such method and the
+   listener has to be attached directly. Get that wrong for either and the app
+   runs a silent session that records nothing. */
+$('tglDemo').click();                          // demo off
+check('demo mode is off for the sensor run', mod.UI.demo === false);
+$('mainBtn').click();
+await settle();
+check('a session starts with the real sensor path', $('mainBtn').textContent === 'End',
+      JSON.stringify($('mainBtn').textContent));
+
+const before = Breath.samples;
+for(let i = 0; i < 1200; i++){
+  const t = i/60, v = Math.sin(t*2*Math.PI/10);
+  document.documentElement.dispatch('devicemotion', {
+    accelerationIncludingGravity: {x: v*0.45, y: 0.2, z: 9.79 + v*0.45}
+  });
+  tick(1000/60);
+}
+check('motion events reach the tracker', Breath.samples - before === 1200,
+      `${Breath.samples - before} of 1200 samples`);
+// Two breaths of a 0.45 m/s² tilt. Real sessions measure 0.41 and 0.49.
+check('and the tracker finds a breath in them', Breath.axisAmp > 0.3,
+      `amplitude ${Breath.axisAmp.toFixed(3)} m/s²`);
+check('the header reports a live sample rate', /\d+ Hz/.test($('statusTag').textContent),
+      JSON.stringify($('statusTag').textContent));
+
+$('mainBtn').click();
+await settle(20);
+check('the sensor session ends on the summary', $('mainBtn').textContent === 'Start');
+$('revBack').click();
+await settle();
+await Store.clear();
 await settle();
 check('Recordings is reachable again', !$('recBtn').classList.contains('hidden'));
 check('the build line is back', !$('buildLine').classList.contains('hidden'));

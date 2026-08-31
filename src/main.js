@@ -381,7 +381,7 @@ async function begin(sensorP, audioP){
   }else if(sensor.indexOf('error:') === 0){
     const name = sensor.slice(6);
     notice('Motion request failed', name === 'NotAllowedError'
-      ? 'Safari did not treat that as a direct tap. Reload the page and tap Begin as your first action, without scrolling first.'
+      ? 'The browser did not treat that as a direct tap. Reload the page and tap Start as your first action, without scrolling first.'
       : name + '. Reload and try again, or use Demo mode under Adjust.', 0);
   }
 
@@ -442,7 +442,7 @@ async function begin(sensorP, audioP){
   setTimeout(()=>{
     if(UI.state!=='running' || UI.sensorSeen || UI.demo) return;
     if(UI.sensorPerm === 'ok'){
-      notice('Allowed, but silent', 'Motion access was granted and no readings are arriving. Lock and unlock the screen, or reload the page. If this is inside another app, open it in Safari directly.', 0);
+      notice('Allowed, but silent', 'Motion access was granted and no readings are arriving. Lock and unlock the screen, or reload the page. If this is inside another app, open it in your browser directly.', 0);
     }else{
       notice('Motion not active', 'Permission state: ' + UI.sensorPerm + '. Reload and tap Start first, or switch on Demo mode under Adjust.', 0);
     }
@@ -496,8 +496,8 @@ function reportSaveTrouble(){
   if(!Store.available){
     UI.toldSaveTrouble = true;
     notice('Not recorded', 'This browser will not let breathe store anything, so that session '
-      + 'was not kept. Your breathing was unaffected. Open the page in Safari directly, or '
-      + 'leave private browsing, if you want recordings.', 8000);
+      + 'was not kept. Your breathing was unaffected. Open the page in your browser directly, '
+      + 'or leave private browsing, if you want recordings.', 8000);
   }else if(Recorder.saveError){
     UI.toldSaveTrouble = true;
     notice('Not recorded', 'That session could not be saved (' + Recorder.saveError

@@ -34,8 +34,14 @@ jobs:
       - name: the signal chain
         run: node tools/dsp-harness.mjs
 
-      - name: the whole app
+      - name: the whole app, as iOS sees it
         run: node tools/smoke.mjs
+
+      # Android Chrome has no DeviceMotionEvent.requestPermission, so the app
+      # takes a different branch on the path that decides whether it works at
+      # all. Every check has to pass on both.
+      - name: the whole app, as Android sees it
+        run: node tools/smoke.mjs --android
 
       - name: onset against a real recording
         run: node tools/onset.mjs recordings/breathe-20260830T223632.json

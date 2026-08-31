@@ -506,6 +506,11 @@ counts direct `.value` writes, so the rule that the render loop never sets one i
 rather than a convention. A call the app does not make is not implemented, on purpose:
 better a loud failure than a stub quietly returning the wrong thing.
 
+It runs in two worlds and every check must pass in both. Plain, it is iOS: motion is
+gated behind `DeviceMotionEvent.requestPermission()` and a real tap. With `--android` that
+method does not exist, so `requestSensor()` attaches the listener directly. That is the
+one branch deciding whether the app works or silently does nothing, and CI runs both.
+
 **Run it after any change to `index.html`, `app.css`, `sw.js`, `store`, `review` or
 `main`.** In practice: run it after any change at all.
 
@@ -546,6 +551,18 @@ baseline, the AGC, or rest detection.**
 `tools/analyze.mjs` describes a recording rather than re-running the tracker over it:
 cycle timing, stroke depth, how much of the session was spent held still, and how often
 the hysteresis would trip early. Use it to check a DSP change against real breathing.
+
+### Android
+
+The app derives its own breath axis from the data rather than assuming one, and every
+filter takes a measured `dt`, so neither Chrome's axis convention nor its sample rate
+should matter. `requestSensor()` handles the missing `requestPermission` and
+`tools/smoke.mjs --android` drives the whole app down that branch. Copy that could be
+reached on either platform says "your browser", not "Safari"; the two notices that only
+fire where `requestPermission` exists still name Safari, because there they are right.
+
+**Nobody has run this on an Android phone.** Everything above is the code path being
+correct, not the hardware being checked.
 
 ### Manual checks nothing here can do
 

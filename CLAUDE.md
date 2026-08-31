@@ -420,8 +420,8 @@ node tools/smoke.mjs            # everything else
 
 ### The DSP harness
 
-28 checks against synthetic tilt: axis recovery with no calibration step, rate tracking at
-12 and 6/min, inhale/exhale split, sign correction with the phone inverted, tolerance to
+30 checks against synthetic tilt: axis recovery with no calibration step, rate tracking at
+12, 6, 3 and ~2/min, inhale/exhale split, sign correction with the phone inverted, tolerance to
 0.6 m/s² per minute of postural drift, the quality meter, the phase convention, that the
 signal is live in the first seconds without detecting cycles, the learned stroke
 amplitude, and rest detection — that a hold reads as rest and closes the gate while an

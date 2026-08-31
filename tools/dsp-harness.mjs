@@ -341,7 +341,11 @@ console.log('source: ' + htmlPath + '\n');
 
   // And it must refuse while the body is moving, whatever it last computed.
   Pulse.bpm = 65;
-  check('pulse refuses while the body moves', Pulse.reading(0.2) === 0);
+  // 0.8 m/s^2 of broadband motion is a phone being carried; a person lying
+  // still measures around 0.08, which is why the gate sits at 0.25 and not,
+  // as it once did, at 0.05 — under the noise floor of a motionless body.
+  check('pulse reads a still body', Pulse.reading(0.12) === 65);
+  check('pulse refuses while the body moves', Pulse.reading(0.8) === 0);
   Pulse.enabled = false;
 }
 

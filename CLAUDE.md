@@ -385,6 +385,12 @@ heartbeat.** Say so wherever the number is discussed.
   `AudioParam.value` directly in the render loop; it produces zipper noise on a signal this
   slow. Time constants in `Audio.frame()` are 0.09–0.5 s and are part of how the instrument
   feels.
+- **`rich` saturates at 6/min and the owner breathes at 3.** Known, deliberate, and not to
+  be "fixed" without asking: `0.28 + 0.72·clamp((14 − bpm)/8)` reaches 1.0 at 6/min, so on
+  every session they have recorded `rich` has been pinned at maximum from the second breath
+  onward. Extending the curve down takes something away from an ordinary breather to give
+  it to a very slow one, and feeding it from the holds instead rewards a behaviour, which
+  is instruction wearing a different hat. See the README's open questions.
 - **`rich` (0–1) is the reward channel.** It opens the drone low-pass, fades in the pad, and
   raises reverb wet. It rises with slowness alone, `0.28 + 0.72·clamp((14 − bpm)/8)`, then
   is low-passed at τ = 3 s so the reward arrives as a gradual warming rather than a switch. Anything new that rewards the user should feed

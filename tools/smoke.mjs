@@ -119,6 +119,13 @@ const broadTransition = cssText.split('\n').filter(l =>
 check('no broad selector resets transitions with the shorthand',
       broadTransition.length === 0, broadTransition.join(' | '));
 
+// The four overlays sit on top of #app, not inside it. Nested by accident they
+// would inherit its fixed, unscrollable box and the sheet would be trapped in
+// it — a mis-nested closing tag is easy to make and invisible until a phone.
+const shells = document.body.children.filter(c => c.id).map(c => c.id);
+for(const id of ['app', 'log', 'panel', 'review', 'notice'])
+  check(`#${id} is a top-level shell`, shells.includes(id), shells.join(' '));
+
 // An id in the markup that nothing reads is either dead or a bug where
 // something meant to read it does not.
 const idsInMarkup = [...readFileSync(resolve(root, 'index.html'), 'utf8')

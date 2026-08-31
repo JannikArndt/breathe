@@ -397,6 +397,14 @@ come from the same cache and that cache is discarded whole.
   interesting open question in the project — and the hardest to do without reintroducing a
   pacer, since sweeping means asking someone to follow something.
 - A way to hear a recording back as sound, rather than reading it as a graph.
+- **Headroom in the reward for someone already breathing very slowly.** `rich` is
+  `0.28 + 0.72·clamp((14 − bpm)/8)`, which reaches its ceiling at 6 breaths a minute. The
+  owner's sessions run at 2.5–5/min throughout, so `rich` has been pinned at 1.0 for the
+  whole of every session they have recorded — the app's one channel for responding to how
+  they are breathing has nothing left to give them. Extending the curve down would take
+  something away from a 6/min breather to give it to a 3/min one, and rewarding the holds
+  instead would be rewarding a behaviour, which is instruction wearing a different hat.
+  Left open deliberately: it is a decision about what the app is for, not a bug.
 
 Built since, and struck off this list: a post-session summary, breath-hold detection (holds
 used to read as a flat signal and stall the detector; they now close a gate and quiet the

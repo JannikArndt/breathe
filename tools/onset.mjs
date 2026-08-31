@@ -119,10 +119,25 @@ if (!leads.length) { console.error('no complete breaths found in the raw signal'
 const med = arr => { const s = arr.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
 const heldPct = (100 * tr.filter(x => x.gate < 0.5).length / tr.length).toFixed(0);
 
+/* What the app actually did at the time, if the recording carries it. Every
+   number above comes from re-running today's tracker over old motion, which
+   answers "how would this code behave" and not "how did it behave". The rest
+   channel is the app's own gate as it ran, so the two side by side say whether
+   a change moved the thing it was meant to move. */
+const dv = S.derived || {};
+const di = {};
+(dv.columns || []).forEach((c, i) => { di[c] = i; });
+let asRun = null;
+if (di.rest != null && dv.rows && dv.rows.length) {
+  const held = dv.rows.filter(r => r[di.rest] < 0.5).length;
+  asRun = (100 * held / dv.rows.length).toFixed(0);
+}
+
 console.log(`${file}`);
 console.log(`  ${leads.length} breaths over ${t.toFixed(0)} s   sensitivity ${Breath.sensitivity}`);
 console.log(`  inhale, takeoff to peak     median ${med(strokes)} s   range ${Math.min(...strokes)}–${Math.max(...strokes)} s`);
 console.log(`  sound starts before it      median ${med(leads)} s   worst ${Math.max(...leads)} s`);
-console.log(`  held (gate under half)      ${heldPct}% of the session`);
+console.log(`  held (gate under half)      ${heldPct}% of the session` +
+            (asRun !== null ? `   (${asRun}% when it was recorded)` : ''));
 console.log(`  gate at the steepest point  median ${med(gates)}   worst ${Math.min(...gates)}   (1 = wide open)`);
 console.log(`  per breath: ${leads.join(' ')}`);

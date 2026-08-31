@@ -11,16 +11,21 @@ Tap Start, lie down, breathe. There is no calibration, no session length, no voi
 target — it starts listening immediately and runs until you end it. End lands on a summary
 you can label and export.
 
-Single HTML file. No dependencies, no build step, no network calls. Sessions are recorded
-to the phone and go nowhere unless you export them yourself.
+A handful of static files. No dependencies, no build step, and no request to any origin but
+its own. Sessions are recorded to the phone and go nowhere unless you export them yourself.
 
 ---
 
 ## Run it
 
-**On a phone.** Serve `index.html` over HTTPS and open it in Safari. Motion sensors are
+**On a phone.** Serve the directory over HTTPS and open it in Safari. Motion sensors are
 secure-context only, and Safari's permission prompt only fires from a real tap — both are
-handled, but neither works over `http://` or inside someone else's iframe.
+handled, but neither works over `http://` or inside someone else's iframe. Add it to the
+Home Screen and it installs: the whole app is kept on the phone, so it starts with no
+connection, and when a new version is published it says so and offers to install it.
+
+There is no build step and nothing to compile. GitHub Pages serving the repository root is
+the whole deployment.
 
 **Checking the sound at a desk.** Open it anywhere, go to *Adjust*, switch on **Demo mode**.
 Simulated breathing drives the whole instrument; no sensor needed.
@@ -93,8 +98,31 @@ between peaks, which is what the sound needs between turning points.
 
 ### The sound
 
-Three voices — **Tide**, **Shore** and **Harmonium** — chosen under Adjust and crossfaded
-over ~1.5 s, so you can change one mid-session without a gap.
+One voice: a shoreline. Surf gathers as you draw in, breaks at the top, and drains through
+the exhale. There were three, picked from a menu; the other two were deleted rather than
+kept as also-rans, and the seven controls in Adjust are the depth that replaced the breadth.
+
+| Control | What it moves |
+|---|---|
+| Swell | the body of the wave — a resonant low-pass that tightens as you draw in, so it gathers rather than merely getting louder |
+| Break | the crest at the top of the inhale, and its answering draw at the bottom |
+| Foam | hiss draining through the exhale, dropping in pitch through the first second after the break |
+| Spray | a narrow band drifting across the field at 0.055 Hz — slower than the slowest breath, so the movement never counts time |
+| Undertow | the low drag at the bottom |
+| Brightness | every filter corner together, ±1.55 octaves, except the undertow, which follows at `br^0.35` — taking the bottom out along with everything else makes the sound thinner rather than darker |
+| Space | stereo width first, reverb second |
+
+Two of those are worth explaining, because both started as something else.
+
+**There was a pitched layer.** A 55/110 Hz sub and a pair of upper tones sat under the water
+behind a "tone" control. Asked what it was for, there was no good answer: it read as a drone
+laid over the sea rather than as part of it. Removed, control and all — a control nobody
+wants at anything but zero is not a control.
+
+**Space was a reverb send, and it was inaudible.** Correctly so: the voice is entirely
+noise, and convolved noise still sounds like noise, because there is no transient for a room
+to smear. What does read as a room on a noise bed is width, so Space now drives a mid/side
+width gain across the whole voice as well as the send.
 
 The first version of this app had a real problem: you could not hear whether you were
 breathing in or out. Three things caused it, and only one was mixing.
@@ -114,42 +142,20 @@ app was asking. The app rewarded slowness with one hand and faded out its most b
 layer with the other. Velocity is now normalised against the rate you are actually
 breathing at.
 
-Tide's five layers, as an example of the shape all three share:
-
-| Layer | Driven by |
-|---|---|
-| Drone — 55/110/165/220 Hz, slow detune drift | Low-pass cutoff opens 165 → ~800 Hz as you inhale |
-| Air — band-passed pink noise | Centre frequency follows belly position, level follows belly *speed* |
-| Pad — open Asus2 chord | Fades in only when breathing is slow |
-| Bell — soft low strike, 5 s decay | Fires at the top of each exhale, louder after a long inhale |
-| Guide — quiet E5 sine | Follows the target envelope, not you |
+That last one has since bitten twice. The reference is the peak the *current* rate implies,
+and it was clamped at a floor of 4 breaths a minute — which is not slow. The owner's own
+sessions run at a median 2.9/min, so the reference came out 32 % too large across an entire
+session and every velocity-fed layer ran about a quarter under-scaled. Same failure as the
+fixed divisor, one clamp further down. The floor is 2/min now.
 
 The design idea is that slowness should be **rewarded rather than instructed**. A single
-value, `rich`, rises with how slow you are breathing (weighted 0.6) and how well you match
-the guide (weighted 0.4), then is smoothed over ~3 s. It controls the drone's brightness,
-the pad's level, and the reverb wet. Nothing tells you to slow down; the instrument just
-sounds better when you do, and the change is gradual enough that you notice it as
+value, `rich`, rises with how slowly you are breathing and is then smoothed over ~3 s. It
+opens the voice up and raises the reverb wet. Nothing tells you to slow down; the instrument
+just sounds better when you do, and the change is gradual enough that you notice it as
 atmosphere rather than as feedback.
 
 Pink noise rather than white, because white noise is fatiguing over a ten-minute session and
 this is meant to be listened to with eyes closed.
-
-### Spoken guidance
-
-The phone is on your belly, so the screen is unreadable and reaching for it corrupts the
-signal you are trying to record. The app speaks the stages instead, through the Web Speech
-API — on-device synthesis, so the no-network claim survives.
-
-It talks during setup and then stops. About twelve seconds of speech is front-loaded into
-the twenty-second calibration window, which is the right half of it: the τ = 12 s baseline
-filter is still converging early on, so the covariance that picks the breath axis takes
-most of its information from the last ten seconds anyway. After that it is silent except
-for two pace markers across the whole ramp, a signal-lost warning, and errors.
-
-Speech and Web Audio share one audio session on iOS, so the instrument is ducked
-deliberately rather than left to fight the synthesiser. iOS drops the `end` event often
-enough that four independent paths converge on the unduck — a missed one would leave the
-session quiet for the rest of the sitting.
 
 ### Recording
 
@@ -166,8 +172,19 @@ at 4 dp is finer than the accelerometer's own step. The newest 48 MB is kept and
 whole recording is dropped to make room.
 
 Sessions can be labelled after the fact — the first thirty seconds of any recording are you
-getting settled, which pollutes calibration, so marking where you actually lay down makes
-the data usable.
+getting settled, so marking where you actually lay down makes the data usable.
+
+Two things about that storage were wrong for a while and are worth writing down. Recordings
+were written at the size of the *buffer they were captured in* rather than the size of their
+contents: capture starts at two minutes and doubles when it fills, so a session ending just
+after a doubling paid for up to twice its own samples, and the 48 MB budget — which decides
+when the oldest recording is deleted — was computed from the same padded figure. Across the
+growth curve that is a mean 36 % overhead. And exporting assembled the whole file as one
+JavaScript string, which for *Export all* meant asking a phone for tens of megabytes
+contiguously. Both go through the store's own columnar path now, one recording at a time.
+
+The settings in Adjust live in the same database, in a one-row table. They used to reset on
+every reload, which mattered more once reloading became easy.
 
 ### There is no pacer any more
 
@@ -198,6 +215,40 @@ inhale. Comparing velocity against the *rate* cannot tell a hold from a stroke; 
 it against this user's own strokes can, so `detectRest()` does that and gates the velocity
 channels through `restGate`.
 
+There was a third piece, found later and larger than either. The baseline is a high-pass,
+and a high-pass turns a hold into a ramp: across a 10 s hold a τ = 12 s baseline has already
+climbed 57 % of the way back to the signal, so the app hears an inhale beginning while the
+belly is perfectly flat. Measured against the raw tilt on a session at 3 breaths a minute,
+the sound was swelling a median 1.9 s early and as much as 9.8 s early. The baseline now
+spans three of the user's own breaths rather than a fixed twelve seconds. On that same
+recording the median lead is 0.02 s, the gate is closed for 43 % of the session where it
+used to be 12 %, and the gate at the steepest point of each real stroke is still 0.96 —
+which is the check that the fix bought accuracy rather than silence.
+
+**Where all of this came from is worth saying plainly.** None of these three numbers was
+found by listening or by reasoning about the filter. Each came out of an exported recording
+of somebody actually breathing, measured against the raw accelerometer rather than against
+the app's own opinion of it. That is the entire reason recording exists.
+
+### Very slow breathing
+
+The owner breathes at a median 2.9 breaths a minute — a 20-second cycle, with p75 at 24.3 s
+and a longest of 30.1 s. Two constants in the app had been set for someone breathing three
+or four times faster, and both were found by measuring that recording rather than by
+noticing anything wrong:
+
+- The cycle detector discarded any period over 30 s, which threw away that session's
+  longest breath outright and left 6 of its 28 periods within 20 % of the same fate. The
+  ceiling is 36 s now, which is 1.7 breaths a minute. The *fast* end did not move: 3 s is
+  what rejects a phone being waved about, and this end never did that job.
+- The audio engine clamped the rate to a floor of 4/min before working out what a peak
+  stroke should measure — described above as the thing that was already fixed once. At a
+  real 2.9/min the reference came out 32 % too large for the whole session.
+
+The lesson is the one the app keeps relearning: a constant chosen for a plausible-sounding
+range quietly stops working just outside it, and the only way to notice is to measure a real
+session rather than a synthetic one.
+
 ### Heart rate, experimentally
 
 Off by default. Each heartbeat moves a little blood and the reaction reaches the phone —
@@ -210,9 +261,10 @@ be most of the time.
 
 ---
 
-## Why 6 breaths per minute
+## Why slowness is the thing being rewarded
 
-The default target is 6/min, with 5, 5.5 and 7 available.
+**The app has no target rate and never had a good reason to.** What follows is why slowness
+is nevertheless what `rich` responds to, rather than, say, depth or regularity.
 
 Slow-paced breathing at a rate near 6 cycles/min is described as matching a resonance
 frequency of the cardiovascular system, and a 2024 open-access meta-analysis and systematic
@@ -225,18 +277,19 @@ and the authors state that long-term efficacy remains to be established
 
 Two things from the same source shaped the design:
 
-- The review's inclusion criterion was a pace of **≤ 10 breaths/min**, which is why 7/min is
-  offered as a legitimate gentle target rather than a compromise.
+- The review's inclusion criterion was a pace of **≤ 10 breaths/min**, which is the range
+  `rich` opens across: `0.28 + 0.72·clamp((14 − bpm)/8)` reaches its ceiling at 6/min and
+  its floor at 14.
 - It notes that vagal control decreases during inhalation, allowing heart rate to rise, and
   is restored during exhalation, when heart rate falls — the mechanism behind respiratory
   sinus arrhythmia.
 
 **What is not established here:** the 4:6 inhale-to-exhale ratio the app once drifted people
 toward was a design choice reflecting common practice, not something verified against a
-source in this project. Nothing asks for it now. The claim that a longer exhale specifically increases RSA amplitude appears in the
-literature but has not been checked against a fetched primary source — treat it as unverified.
-Individual resonance frequency also appears not to be stable across sessions, so 6/min is a
-reasonable starting point rather than a personal optimum.
+source in this project. Nothing asks for it now. The claim that a longer exhale specifically
+increases RSA amplitude appears in the literature but has not been checked against a fetched
+primary source — treat it as unverified. Individual resonance frequency also appears not to
+be stable across sessions, which is one more reason there is no target.
 
 This is a relaxation tool. It is not a medical device, it does not diagnose anything, and the
 interface deliberately makes no claims about what the sound will do to your body.
@@ -266,33 +319,39 @@ with a floor so the gain does not run away when the phone is on a table.
 
 **Reward over instruction.** The obvious build is a metronome with a "breathe in / breathe
 out" cue. That makes the app the authority and the user the follower, and it is unpleasant
-when it disagrees with you. Phase-coupling the guide and routing all encouragement through a
-single slowly-smoothed `rich` value means the app never contradicts you — it just gets
-quieter and duller when you speed up.
+when it disagrees with you. Routing all encouragement through a single slowly-smoothed
+`rich` value means the app never contradicts you — it just gets quieter and duller when you
+speed up.
 
-**No persistence.** No history, no streaks, no session log. Partly the artifact sandbox
-blocks browser storage; mostly, a tool you use with your eyes closed should not be
-accumulating a record of how well you did.
+**Recordings, but no record of how you did.** There was no persistence at all for a long
+while, for two reasons: the sandbox blocked it, and a tool you use with your eyes closed
+should not be accumulating a scoreboard. The first reason went away and the second one
+didn't. Sessions are now recorded, because the tracker cannot be improved without real
+breathing to test against — but the summary reports measurements with units and nothing
+else. No grading, no streaks, and no line joining your first rate to your last.
+
+**A service worker rather than a cache-busting URL.** Added to the Home Screen the app runs
+standalone: no address bar, no pull-to-refresh, and iOS will keep serving the copy it has,
+including in answer to `location.reload()`. The first fix was to navigate to a URL the phone
+had never seen, which works exactly once and does nothing about opening the icon tomorrow.
+The worker holds the whole app as one version-named cache: a new version installs beside the
+running one, waits, and takes over when you say so. Cache-first *inside a version* is the
+part that matters — a fresh page can never end up driving last week's modules, because both
+come from the same cache and that cache is discarded whole.
 
 ---
 
 ## Known limitations
 
 - **The heart rate has never seen a real heartbeat.** Everything behind it was tuned
-  against synthetic beats. The one real recording predates the export fix and carries no
-  motion rows, so there was nothing to run it over.
-- **Cross-voice loudness is matched on peak, not loudness.** The three voices sit within
-  1.0 dB of each other by peak level, but peak is not loudness and the usual RMS proxy
-  ignores filtering — which is exactly where these voices differ. Each carries a `trim`,
-  all currently 1.0, as the one number to move per voice after a listening test.
+  against synthetic beats. Replayed over a real 9.5-minute belly recording it holds
+  73–83 /min (p50 78.5) on 55 of 55 samples at confidence 0.46–0.98, while the deliberately
+  bogus recording gives 4 scattered readings out of 14. That is plausible and remarkably
+  steady, and steady is not correct: nothing here has ever been checked against a wrist.
 - **Turnaround cues lag by about a second.** `inhaling` comes from the tracker's
   hysteresis detector, which cannot know a peak has happened until the signal has fallen
   past it. The one-shot marker fires from the same detector at the same instant, so it
   covers the transition, but the sustained direction cues arrive late.
-- **Spoken guidance on iOS is the least verified part of this app.** Whether the
-  zero-volume priming utterance genuinely lifts the gesture restriction, and whether the
-  silent switch mutes speech while Web Audio survives it, both need a real phone. Guidance
-  degrades to on-screen notices when speech does not start.
 - **Embedded frames.** Motion access is commonly blocked in cross-origin iframes. Opened
   inside another app's webview, the app may receive no sensor data at all. It says so after
   5 s. Serve it from its own origin.
@@ -302,9 +361,10 @@ accumulating a record of how well you did.
   are the reliable path.
 - **Side-lying and prone positions are untested.** The axis-finding should cope, but the
   sign heuristic was designed for supine.
-- **Very shallow chest breathers** may not move the phone enough. The calibration reports
+- **Very shallow chest breathers** may not move the phone enough. The signal line reports
   this and suggests moving the phone lower, but there is a floor below which there is no
-  signal to find.
+  signal to find. The sensitivity control moves where that floor sits, because two
+  recordings are not a sample to set it from.
 - **Large postural shifts** blow out the baseline for roughly 30 s. The signal meter shows
   "noisy" while it recovers.
 - **The inhale/exhale split is skewed by about 0.4 s** at a 7 s cycle. The 0.35 s smoothing
@@ -317,6 +377,14 @@ accumulating a record of how well you did.
 - **Not tested on Android.** The Chrome axis convention differs from Safari's, but since the
   app derives its own axis from the data rather than assuming one, this should not matter.
   Unverified.
+- **No browser has ever run the test suite.** `tools/smoke.mjs` runs the whole app in Node
+  against a stub DOM, a stub Web Audio and an in-memory IndexedDB, which answers "would this
+  run" thoroughly and "does this look or sound right" not at all. Layout, real Web Audio and
+  actual Safari behaviour are still only checkable on a phone.
+- **The update flow has been tested against a stubbed service worker, not a real one.** The
+  state machine is driven end to end in Node — check, nothing new, a version arriving, the
+  handover — but whether iOS reliably re-fetches `sw.js` from a standalone Home Screen app
+  is exactly the kind of thing this app has been wrong about before.
 
 ---
 
@@ -324,23 +392,47 @@ accumulating a record of how well you did.
 
 - A gentle end-of-session fade after a chosen duration, rather than requiring a tap to stop.
 - Using the inhale/exhale ratio directly as a second reward dimension, separate from rate.
-- A post-session summary — deliberately omitted, but the data exists in memory if it ever
-  earns its place.
-- Detecting breath-holds, which currently read as a flat signal and stall the cycle detector.
 - Per-session resonance search: sweep 4.5–7/min and keep whatever produces the largest,
   steadiest amplitude. This is the closest thing to a real personalisation and the most
-  interesting open question in the project.
+  interesting open question in the project — and the hardest to do without reintroducing a
+  pacer, since sweeping means asking someone to follow something.
+- A way to hear a recording back as sound, rather than reading it as a graph.
+
+Built since, and struck off this list: a post-session summary, breath-hold detection (holds
+used to read as a flat signal and stall the detector; they now close a gate and quiet the
+sound), and persistence.
 
 ---
 
 ## Development
 
 ```bash
-node tools/dsp-harness.mjs
+node tools/dsp-harness.mjs      # the signal chain, against synthetic tilt
+node tools/smoke.mjs            # the whole app, against stub DOM / audio / IndexedDB
 ```
 
-21 headless checks against the signal chain: axis recovery, rate tracking, the
+The harness covers axis recovery, rate tracking from 12 down to 2 breaths a minute, the
 inhale/exhale split, sign correction with the phone inverted, drift rejection, the quality
-meter, the phase convention, the learned stroke amplitude, rest detection, and the pulse
-estimator. See `CLAUDE.md` for the invariants those checks protect and what not to change
-without re-running them.
+meter, the phase convention, the learned stroke amplitude, rest detection, whether it is
+breathing at all, and the pulse estimator. The smoke test covers everything else: it opens
+each panel, turns on Demo mode, taps Start, breathes for three simulated minutes through the
+real render loop, taps End, reads the summary, browses and labels and deletes the recording,
+and drives the update flow. It also asserts the things that hold a build-step-free project
+together — that the service worker's version matches the release on the home screen, that
+its precache list is exactly the files on disk, and that every slider's default matches its
+markup.
+
+Three more tools read real recordings rather than synthetic ones:
+
+```bash
+node tools/replay.mjs recordings/some-session.json    # re-run the tracker over it
+node tools/onset.mjs  recordings/some-session.json    # how early does the sound start?
+node tools/analyze.mjs recordings/some-session.json   # timing, depth, stillness
+```
+
+`onset.mjs` answers the one question the harness structurally cannot. The harness feeds a
+sinusoid, and a sinusoid has no holds in it — which is precisely the case that has broken
+twice here.
+
+See `CLAUDE.md` for the invariants these checks protect and what not to change without
+re-running them.

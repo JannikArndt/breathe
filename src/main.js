@@ -15,6 +15,11 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.11', date:'2026-08-31', notes:[
+    'The summary reports how long your breaths were, in and out, and how much of the session the app read as held rather than moving.',
+    'Opening a recording shades the stretches where it thought you were holding, so you can check it against what you remember.',
+    'Ending a session while the screen is dimmed brings the screen back.'
+  ]},
   {v:'0.9.10', date:'2026-08-31', notes:[
     'Recordings take about a third less space on the phone. They were being stored padded out to the size of the buffer they were captured in, which also meant the oldest recording was deleted sooner than it needed to be.',
     'Export builds the file a piece at a time instead of all at once. Export all could ask the phone for tens of megabytes in one go, which is more than it will hand over.'
@@ -419,6 +424,7 @@ async function begin(sensorP, audioP){
 
 async function end(){
   UI.state='idle';
+  Dim.wake();                       // never leave the summary behind a dimmed screen
   window.removeEventListener('devicemotion', onMotion);
   Breath.onExhaleStart = null;
   await Audio.stop(2.2);
@@ -573,7 +579,8 @@ function loop(now){
     Recorder.derived({t:now/1000, s:Breath.s, level:level, phase:Breath.phase,
                       bpm:(Breath.conf>0.45 ? Breath.bpmSmooth : 0)||0,
                       quality:Breath.quality(), rich:UI.rich,
-                      hr:Pulse.reading(Breath.motionRms), hrConf:Pulse.conf});
+                      hr:Pulse.reading(Breath.motionRms), hrConf:Pulse.conf,
+                      rest:Breath.restGate});
   }
 
   drawDial(level);

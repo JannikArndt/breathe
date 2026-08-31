@@ -50,7 +50,7 @@ export const Store = {
 
   FORMAT:'breathe-session/1',
   MOTION_COLUMNS:['t','x','y','z'],
-  DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich','hr','hrConf'],
+  DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich','hr','hrConf','rest'],
   DERIVED_HZ:10,
 
   /* Fixed vocabulary. A label also carries a free `note`. */
@@ -407,7 +407,7 @@ export const Store = {
 
   _pack(session){
     const m = colsOf(session.motion,  4);
-    const d = colsOf(session.derived, 9);
+    const d = colsOf(session.derived, ((session.derived && session.derived.columns) || this.DERIVED_COLUMNS).length);
     const data = {
       id: session.id,
       mT: trim(m.t, m.n), mX: trim(m.v[0], m.n), mY: trim(m.v[1], m.n), mZ: trim(m.v[2], m.n),
@@ -428,7 +428,12 @@ export const Store = {
       motionSource: (session.motion  && session.motion.source) || 'accelerationIncludingGravity',
       motionCount: m.n,
       derivedHz:   (session.derived && session.derived.hz) || this.DERIVED_HZ,
-      derivedCount: d.n
+      derivedCount: d.n,
+      // Written with the recording rather than assumed on read. Adding a column
+      // to DERIVED_COLUMNS used to relabel every older recording with a channel
+      // it does not carry — the reader indexes by name, so it would have read
+      // the wrong array.
+      derivedColumns: (session.derived && session.derived.columns) || this.DERIVED_COLUMNS.slice()
     };
     let bytes = 0;
     bytes += data.mT.byteLength + data.mX.byteLength + data.mY.byteLength + data.mZ.byteLength;
@@ -456,7 +461,8 @@ export const Store = {
       events: meta.events || [],
       motion: {units: meta.motionUnits, source: meta.motionSource,
                columns: this.MOTION_COLUMNS.slice(), count: meta.motionCount || 0, rows: []},
-      derived:{hz: meta.derivedHz, columns: this.DERIVED_COLUMNS.slice(),
+      derived:{hz: meta.derivedHz,
+               columns: (meta.derivedColumns || this.DERIVED_COLUMNS).slice(),
                count: meta.derivedCount || 0, rows: []},
       summary: meta.summary || null,
       bytes: meta.bytes || 0
@@ -497,9 +503,9 @@ export const Store = {
     rowText(p, m, 4, 3);
     p.push(']},\n');
 
-    const d = colsOf(session.derived, 9);
+    const d = colsOf(session.derived, (session.derived && session.derived.columns || this.DERIVED_COLUMNS).length);
     p.push('"derived": {"hz": ' + ((session.derived && session.derived.hz) || this.DERIVED_HZ) +
-           ', "columns": ' + JSON.stringify(this.DERIVED_COLUMNS) +
+           ', "columns": ' + JSON.stringify((session.derived && session.derived.columns) || this.DERIVED_COLUMNS) +
            ', "count": ' + d.n + ',\n  "rows": [');
     rowText(p, d, 3, 3);
     p.push(']}\n}\n');
@@ -692,7 +698,7 @@ export const Recorder = {
       this.maxSamples = this.MAX_MIN*60*60;
       // 2 min of headroom, doubled as needed up to the ceiling
       this.m = allocCols(60*120, 3, this.maxSamples);
-      this.d = allocCols(10*120, 8, this.MAX_MIN*60*20);
+      this.d = allocCols(10*120, 9, this.MAX_MIN*60*20);
       this.active = true;
     }catch(e){
       this.active = false;
@@ -737,6 +743,7 @@ export const Recorder = {
     d.v[5][i] = o.rich || 0;
     d.v[6][i] = o.hr || 0;
     d.v[7][i] = o.hrConf || 0;
+    d.v[8][i] = o.rest || 0;        // the rest gate, 1 = moving, 0 = held
   },
 
   /**
@@ -905,12 +912,13 @@ function calFromEvents(events){
  */
 function summarise(d, events, hz){
   const S = {meanBpm:0, minBpm:0, maxBpm:0, slowestBpm:0, secondsUnder7:0,
-             inOutRatio:0, meanQuality:0, breaths:0};
+             inOutRatio:0, meanInhaleSec:0, meanExhaleSec:0, heldFraction:0,
+             meanQuality:0, breaths:0};
   const n = d.n;
   if(!(hz > 0)) hz = Store.DERIVED_HZ;
-  const bpm = d.v[3], q = d.v[4];
+  const bpm = d.v[3], q = d.v[4], rest = d.v[8];
 
-  let bs = 0, bc = 0, qs = 0, under = 0, lo = Infinity, hi = 0;
+  let bs = 0, bc = 0, qs = 0, under = 0, lo = Infinity, hi = 0, held = 0;
   for(let i=0;i<n;i++){
     // A zero means no cycle has been timed yet, not a rate of zero.
     if(bpm[i] > 0){
@@ -920,7 +928,11 @@ function summarise(d, events, hz){
       if(bpm[i] > hi) hi = bpm[i];
     }
     qs += q[i];
+    // Under half open is the same line tools/onset.mjs draws, so the number on
+    // the summary and the number in the tool mean the same thing.
+    if(rest && rest[i] < 0.5) held++;
   }
+  S.heldFraction = n ? rnd(held/n, 3) : 0;
   S.meanBpm = bc ? rnd(bs/bc, 2) : 0;
   S.minBpm = bc ? rnd(lo, 2) : 0;
   S.maxBpm = bc ? rnd(hi, 2) : 0;
@@ -948,6 +960,10 @@ function summarise(d, events, hz){
     if(e.type !== 'breath') continue;
     S.breaths++;
     if(e.inhaleSec > 0 && e.exhaleSec > 0){ inS += e.inhaleSec; outS += e.exhaleSec; k++; }
+  }
+  if(k){
+    S.meanInhaleSec = rnd(inS/k, 2);
+    S.meanExhaleSec = rnd(outS/k, 2);
   }
   S.inOutRatio = k && outS > 0 ? rnd((inS/k)/(outS/k), 3) : 0;
   return S;

@@ -246,6 +246,12 @@ if(ctx){
 }
 
 /* ---------------------------------------------------------------- end */
+// End must never leave the summary behind a dimmed screen. The tap that ends a
+// session goes through the catcher first, so nothing else would wake it.
+$('tglDim').click();
+Dim.sleep();
+check('the screen can be dim when a session ends', document.body.classList.contains('dimmed'));
+
 $('mainBtn').click();                       // End
 await new Promise(r => setTimeout(r, 0));
 await new Promise(r => setTimeout(r, 0));
@@ -253,9 +259,11 @@ await new Promise(r => setTimeout(r, 0));
 
 check('End returns the button to Start', $('mainBtn').textContent === 'Start',
       JSON.stringify($('mainBtn').textContent));
+check('and brings the screen back with it', !document.body.classList.contains('dimmed'));
+$('tglDim').click();
 check('the summary is on screen', $('review').classList.contains('open') ||
       !$('review').classList.contains('hidden'));
-check('the summary reports numbers', $('revSumGrid').children.length >= 3,
+check('the summary reports numbers', $('revSumGrid').children.length >= 5,
       $('revSumGrid').children.length + ' cells');
 
 const cells = $('revSumGrid').querySelectorAll('.cell').map(c =>
@@ -282,9 +290,13 @@ if(metas.length){
   check('nothing is stored but the samples themselves',
         !!cols && cols.motion.cols.t.length === cols.motion.cols.n,
         cols ? `${cols.motion.cols.t.length} slots for ${cols.motion.cols.n} samples` : 'none');
+  // 16 B per motion sample, and 4 B per derived column plus the 4 B timestamp.
+  const derivedWidth = 4 + 4*(cols.derived.columns.length - 1);
   check('and the size the budget sees is the size on disk',
-        Math.abs(m.bytes - (cols.motion.cols.n*16 + cols.derived.cols.n*36 + (m.metaBytes||0))) < 64,
+        Math.abs(m.bytes - (cols.motion.cols.n*16 + cols.derived.cols.n*derivedWidth + (m.metaBytes||0))) < 64,
         `${m.bytes} B claimed`);
+  check('the recording says which channels it carries',
+        cols.derived.columns.includes('rest'), cols.derived.columns.join(','));
   check('the raw motion channel survived the round trip',
         !!full && full.motion.rows.length > 1000,
         full ? full.motion.rows.length + ' samples' : 'none');
@@ -324,6 +336,10 @@ if(rows.length){
   check('tapping a row opens the detail', !$('revDetail').classList.contains('hidden'));
   check('the detail knows how long it is', /\d+:\d\d/.test($('revVAt').textContent),
         JSON.stringify($('revVAt').textContent));
+  const { Review } = await import(resolve(root, 'src/review.js'));
+  check('the detail lane knows where the holds were',
+        Review.sig.hasRest && [...Review.sig.g].some(v => v < 0.5),
+        Review.sig.hasRest ? 'rest channel present' : 'no rest channel');
 
   $('revNote').value = 'a note from the smoke test';
   $('revAdd').click();

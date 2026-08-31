@@ -204,6 +204,16 @@ export const Review = {
     g.appendChild(cell('Slowest',      bpm(rate.min), '/min'));
     g.appendChild(cell('Fastest',      bpm(rate.max), '/min'));
 
+    // Two more measurements, not two more verdicts. In and out are the halves
+    // the live readout shows, averaged; held is how much of the session the app
+    // read as a pause rather than a stroke, which for slow breathing is most of
+    // what distinguishes one session from another.
+    const inS = sum.meanInhaleSec, outS = sum.meanExhaleSec;
+    g.appendChild(cell('In / out',
+      (inS > 0 && outS > 0) ? inS.toFixed(1) + ' / ' + outS.toFixed(1) : '—', 's'));
+    g.appendChild(cell('Held still',
+      (sum.heldFraction != null && this.sig.n) ? Math.round(sum.heldFraction*100) + '%' : '—'));
+
     // Facts about the recording, not about the person. A failed calibration
     // or a noisy signal changes how much the numbers above are worth, so say so.
     const flags = [];
@@ -387,19 +397,25 @@ export const Review = {
     const dv = session.derived || {}, rows = dv.rows || [], ci = this.cols(dv);
     const n = rows.length;
     const t=new Float32Array(n), s=new Float32Array(n),
-          b=new Float32Array(n), q=new Float32Array(n);
+          b=new Float32Array(n), q=new Float32Array(n), g=new Float32Array(n);
     // Recordings made before the guide tone was removed still carry pacerLevel
     // and pacerBpm. They are ignored: the pacer is gone from the product, so
     // drawing its line would explain nothing to anyone looking at a session now.
     const hasQ = ci.quality!=null;
+    // Recordings made before the rest gate was stored have no rest column, and
+    // the reader must not invent one: a missing channel reads as 1, which is
+    // "moving", so an older recording simply shows no held stretches rather
+    // than showing the whole session as held.
+    const hasG = ci.rest!=null;
     for(let i=0;i<n;i++){
       const r = rows[i] || [];
       t[i] = +r[ci.t] || 0;
       s[i] = +r[ci.s] || 0;
       b[i] = +r[ci.bpm] || 0;
       q[i] = hasQ ? (+r[ci.quality]||0) : 0;
+      g[i] = hasG ? (+r[ci.rest]||0) : 1;
     }
-    this.sig = { n, t, s, b, q };
+    this.sig = { n, t, s, b, q, g, hasRest: hasG };
     this.det.dur = session.durationSec || (n ? t[n-1] : 0);
     this.det.play = clamp(this.det.play, 0, this.det.dur);
     if(!(this.det.span>0)) this.det.span = this.det.dur || 30;
@@ -630,11 +646,33 @@ export const Review = {
     ctx.globalAlpha=1;
 
     if(this.sig.n){
+      this.held(ctx,w,h,t0,t1);
       ctx.strokeStyle=K.you; ctx.lineWidth=1.9;
       this.poly(ctx,w,h,t0,t1,'s',pad);
     }
     this.drawMarks(ctx,w,h,t0,t1,7);
     this.playMark(ctx,w,h,(this.det.play-t0)/(t1-t0)*w,true);
+  },
+
+  /** Shade the stretches the app read as held rather than moving. This is the
+      one thing a waveform alone cannot tell you: whether the app agreed with
+      your body about where a breath stopped. Same threshold as the summary and
+      as tools/onset.mjs, so all three mean the same thing by "held". */
+  held(ctx,w,h,t0,t1){
+    const S = this.sig;
+    if(!S.hasRest) return;
+    ctx.fillStyle = this.ink().pace; ctx.globalAlpha = .13;
+    let from = -1;
+    for(let i=0;i<=S.n;i++){
+      const on = i<S.n && S.g[i] < 0.5;
+      if(on && from<0) from = i;
+      else if(!on && from>=0){
+        const xa = (S.t[from]-t0)/(t1-t0)*w, xb = (S.t[i-1]-t0)/(t1-t0)*w;
+        if(xb > 0 && xa < w) ctx.fillRect(xa, 0, Math.max(xb-xa, 1), h);
+        from = -1;
+      }
+    }
+    ctx.globalAlpha = 1;
   },
 
   drawMarks(ctx,w,h,t0,t1,size){

@@ -287,7 +287,7 @@ const el = {
   traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
   vRate:$('vRate'), vRatio:$('vRatio'), vHr:$('vHr'), vHrUnit:$('vHrUnit'),
   cellHr:$('cellHr'),
-  statusTag:$('statusTag'), qualityTxt:$('qualityTxt'),
+  statusTag:$('statusTag'), qualityTxt:$('qualityTxt'), traceKey:$('traceKey'),
   waves:$('waves')
 };
 
@@ -709,10 +709,14 @@ function signalHint(){
   if(bad){ if(!UI.badSince) UI.badSince = now; }
   else if(good){ UI.badSince = 0; }
 
+  // The row holds nothing but this hint now that the "You" key is gone, so it
+  // gets out of the way when there is nothing to say.
   if(!(UI.badSince && (now - UI.badSince) > 8)){
     el.qualityTxt.textContent = '';
+    el.traceKey.classList.add('hidden');
     return;
   }
+  el.traceKey.classList.remove('hidden');
   // axisAmp is the size of the movement on the breath axis, in m/s^2. Real
   // sessions measure 0.3-0.5; too little means the phone is not picking the
   // breath up, too much means it is being handled rather than breathed on.

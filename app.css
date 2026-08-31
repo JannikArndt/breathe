@@ -100,7 +100,6 @@ header{display:flex;align-items:baseline;justify-content:space-between;flex:0 0 
   display:flex;gap:16px;margin-top:7px;
   font-family:var(--data);font-size:10px;letter-spacing:.1em;color:var(--mute);text-transform:uppercase;
 }
-.key-dot{display:inline-block;width:7px;height:2px;vertical-align:middle;margin-right:6px}
 
 /* ---------- readout strip ---------- */
 .readout{
@@ -426,7 +425,7 @@ body.dimmed .dim-catch{
   background:var(--shelf);border-left:2px solid var(--sand);
   font-size:13px;line-height:1.55;color:var(--haze);
 }
-.rev-none,.rev-foot-note{
+.rev-foot-note{
   margin:0;
   font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
   color:var(--mute);

@@ -150,8 +150,9 @@ export const Pulse = {
     // nothing on it, and the two look nothing alike on this measure.
     const conf = clamp(best - sum/cnt, 0, 1);
 
-    // Parabolic interpolation, so the answer is not quantised to the 20 Hz grid
-    // (one sample is 6 bpm at 60 bpm, which would be visible).
+    // Parabolic interpolation, so the answer is not quantised to the 40 Hz grid
+    // (one sample is 1.5 bpm at 60 bpm, and the drift between two neighbouring
+    // lags is visible on a readout that only ever shows whole numbers).
     let lag = bestLag;
     if(bestLag>loLag && bestLag<hiLag-1){
       const a=r[bestLag-1], c0=r[bestLag], c2=r[bestLag+1];

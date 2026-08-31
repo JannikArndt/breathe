@@ -23,8 +23,8 @@ import { clamp, lp, fin } from './util.js';
    The exhale is the half the app is trying to lengthen, so it is the
    wider, warmer, more rewarding of the two.
 
-   Shared and built once: two looping noise buffers, one convolution
-   room, one limiter.
+   Built once and shared: one looping stereo noise buffer, one
+   convolution room, one limiter.
    ============================================================ */
 
 export const Audio = {
@@ -36,11 +36,10 @@ export const Audio = {
   mix:{ swell:1, brk:1, foam:1, spray:1, under:1, bright:0.5, space:0.5 },
 
   widthG:null,                  // the mid/side width gain, Space's real work
-  v:null,                       // built voices, keyed by id
+  voice:null,                   // the one built voice
   m:null,                       // the per-frame bundle, allocated once
   dir:-1, wasIn:false, hit:0,   // held breath direction, break-to-foam decay
   lastTop:0, lastBottom:0,
-  fadeFrom:null, fadeUntil:0,
 
   async start(){
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -74,15 +73,14 @@ export const Audio = {
       const s=ctx.createBufferSource(); s.buffer=buf; s.loop=true; s.start(t); return s;
     };
 
-    // ---- output chain: voices -> (dry | room) -> mix -> duck -> master -> limiter
+    // ---- output chain: voice -> (dry | room) -> mix -> master -> limiter
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value=-10; limiter.knee.value=18;
     limiter.ratio.value=12; limiter.attack.value=0.008; limiter.release.value=0.3;
     limiter.connect(ctx.destination);
 
     const master = this.master = G(0);   master.connect(limiter);
-    const duckG  = this.duckG  = G(1);   duckG.connect(master);
-    const mix    = G(1);                 mix.connect(duckG);
+    const mix    = G(1);                 mix.connect(master);
     const dry    = G(0.85);              dry.connect(mix);
 
     // Space. A reverb send on its own is nearly inaudible here, because the
@@ -102,29 +100,22 @@ export const Audio = {
     wMid.connect(wMerge, 0, 0);  wMid.connect(wMerge, 0, 1);
     wSide.connect(wMerge, 0, 0); wSide.connect(wSideNeg); wSideNeg.connect(wMerge, 0, 1);
 
-    // One room for all three voices. Per-voice convolvers would suit them
-    // better — shore wants a longer tail than harmonium — but a convolver is
-    // by far the most expensive node here and this runs with the screen
-    // locked, so each voice trims its own send instead.
+    // A convolver is by far the most expensive node in the graph and this runs
+    // with the screen locked, so there is one room and the voice trims its own
+    // send into it.
     const conv = ctx.createConvolver();
     conv.buffer = this.impulse(ctx, 4.0, 2.5);
     const wetTrim = G(0.9);
     conv.connect(wetTrim); wetTrim.connect(mix);
 
-    // ---- shared sources. Buffers are generated here, in JS: nothing is
-    //      fetched, and nothing is stored as data anywhere in the file.
-    this.pinkBuf = this.noiseBuffer(ctx, 6, 1);
-    // two independent channels: all of shore's stereo, and the width of tide's
-    // exhale, comes from that decorrelation rather than from a panner
+    // ---- the source. Generated here, in JS: nothing is fetched, and no audio
+    //      is stored as data anywhere in the repository.
+    //      Two independent channels — all of the voice's stereo comes from that
+    //      decorrelation rather than from a panner.
     this.surfBuf = this.noiseBuffer(ctx, 8, 2);
-    const pink = LOOP(this.pinkBuf);
     const surf = LOOP(this.surfBuf);
-    const dc   = LOOP(this.dcBuffer(ctx));
 
-    const kit = {ctx, t, G, F, P, O, pink, surf, dc,
-                 pinkBuf:this.pinkBuf, surfBuf:this.surfBuf};
-
-    this.voice = this.buildShore(kit);
+    this.voice = this.buildShore({ctx, t, G, F, P, O, surf, surfBuf:this.surfBuf});
     this.voice.out.connect(wIn);
     wMerge.connect(dry);
     wMerge.connect(this.voice.send);
@@ -135,7 +126,7 @@ export const Audio = {
     // lasts, and allocating a bundle plus four closures each time is the one
     // avoidable piece of garbage in the render path.
     this.m = {
-      t:0, dt:1/60, lvl:0.5, vel:0, up:0, dn:0, spd:0, hit:0,
+      t:0, dt:1/60, lvl:0.5, vel:0, up:0, dn:0, hit:0,
       rich:0, inG:0, outG:1, bpm:10,
       // Every render-loop write goes through one of these four: setTargetAtTime
       // only, and clamped into a range the node can actually accept, so no
@@ -146,9 +137,8 @@ export const Audio = {
       stC(p,v,tc){ p.setTargetAtTime(clamp(v, -1200, 1200), this.t, tc); }
     };
 
-    this.dir=-1; this.pdir=-1; this.wasIn=false; this.hit=0;
+    this.dir=-1; this.wasIn=false; this.hit=0;
     this.lastTop=0; this.lastBottom=t;
-    this.fadeFrom=null; this.fadeUntil=0;
 
     this.ready = true;
     this.fade(this.vol, 2.5);
@@ -215,24 +205,12 @@ export const Audio = {
     return buf;
   },
 
-  /** Constant 1.0. A looped DC buffer works on every build the app can reach,
-      where ConstantSourceNode only arrived in Safari 14. */
-  dcBuffer(ctx){
-    const b=ctx.createBuffer(1,512,ctx.sampleRate);
-    b.getChannelData(0).fill(1);
-    return b;
-  },
-
   /* ============================================================
-     VOICE: tide — today's identity, with the direction made plain
+     VOICE: shore — the one sound the app makes
      ============================================================ */
-  /* Each voice ends in `out`, and `trim` is the level that gain crossfades to.
-     Measured peak levels are within 1.1 dB of each other across the three, but
-     peak is not loudness: tide is filtered sines, shore is broadband noise and
-     harmonium is filtered sawtooths, and noise reads louder than a drone at the
-     same peak. Nothing here has been heard yet, so these are all 1.0 — this is
-     the one number to move per voice after a listening test, and moving it
-     changes nothing else. */
+  /* Ends in `out`, at level `trim`. There were three voices and a picker; the
+     other two were deleted rather than left as also-rans, and the seven
+     controls in Adjust are the depth that replaced the breadth. */
   buildShore(k){
     const {ctx,G,F,P,O,surf} = k;
     const out=G(0), send=G(0.45), trim=1.0;
@@ -351,9 +329,6 @@ export const Audio = {
     };
   },
 
-  /* ============================================================
-     VOICE: harmonium — a reed drone box worked by the belly
-     ============================================================ */
   /**
    * @param f {level, vel, speed, inhaling, resting, rich, bpm, dt}
    *          level 0..1 (1 = fullest inhale), vel -1..1 (positive inhaling).
@@ -366,7 +341,6 @@ export const Audio = {
     const dt   = clamp(fin(f.dt, 1/60), 0.001, 0.25);
     const lvl  = clamp(fin(f.level, 0.5), 0, 1);
     const vel  = clamp(fin(f.vel, 0), -1, 1);
-    const sp   = clamp(fin(f.speed, 0), 0, 1);
     const rich = clamp(fin(f.rich, 0), 0, 1);
     const bpmR = fin(f.bpm, 0);
     const bpm  = clamp(bpmR > 0 ? bpmR : 10, 4, 22);
@@ -381,7 +355,6 @@ export const Audio = {
     const vRef = clamp(0.040*bpm, 0.10, 0.90);
     const up   = clamp( vel/vRef, 0, 1.25);
     const dn   = clamp(-vel/vRef, 0, 1.25);
-    const spd  = clamp(   sp/vRef, 0, 1.25);
 
     // Held direction. tau = 0.30 s swings it over about a second at each
     // turnaround and holds it flat through the stroke, so the layers that
@@ -401,7 +374,7 @@ export const Audio = {
     this.wasIn = inh;
 
     const m = this.m;
-    m.t=t; m.dt=dt; m.lvl=lvl; m.vel=vel; m.up=up; m.dn=dn; m.spd=spd;
+    m.t=t; m.dt=dt; m.lvl=lvl; m.vel=vel; m.up=up; m.dn=dn;
     m.rich=rich; m.inG=inG; m.outG=outG; m.bpm=bpm;
 
     // The break opens the foam an octave and lets it fall. tau = 0.55 s puts
@@ -448,29 +421,6 @@ export const Audio = {
     this.mix[key] = clamp(fin(v, 1), 0, 1.5);
   },
 
-  /** Equal-power ramp. Two voices are uncorrelated, so a pair of linear ramps
-      loses about 3 dB in the middle of the crossfade and reads as a dropout.
-      48 points over 1.5 s is one step per 31 ms, well under anything audible. */
-  xfade(param, to, secs){
-    const t = this.ctx.currentTime;
-    const from = clamp(fin(param.value, 0), 0, 2);
-    try{
-      const n=48, curve=new Float32Array(n);
-      for(let i=0;i<n;i++){
-        const k=i/(n-1);
-        curve[i]=Math.sqrt(clamp(from*from*(1-k) + to*to*k, 0, 4));
-      }
-      param.cancelScheduledValues(t);
-      param.setValueCurveAtTime(curve, t, secs);
-      return;
-    }catch(e){ /* a curve already running here: fall through to a plain ramp */ }
-    try{
-      param.cancelScheduledValues(t);
-      param.setValueAtTime(from, t);
-      param.linearRampToValueAtTime(to, t+secs);
-    }catch(e){}
-  },
-
   fade(to, secs){
     if(!this.ready) return;
     const t=this.ctx.currentTime;
@@ -480,21 +430,6 @@ export const Audio = {
   },
 
   setVolume(v){ this.vol = clamp(fin(v,0.55),0,1); if(this.ready) this.fade(this.vol, 0.25); },
-
-  /** Speech ducking. `amount` is the fraction of the current level to keep, so
-      duck(0.25, 0.3) drops the instrument to a quarter over 300 ms. Sits on its
-      own node so the volume slider and a duck cannot overwrite each other. */
-  duck(amount, secs){ this.rampDuck(clamp(fin(amount,0.3),0,1), Math.max(fin(secs,0.3),0.02)); },
-  unduck(secs){       this.rampDuck(1, Math.max(fin(secs,0.6),0.02)); },
-  rampDuck(to, secs){
-    if(!this.ready || !this.duckG) return;
-    const t=this.ctx.currentTime, p=this.duckG.gain;
-    try{
-      p.cancelScheduledValues(t);
-      p.setValueAtTime(clamp(fin(p.value,1),0,1), t);
-      p.linearRampToValueAtTime(to, t+secs);
-    }catch(e){}
-  },
 
   async stop(fadeSec){
     if(!this.ready) return;

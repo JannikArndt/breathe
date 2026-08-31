@@ -41,3 +41,31 @@ export function fitCanvas(c){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   return {ctx, w:r.width, h:r.height};
 }
+
+/** The stylesheet is the one place a colour is written down. Canvas cannot use
+    var(), so read the tokens once and hand back the values; the fallbacks are
+    only for a context with no stylesheet at all, which is the test stub. */
+let _palette = null;
+export function palette(){
+  if(_palette) return _palette;
+  const cs = typeof getComputedStyle === 'function'
+    ? getComputedStyle(document.documentElement) : null;
+  const g = (n, fallback) => {
+    const v = cs ? cs.getPropertyValue(n).trim() : '';
+    return v || fallback;
+  };
+  return _palette = {
+    glass: g('--glass','#7FBFAE'), sand:  g('--sand','#D9A85B'),
+    mute:  g('--mute','#7C9AA1'),  foam:  g('--foam','#E3EDE9'),
+    deep:  g('--deep','#0E2732'),  abyss: g('--abyss','#08171E'),
+    haze:  g('--haze','#C7D8D4'),  ember: g('--ember','#C4715A')
+  };
+}
+
+/** #RRGGBB -> rgba(). Anything that is not a six-digit hex is handed back
+    untouched, so a token already written as rgba() still works. */
+export function alpha(color, a){
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if(!m) return color;
+  return `rgba(${parseInt(m[1],16)},${parseInt(m[2],16)},${parseInt(m[3],16)},${a})`;
+}

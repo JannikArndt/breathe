@@ -10,6 +10,22 @@
   --display:"Futura","Avenir Next Condensed","Jost","Century Gothic",system-ui,sans-serif;
   --body:"Avenir Next","Avenir",system-ui,-apple-system,"Segoe UI",sans-serif;
   --data:ui-monospace,"SF Mono","Menlo","Roboto Mono",monospace;
+
+  /* Body copy that sits below the foam without going as grey as --mute. */
+  --haze:          #C7D8D4;
+
+  /* Hairlines and washes, named so no rule below carries a raw colour.
+     --lane is the same ground the live trace paints. */
+  --rule:          rgba(124,154,161,.16);
+  --rule-firm:     rgba(124,154,161,.30);
+  --lane:          rgba(14,39,50,.55);
+  --tint:          rgba(127,191,174,.14);
+  --press:         rgba(227,237,233,.10);
+
+  /* Destructive only. Warm enough to read as "careful" beside --sand,
+     dim enough not to glare on an OLED screen in a dark room. */
+  --ember:         #C4715A;
+  --ember-tint:    rgba(196,113,90,.16);
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -117,10 +133,6 @@ button[disabled]{opacity:.35;pointer-events:none}
 .row .hint{display:block;font-family:var(--data);font-size:10.5px;letter-spacing:.06em;color:var(--mute);margin-top:4px;text-transform:uppercase}
 input[type=range]{-webkit-appearance:none;appearance:none;width:130px;height:2px;background:rgba(227,237,233,.25);border-radius:2px}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--glass)}
-select{
-  font-family:var(--data);font-size:13px;background:var(--shelf);color:var(--foam);
-  border:1px solid rgba(227,237,233,.2);border-radius:2px;padding:9px 10px;
-}
 .toggle{
   width:52px;height:30px;border-radius:15px;background:rgba(227,237,233,.16);
   position:relative;flex:0 0 auto;cursor:pointer;transition:background .2s ease;border:0;padding:0;
@@ -156,7 +168,7 @@ select{
   justify-content:center;gap:clamp(14px,3.2vh,26px);padding:0 4px;overflow:hidden;
 }
 .prep{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px}
-.prep li{display:flex;gap:12px;align-items:center;font-size:14.5px;line-height:1.4;color:#C7D8D4}
+.prep li{display:flex;gap:12px;align-items:center;font-size:14.5px;line-height:1.4;color:var(--haze)}
 .prep-i{
   font-size:15px;color:var(--sand);flex:0 0 22px;text-align:center;
 }
@@ -169,17 +181,10 @@ select{
 .prep-arrow path{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .lede{margin:0;font-size:16px;line-height:1.5;color:var(--foam)}
 
-.set{display:flex;flex-direction:column;gap:9px}
-.set-row{display:flex;align-items:center;justify-content:space-between;gap:14px}
-.set-row label{font-size:14.5px;color:#C7D8D4}
-.set-v{font-family:var(--data);font-size:13px;color:var(--sand);letter-spacing:.06em}
-.set-hint{margin:-3px 0 0;font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute)}
 .panel-sub{
   margin:22px 0 2px;font-family:var(--display);font-size:11px;font-weight:500;
   letter-spacing:.22em;text-transform:uppercase;color:var(--sand);
 }
-.set select{min-width:9.5em}
-.set input[type=range]{width:100%}
 
 .fineprint{font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute);line-height:1.7;margin:0}
 
@@ -218,7 +223,7 @@ select{
 }
 .log-notes{margin:9px 0 0;padding:0 0 0 15px;list-style:none}
 .log-notes li{
-  position:relative;font-size:13.5px;line-height:1.55;color:#C7D8D4;
+  position:relative;font-size:13.5px;line-height:1.55;color:var(--haze);
   padding:3px 0;
 }
 .log-notes li::before{
@@ -227,7 +232,7 @@ select{
 }
 .sheet-head{
   display:flex;align-items:center;gap:10px;margin-bottom:10px;
-  padding-bottom:10px;border-bottom:1px solid var(--rev-rule);
+  padding-bottom:10px;border-bottom:1px solid var(--rule);
 }
 .sheet-head h2{margin:0;flex:1 1 auto}
 
@@ -237,178 +242,122 @@ select{
   *{transition-duration:.01ms !important}
 }
 
-/* ============================================================
- Voice picker. No new colours and no new custom properties —
- the row, the label, the hint and the select are all existing
- patterns; these two rules only stop the longest voice name and
- the longest hint from fighting each other for the same line.
-
- Goes with the other .row rules in the panel block. Note the
- .panel prefix: it keeps this below .bar in specificity, which
- is where margins have collided before.
- ============================================================ */
-
-.panel .row select{flex:0 0 auto;max-width:52%}
 .panel .row label{min-width:0}
 
-/* ============================================================
-   SPEECH — panel rows (section 4 lives in the script below)
- Goes in the <style> block after the ".toggle" rules and before
- the "notice" section. No new custom properties are needed: these
- rows reuse .row, .hint, .toggle, input[type=range] and select.
- ============================================================ */
-
-/* A long voice name ("Samantha (Enhanced)") would otherwise push the label off
- a narrow phone. The select clips instead of wrapping the row. */
-
-/* Speed and voice only take effect while guidance is on. Dimming says so
- without hiding them, so nothing jumps around when the toggle is flipped;
- both stay operable, because a change made here is what the next spoken line
- will use. Scoped to .panel so it wins over the bare .row rule. */
-.panel .row[data-off="true"]{opacity:.42}
-
-/* ============================================================
- DATA — styles for the Adjust-panel recording rows.
-
- Appended after the ".panel" block in index.html's <style>, before
- the ".notice" block. No new custom properties are needed: the two
- states use --glass (normal) and --sand (attention), which is the
- same pairing .trace-key and .notice already use.
- ============================================================ */
+/* ---------- recording rows in Adjust ---------- */
 
 /* Buttons living inside a .row rather than a .bar. The base rule gives
- every button flex:1 and 15px padding, which makes a row control tower
- over the label; .ghost already un-flexes it, this trims the height to
- match the 30px .toggle sitting in the neighbouring rows. */
+   every button flex:1 and 15px padding, which makes a row control tower
+   over the label; .ghost already un-flexes it, this trims the height to
+   match the 30px .toggle sitting in the neighbouring rows. */
 .row .rowbtn{
-padding:9px 13px;
-font-size:11px;
-letter-spacing:.18em;
-min-width:88px;
+  padding:9px 13px;
+  font-size:11px;
+  letter-spacing:.18em;
+  min-width:88px;
 }
 
 /* Destructive action: the same sand the notice bar uses for attention,
- never a fill, so it cannot be mistaken for the primary button. */
+   never a fill, so it cannot be mistaken for the primary button. */
 .row .rowbtn.danger{
-color:var(--sand);
-border-color:rgba(217,168,91,.45);
+  color:var(--sand);
+  border-color:rgba(217,168,91,.45);
 }
 .row .rowbtn.danger[data-armed="true"]{
-background:rgba(217,168,91,.14);
+  background:rgba(217,168,91,.14);
 }
 
 /* How full the 48 MB budget is. Sits under the hint inside the label,
- so it inherits the label's width rather than fighting the row's
- space-between. */
+   so it inherits the label's width rather than fighting the row's
+   space-between. */
 .meter{
-display:block;
-width:132px;max-width:100%;
-height:2px;margin-top:7px;
-background:rgba(124,154,161,.28);
-border-radius:2px;overflow:hidden;
+  display:block;
+  width:132px;max-width:100%;
+  height:2px;margin-top:7px;
+  background:rgba(124,154,161,.28);
+  border-radius:2px;overflow:hidden;
 }
 .meter i{
-display:block;height:100%;width:0;
-background:var(--glass);
-transition:width .3s ease;
+  display:block;height:100%;width:0;
+  background:var(--glass);
+  transition:width .3s ease;
 }
-/* Over ~85% the next session starts deleting the oldest one. */
+/* Over 85% the next session starts deleting the oldest one, so the bar
+   turns sand before that happens rather than after. */
 .meter[data-full="true"] i{ background:var(--sand); }
 
 /* The hint doubles as the storage readout; it turns sand when a
- recording failed or the store is unavailable. */
+   recording failed or the store is unavailable. */
 .row .hint.warn{ color:var(--sand); }
 
 /* ============================================================
- REVIEW UI — summary, recordings, detail
- Append to the existing <style> block. Every colour below comes
- from the :root block; the additions are declared once, here.
- ============================================================ */
-
-:root{
-/* Hairlines and washes reused from the live screens, named so no rule
-   below carries a raw colour. The values match what the app already
-   draws with: --rev-lane is the same ground the live trace paints. */
---rev-rule:      rgba(124,154,161,.16);
---rev-rule-firm: rgba(124,154,161,.30);
---rev-lane:      rgba(14,39,50,.55);
---rev-tint:      rgba(127,191,174,.14);
---rev-press:     rgba(227,237,233,.10);
---rev-haze:      #C7D8D4;            /* the body colour the intro steps use */
-
-/* Destructive only. Warm enough to read as "careful" beside --sand,
-   dim enough not to glare on an OLED screen in a dark room. */
---ember:         #C4715A;
---ember-tint:    rgba(196,113,90,.16);
-}
+   REVIEW UI — summary, recordings, detail
+   ============================================================ */
 
 /* ---------- overlay shell ---------- */
 .review{
-position:fixed;inset:0;z-index:25;          /* over the panel (20), under the notice (30) */
-display:flex;flex-direction:column;
-background:var(--abyss);
-padding:calc(env(safe-area-inset-top) + 12px) 18px calc(env(safe-area-inset-bottom) + 12px);
-animation:revIn .26s cubic-bezier(.3,.7,.3,1);
+  position:fixed;inset:0;z-index:25;          /* over the panel (20), under the notice (30) */
+  display:flex;flex-direction:column;
+  background:var(--abyss);
+  padding:calc(env(safe-area-inset-top) + 12px) 18px calc(env(safe-area-inset-bottom) + 12px);
+  animation:revIn .26s cubic-bezier(.3,.7,.3,1);
 }
 @keyframes revIn{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
 
 .rev-head{
-flex:0 0 auto;display:flex;align-items:center;gap:10px;
-padding-bottom:10px;border-bottom:1px solid var(--rev-rule);
+  flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  padding-bottom:10px;border-bottom:1px solid var(--rule);
 }
 .back{
-flex:0 0 auto;min-width:44px;min-height:44px;padding:0 8px 0 0;
-display:flex;align-items:center;gap:7px;cursor:pointer;
-border:0;background:transparent;color:var(--mute);
-font-family:var(--display);font-size:11px;letter-spacing:.20em;text-transform:uppercase;
+  flex:0 0 auto;min-width:44px;min-height:44px;padding:0 8px 0 0;
+  display:flex;align-items:center;gap:7px;cursor:pointer;
+  border:0;background:transparent;color:var(--mute);
+  font-family:var(--display);font-size:11px;letter-spacing:.20em;text-transform:uppercase;
 }
 .back::before{content:'\2190';font-size:14px;letter-spacing:0}
 .rev-title{
-flex:1 1 auto;min-width:0;margin:0;font-weight:500;
-font-family:var(--display);font-size:12px;letter-spacing:.28em;text-transform:uppercase;
-color:var(--foam);
-overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  flex:1 1 auto;min-width:0;margin:0;font-weight:500;
+  font-family:var(--display);font-size:12px;letter-spacing:.28em;text-transform:uppercase;
+  color:var(--foam);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .rev-title:focus-visible{outline:2px solid var(--sand);outline-offset:4px;border-radius:2px}
 .rev-tag{flex:0 0 auto;font-size:9.5px;letter-spacing:.10em}
 
 .rev-scroll{
-flex:1 1 auto;min-height:0;padding-top:14px;
-overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  flex:1 1 auto;min-height:0;padding-top:14px;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
 }
 .rev-foot{flex:0 0 auto}
 .rev-foot .bar{margin-top:12px}
 
 /* ---------- shared text bits ---------- */
 .rev-cap{
-margin:10px 0 0;
-font-family:var(--data);font-size:10.5px;line-height:1.7;letter-spacing:.04em;
-color:var(--mute);
+  margin:10px 0 0;
+  font-family:var(--data);font-size:10.5px;line-height:1.7;letter-spacing:.04em;
+  color:var(--mute);
 }
 .rev-flag{
-margin:12px 0 0;padding:11px 13px;border-radius:2px;
-background:var(--shelf);border-left:2px solid var(--sand);
-font-size:13px;line-height:1.55;color:var(--rev-haze);
+  margin:12px 0 0;padding:11px 13px;border-radius:2px;
+  background:var(--shelf);border-left:2px solid var(--sand);
+  font-size:13px;line-height:1.55;color:var(--haze);
 }
 .rev-sub{
-margin:24px 0 6px;font-weight:500;
-font-family:var(--display);font-size:11px;letter-spacing:.30em;text-transform:uppercase;
-color:var(--mute);
+  margin:24px 0 6px;font-weight:500;
+  font-family:var(--display);font-size:11px;letter-spacing:.30em;text-transform:uppercase;
+  color:var(--mute);
 }
 .rev-none,.rev-foot-note{
-margin:0;
-font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
-color:var(--mute);
+  margin:0;
+  font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
+  color:var(--mute);
 }
 .rev-foot-note{margin-top:16px}
 
 /* ---------- 1. summary ---------- */
 .spark{
-display:block;width:100%;height:184px;border-radius:2px;background:var(--rev-lane);
+  display:block;width:100%;height:184px;border-radius:2px;background:var(--lane);
 }
-.rev-key{margin-top:8px}
-.key-you{background:var(--glass)}
-.key-pace{background:var(--sand)}
 
 /* two columns, not the live screen's three: the keys here are longer */
 .readout.rev-grid{grid-template-columns:repeat(2,1fr);margin-top:16px}
@@ -418,66 +367,66 @@ display:block;width:100%;height:184px;border-radius:2px;background:var(--rev-lan
 /* ---------- 2. recordings ---------- */
 .recs{display:flex;flex-direction:column}
 .rec{
-display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;
-border-bottom:1px solid var(--rev-rule);
+  display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;
+  border-bottom:1px solid var(--rule);
 }
 .rec-open{
-flex:1 1 auto;min-width:0;min-height:64px;
-display:flex;flex-direction:column;justify-content:center;gap:5px;
-padding:12px 0;border:0;border-radius:0;background:transparent;text-align:left;
-font-family:var(--body);font-size:14.5px;font-weight:400;
-letter-spacing:normal;text-transform:none;color:var(--foam);
+  flex:1 1 auto;min-width:0;min-height:64px;
+  display:flex;flex-direction:column;justify-content:center;gap:5px;
+  padding:12px 0;border:0;border-radius:0;background:transparent;text-align:left;
+  font-family:var(--body);font-size:14.5px;font-weight:400;
+  letter-spacing:normal;text-transform:none;color:var(--foam);
 }
-.rec-open:active{background:var(--rev-press)}
+.rec-open:active{background:var(--press)}
 .rec-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .rec-when{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rec-len{
-flex:0 0 auto;
-font-family:var(--data);font-size:13px;color:var(--foam);font-variant-numeric:tabular-nums;
+  flex:0 0 auto;
+  font-family:var(--data);font-size:13px;color:var(--foam);font-variant-numeric:tabular-nums;
 }
 .rec-sub{
-font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
-color:var(--mute);
-overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
+  color:var(--mute);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .rec-del{
-flex:0 0 auto;align-self:center;min-width:44px;min-height:44px;padding:0 11px;
-border:1px solid var(--rev-rule);border-radius:2px;background:transparent;
-font-family:var(--data);font-size:10px;letter-spacing:.10em;text-transform:uppercase;
-color:var(--mute);
+  flex:0 0 auto;align-self:center;min-width:44px;min-height:44px;padding:0 11px;
+  border:1px solid var(--rule);border-radius:2px;background:transparent;
+  font-family:var(--data);font-size:10px;letter-spacing:.10em;text-transform:uppercase;
+  color:var(--mute);
 }
 .rec-del:active{background:var(--ember-tint);color:var(--ember)}
 
 .rec-ask{
-flex:1 1 100%;display:flex;align-items:center;gap:8px;padding:0 0 12px;
+  flex:1 1 100%;display:flex;align-items:center;gap:8px;padding:0 0 12px;
 }
-.rec-ask-q{flex:1 1 auto;min-width:0;font-size:13px;line-height:1.4;color:var(--rev-haze)}
+.rec-ask-q{flex:1 1 auto;min-width:0;font-size:13px;line-height:1.4;color:var(--haze)}
 .rec-ask button{
-flex:0 0 auto;min-height:44px;padding:0 14px;
-font-size:11px;letter-spacing:.16em;
+  flex:0 0 auto;min-height:44px;padding:0 14px;
+  font-size:11px;letter-spacing:.16em;
 }
 .danger{color:var(--ember);border-color:var(--ember)}
 .danger:active{background:var(--ember-tint)}
 
 .rev-empty{padding:24px 0 8px}
 .rev-empty h3{
-margin:0 0 10px;font-weight:500;
-font-family:var(--display);font-size:16px;letter-spacing:.04em;color:var(--foam);
+  margin:0 0 10px;font-weight:500;
+  font-family:var(--display);font-size:16px;letter-spacing:.04em;color:var(--foam);
 }
-.rev-empty p{margin:0;font-size:14px;line-height:1.6;color:var(--rev-haze)}
+.rev-empty p{margin:0;font-size:14px;line-height:1.6;color:var(--haze)}
 
 /* ---------- 3. detail ---------- */
 /* The waveform and its readout stay pinned while the kinds scroll under,
- so you never lose the moment you just scrubbed to. The negative margin
- cancels .rev-scroll's padding so the sticky edge sits flush. */
+   so you never lose the moment you just scrubbed to. The negative margin
+   cancels .rev-scroll's padding so the sticky edge sits flush. */
 .scrub{
-position:sticky;top:0;z-index:2;
-margin-top:-14px;padding:14px 0 12px;
-background:var(--abyss);
+  position:sticky;top:0;z-index:2;
+  margin-top:-14px;padding:14px 0 12px;
+  background:var(--abyss);
 }
 .lane{
-display:block;width:100%;border-radius:2px;background:var(--rev-lane);
-touch-action:none;                 /* the lanes own horizontal drags */
+  display:block;width:100%;border-radius:2px;background:var(--lane);
+  touch-action:none;                 /* the lanes own horizontal drags */
 }
 .lane-over{height:54px;cursor:pointer}
 .lane-fine{height:146px;margin-top:6px;cursor:ew-resize}
@@ -488,44 +437,44 @@ touch-action:none;                 /* the lanes own horizontal drags */
 
 .zoomrow{display:flex;align-items:stretch;gap:12px;margin-top:10px}
 .step{
-flex:0 0 auto;min-width:60px;min-height:44px;padding:0;
-border:0;border-radius:2px;background:var(--rev-lane);
-font-family:var(--data);font-size:12px;letter-spacing:.01em;text-transform:none;
-color:var(--foam);
+  flex:0 0 auto;min-width:60px;min-height:44px;padding:0;
+  border:0;border-radius:2px;background:var(--lane);
+  font-family:var(--data);font-size:12px;letter-spacing:.01em;text-transform:none;
+  color:var(--foam);
 }
-.step:active{background:var(--rev-tint)}
+.step:active{background:var(--tint)}
 .seg{
-flex:1 1 auto;display:flex;gap:1px;
-background:var(--rev-rule-firm);border-radius:2px;overflow:hidden;
+  flex:1 1 auto;display:flex;gap:1px;
+  background:var(--rule-firm);border-radius:2px;overflow:hidden;
 }
 .seg button{
-flex:1 1 0;min-width:0;min-height:44px;padding:0 2px;
-border:0;border-radius:0;background:var(--abyss);
-font-family:var(--data);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
-color:var(--mute);
+  flex:1 1 0;min-width:0;min-height:44px;padding:0 2px;
+  border:0;border-radius:0;background:var(--abyss);
+  font-family:var(--data);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--mute);
 }
 /* The steppers either side are filled blocks too, so the chosen span needs
- more than a tint to tell it apart: the glass underline does that. */
+   more than a tint to tell it apart: the glass underline does that. */
 .seg button[aria-pressed=true]{
-background:var(--rev-tint);color:var(--foam);
-box-shadow:inset 0 -2px 0 var(--glass);
+  background:var(--tint);color:var(--foam);
+  box-shadow:inset 0 -2px 0 var(--glass);
 }
 
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .chip{
-flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:22px;
-border:1px solid var(--rev-rule-firm);background:transparent;
-font-family:var(--body);font-size:13px;font-weight:400;
-letter-spacing:normal;text-transform:none;color:var(--rev-haze);
+  flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:22px;
+  border:1px solid var(--rule-firm);background:transparent;
+  font-family:var(--body);font-size:13px;font-weight:400;
+  letter-spacing:normal;text-transform:none;color:var(--haze);
 }
-.chip[aria-pressed=true]{background:var(--rev-tint);border-color:var(--glass);color:var(--foam)}
+.chip[aria-pressed=true]{background:var(--tint);border-color:var(--glass);color:var(--foam)}
 
 .rev-note{
-width:100%;min-height:48px;margin-top:14px;padding:13px 12px;
-border:1px solid var(--rev-rule-firm);border-radius:2px;
-background:var(--shelf);color:var(--foam);
-font-family:var(--body);font-size:16px;   /* 16px keeps iOS from zooming the field */
-user-select:text;-webkit-user-select:text;
+  width:100%;min-height:48px;margin-top:14px;padding:13px 12px;
+  border:1px solid var(--rule-firm);border-radius:2px;
+  background:var(--shelf);color:var(--foam);
+  font-family:var(--body);font-size:16px;   /* 16px keeps iOS from zooming the field */
+  user-select:text;-webkit-user-select:text;
 }
 .rev-note::placeholder{color:var(--mute)}
 .rev-note:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
@@ -533,33 +482,37 @@ user-select:text;-webkit-user-select:text;
 .rev-add{width:100%;margin-top:10px;font-size:12px;letter-spacing:.18em}
 
 .labs{display:flex;flex-direction:column}
-.lab{display:flex;align-items:stretch;gap:8px;border-bottom:1px solid var(--rev-rule)}
+.lab{display:flex;align-items:stretch;gap:8px;border-bottom:1px solid var(--rule)}
 .lab-go{
-flex:1 1 auto;min-width:0;min-height:52px;
-display:flex;align-items:center;gap:12px;padding:8px 0;
-border:0;border-radius:0;background:transparent;text-align:left;
-font-family:var(--body);font-weight:400;letter-spacing:normal;text-transform:none;
-color:var(--foam);
+  flex:1 1 auto;min-width:0;min-height:52px;
+  display:flex;align-items:center;gap:12px;padding:8px 0;
+  border:0;border-radius:0;background:transparent;text-align:left;
+  font-family:var(--body);font-weight:400;letter-spacing:normal;text-transform:none;
+  color:var(--foam);
 }
-.lab-go:active{background:var(--rev-press)}
+.lab-go:active{background:var(--press)}
 .lab-t{
-flex:0 0 auto;min-width:42px;
-font-family:var(--data);font-size:12px;color:var(--sand);font-variant-numeric:tabular-nums;
+  flex:0 0 auto;min-width:42px;
+  font-family:var(--data);font-size:12px;color:var(--sand);font-variant-numeric:tabular-nums;
 }
 .lab-txt{display:flex;flex-direction:column;gap:3px;min-width:0}
 .lab-kind{font-size:14px}
 .lab-note{
-font-family:var(--data);font-size:10.5px;letter-spacing:.04em;color:var(--mute);
-overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-family:var(--data);font-size:10.5px;letter-spacing:.04em;color:var(--mute);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .lab-del{
-flex:0 0 auto;align-self:center;min-width:44px;min-height:44px;padding:0 11px;
-border:1px solid var(--rev-rule);border-radius:2px;background:transparent;
-font-family:var(--data);font-size:10px;letter-spacing:.10em;text-transform:uppercase;
-color:var(--mute);
+  flex:0 0 auto;align-self:center;min-width:44px;min-height:44px;padding:0 11px;
+  border:1px solid var(--rule);border-radius:2px;background:transparent;
+  font-family:var(--data);font-size:10px;letter-spacing:.10em;text-transform:uppercase;
+  color:var(--mute);
 }
 .lab-del:active{background:var(--ember-tint);color:var(--ember)}
 
 @media (prefers-reduced-motion:reduce){
-.review{animation:none}
+  .review{animation:none}
 }
+
+/* The re-find button is the only .bar inside a panel, so it needs the gap the
+   panel's own rows get. Written here rather than inline on the element. */
+.panel .bar#recalBar{margin-top:18px}

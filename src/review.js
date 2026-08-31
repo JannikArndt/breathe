@@ -1,4 +1,4 @@
-import { $, clamp, notice, fitCanvas } from './util.js';
+import { $, clamp, notice, fitCanvas, palette } from './util.js';
 import { Store } from './store.js';
 
 /* ============================================================
@@ -84,16 +84,9 @@ export const Review = {
   /** canvas colours live in :root like every other colour in the app */
   ink(){
     if(this._ink) return this._ink;
-    const cs = getComputedStyle(document.documentElement);
-    const g = (n,fallback)=>{ const v=cs.getPropertyValue(n).trim(); return v||fallback; };
-    return this._ink = {
-      you:  g('--glass','#7FBFAE'),
-      pace: g('--sand','#D9A85B'),
-      mute: g('--mute','#7C9AA1'),
-      foam: g('--foam','#E3EDE9'),
-      deep: g('--deep','#0E2732'),
-      abyss:g('--abyss','#08171E')
-    };
+    const P = palette();
+    return this._ink = {you:P.glass, pace:P.sand, mute:P.mute,
+                        foam:P.foam, deep:P.deep, abyss:P.abyss};
   },
 
   wire(){

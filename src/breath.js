@@ -7,7 +7,7 @@ import { clamp, lerp, lp, TAU } from './util.js';
    resting on the belly, each breath tilts it by a fraction of a
    degree, so the breath shows up as a slow wander of that vector.
 
-   raw --(lp 0.35s)--> smooth --(lp 12s)--> baseline
+   raw --(lp 0.35s)--> smooth --(lp 3 periods)--> baseline
    d = smooth - baseline                        // 0.013 .. 0.45 Hz
    s = d . u                                    // u tracked continuously
 
@@ -289,16 +289,6 @@ export const Breath = {
       this.u = [-this.u[0],-this.u[1],-this.u[2]];
       this.flipped = true;
     }
-  },
-
-  /** Track how deep this user's breaths are, so the hysteresis can scale with
-      them. Bounds reject a half-stroke caught mid-drift and a sigh; alpha 0.25
-      settles over about four breaths, slow enough that one deep sigh does not
-      move the threshold out from under the next ordinary breath. */
-  learnAmp(){
-    if(this.peakS === null || this.troughS === null) return;
-    const amp = Math.abs(this.peakS - this.troughS);
-    if(amp > 0.35 && amp < 3.6) this.strokeAmp = lerp(this.strokeAmp, amp, 0.25);
   },
 
   /** How much is this actually breathing?

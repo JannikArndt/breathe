@@ -1,4 +1,4 @@
-import { $, clamp, lerp, lp, fin, TAU, notice, fitCanvas } from './util.js';
+import { $, clamp, lerp, lp, fin, TAU, notice, fitCanvas, palette, alpha } from './util.js';
 import { Audio } from './audio.js';
 import { Breath } from './breath.js';
 import { Pulse } from './pulse.js';
@@ -394,7 +394,7 @@ function loop(now){
   UI.traceAcc += dt;
   if(UI.traceAcc>0.1){
     UI.traceAcc-=0.1;              // carry the remainder: resetting to 0 ran the tick at ~8.6 Hz
-    UI.trace.push([clamp(Breath.s,-1.6,1.6), 0]);
+    UI.trace.push(clamp(Breath.s,-1.6,1.6));
     if(UI.trace.length>620) UI.trace.shift();
     Recorder.derived({t:now/1000, s:Breath.s, level:level, phase:Breath.phase,
                       bpm:(Breath.conf>0.45 ? Breath.bpmSmooth : 0)||0,
@@ -463,39 +463,37 @@ function drawDial(level){
   ctx.clearRect(0,0,w,h);
   const cx=w/2, cy=h/2, R=Math.min(w,h)*0.40;
 
-  // your breath — filled swell
+  // your breath — filled swell. The fill deepens with rich, so the reward for
+  // slowing down is visible as well as audible.
+  const P = palette();
   const br = R*(0.36 + 0.64*level);
   const grd = ctx.createRadialGradient(cx,cy,br*0.15,cx,cy,br);
-  grd.addColorStop(0,'rgba(127,191,174,'+(0.10+0.24*UI.rich)+')');
-  grd.addColorStop(1,'rgba(127,191,174,0.015)');
+  grd.addColorStop(0, alpha(P.glass, 0.10 + 0.24*UI.rich));
+  grd.addColorStop(1, alpha(P.glass, 0.015));
   ctx.beginPath(); ctx.arc(cx,cy,br,0,TAU); ctx.fillStyle=grd; ctx.fill();
-  ctx.strokeStyle='rgba(127,191,174,0.80)'; ctx.lineWidth=1.6; ctx.stroke();
+  ctx.strokeStyle=alpha(P.glass, 0.80); ctx.lineWidth=1.6; ctx.stroke();
 
   // still centre
   ctx.beginPath(); ctx.arc(cx,cy,2.2,0,TAU);
-  ctx.fillStyle='rgba(227,237,233,0.5)'; ctx.fill();
+  ctx.fillStyle=alpha(P.foam, 0.5); ctx.fill();
 }
 
 function drawTrace(){
   const {ctx,w,h}=fitCanvas(el.trace);
   ctx.clearRect(0,0,w,h);
-  ctx.fillStyle='rgba(14,39,50,0.55)'; ctx.fillRect(0,0,w,h);
-  ctx.strokeStyle='rgba(124,154,161,0.20)'; ctx.lineWidth=1;
+  const P = palette();
+  ctx.fillStyle=alpha(P.deep, 0.55); ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle=alpha(P.mute, 0.20); ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(0,h/2); ctx.lineTo(w,h/2); ctx.stroke();
 
   const n=UI.trace.length; if(n<2) return;
   const step=w/620, x0=w-n*step;
-  const line=(idx,color,width,alpha)=>{
-    ctx.beginPath();
-    for(let i=0;i<n;i++){
-      const y=h/2 - clamp(UI.trace[i][idx],-1.6,1.6)*(h/2-5)/1.6;
-      i?ctx.lineTo(x0+i*step,y):ctx.moveTo(x0+i*step,y);
-    }
-    ctx.strokeStyle=color; ctx.globalAlpha=alpha; ctx.lineWidth=width;
-    ctx.lineJoin='round'; ctx.stroke(); ctx.globalAlpha=1;
-  };
-  if(UI.state==='running') line(1,'#D9A85B',1,0.55);
-  line(0,'#7FBFAE',1.7,1);
+  ctx.beginPath();
+  for(let i=0;i<n;i++){
+    const y=h/2 - clamp(UI.trace[i],-1.6,1.6)*(h/2-5)/1.6;
+    i?ctx.lineTo(x0+i*step,y):ctx.moveTo(x0+i*step,y);
+  }
+  ctx.strokeStyle=P.glass; ctx.lineWidth=1.7; ctx.lineJoin='round'; ctx.stroke();
 }
 
 /* ---------- wiring ---------- */
@@ -529,9 +527,15 @@ $('reloadBtn').addEventListener('click', ()=>{
   location.replace(location.pathname + '?r=' + Date.now());
 });
 $('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
+// Not a calibration step — there is none. This throws away the tracked axis
+// and the learned stroke depth, which is what you want after turning over or
+// moving the phone: the tracker re-finds them in a few breaths instead of
+// dragging the old ones along.
 $('recalBtn').addEventListener('click', ()=>{
   el.panel.classList.remove('open');
-  if(UI.state!=='idle') Breath.begin(performance.now()/1000);
+  if(UI.state==='idle') return;
+  Breath.begin(performance.now()/1000);
+  notice('Starting over', 'Breathe normally. It finds your breathing again in a few breaths.', 4500);
 });
 $('vol').addEventListener('input', e=>Audio.setVolume(parseInt(e.target.value,10)/100));
 
@@ -584,11 +588,15 @@ window.addEventListener('resize', ()=>{ if(UI.state!=='idle'){ drawDial(Breath.l
 // built from Audio.voices so the markup and the engine cannot drift apart
 /* ---------- recordings ---------- */
 function refreshStorageRow(){
-  const meter = $('storeMeterFill');
+  const meter = $('storeMeterFill'), bar = $('storeMeter');
   if(!Store.available){ if(meter) meter.style.width = '0%'; return; }
   Store.usage().then(u=>{
     if(!u || !meter) return;
-    meter.style.width = Math.round(clamp(u.bytes/(u.budget||1),0,1)*100) + '%';
+    const full = clamp(u.bytes/(u.budget||1), 0, 1);
+    meter.style.width = Math.round(full*100) + '%';
+    // Past 85% the next session deletes the oldest recording to make room, so
+    // say so before it happens. The stylesheet had the rule; nothing set it.
+    if(bar) bar.setAttribute('data-full', String(full > 0.85));
   });
 }
 $('openRecordings').addEventListener('click', ()=>{

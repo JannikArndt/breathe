@@ -256,6 +256,7 @@ export function installDom(htmlPath){
     update: async () => { registration.updates++; },
   };
   globalThis.swRegistration = registration;
+  globalThis.swFire = (t, e) => fire(swListeners, t, e);
   globalThis.swUpdate = () => {
     const wListeners = new Map();
     const worker = {

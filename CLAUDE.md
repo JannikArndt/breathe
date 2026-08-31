@@ -574,6 +574,14 @@ once. Cache-first *inside a version* is what makes this safe: a fresh `index.htm
 never end up driving last week's modules, because both come from the same cache and that
 cache is deleted whole on activate.
 
+`controllerchange` fires in two situations and only one wants a reload. On a **first**
+visit there is no controller: the worker installs, activates and claims the page a second
+or two after it loads. Reloading there restarts the app under someone's finger — possibly
+mid-session — and nothing is stale, so `Updater.handingOver` gates it and only the Install
+button sets that flag. A version that arrives **during a session** sets `Updater.pending`
+and says nothing until End: the Changes screen is out of reach while breathing anyway, and
+a toast is the one thing on that screen that can pull attention back to the phone.
+
 Do not make the fetch handler network-first "so it is always fresh" — that reintroduces
 exactly the skew this design exists to prevent, and costs the offline start. Do not add a
 `Cache-Control` meta tag: browsers ignore those for HTTP caching, so it would look like a

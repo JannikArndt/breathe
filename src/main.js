@@ -15,6 +15,10 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.13', date:'2026-08-31', notes:[
+    'The app no longer reloads itself a second after you open it for the first time.',
+    'A new version stays quiet until your session is over, rather than putting a message on screen while you are breathing.'
+  ]},
   {v:'0.9.12', date:'2026-08-31', notes:[
     'Show the numbers, under Try, puts the live sensor readings under the trace: how big your breathing is in m/s\u00b2, how sure the app is, how much other movement there is, and whether it currently reads you as holding. Useful when something looks wrong and you want to say what.',
     'Opening a recording shades the holds on the whole-session lane too, where the pattern is easier to see.'
@@ -106,8 +110,8 @@ function relDate(iso){
    The whole thing is optional. With no service worker (an old browser, a
    private window, http://) the app runs exactly as it did; only this panel
    changes what it says. */
-const Updater = {
-  reg:null, waiting:null, state:'unsupported',
+export const Updater = {
+  reg:null, waiting:null, state:'unsupported', handingOver:false, pending:false,
   // idle      — registered, nothing new
   // checking  — asking the server
   // ready     — a new version is installed and waiting
@@ -132,12 +136,21 @@ const Updater = {
       });
     }).catch(()=>{ this.state = 'unsupported'; });
 
-    // The new worker takes over only when we ask it to, so this fires once,
-    // in answer to the button.
-    let reloading = false;
+    // controllerchange fires in two quite different situations and only one of
+    // them wants a reload.
+    //
+    // On the very first visit there is no controller at all: the worker
+    // installs, activates, claims the page, and this fires a second or two
+    // after the app loads. Reloading there would restart the app under
+    // someone's finger — and if they had already tapped Start, it would kill
+    // the session. Nothing is stale on a first visit, so there is nothing to
+    // reload for.
+    //
+    // The other case is the handover we asked for, which does want the reload:
+    // the page is running code the new cache no longer holds.
     navigator.serviceWorker.addEventListener('controllerchange', ()=>{
-      if(reloading) return;
-      reloading = true;
+      if(!this.handingOver) return;
+      this.handingOver = false;
       location.reload();
     });
   },
@@ -146,6 +159,15 @@ const Updater = {
     this.waiting = sw;
     this.state = 'ready';
     this.paint();
+    // Never over a running session. Nothing about a new version is urgent, the
+    // Changes screen is out of reach while breathing anyway, and a toast is the
+    // one thing on this screen that can pull attention back to the phone.
+    if(UI.state === 'running'){ this.pending = true; return; }
+    this.announce();
+  },
+
+  announce(){
+    this.pending = false;
     notice('A new version is ready', 'Open Changes from the bottom of the home screen to install it.', 8000);
   },
 
@@ -175,6 +197,7 @@ const Updater = {
 
   install(){
     if(!this.waiting) return;
+    this.handingOver = true;
     this.waiting.postMessage('skip-waiting');          // controllerchange reloads
   },
 
@@ -452,6 +475,8 @@ async function end(){
   reportSaveTrouble();
   Review.showSummary(session);
   refreshStorageRow();
+  // A version that arrived mid-session held its tongue. Now is a fine time.
+  if(Updater.pending) Updater.announce();
 }
 
 /** Review's Done button. The list and detail screens never call this — they are

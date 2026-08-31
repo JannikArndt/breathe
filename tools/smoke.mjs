@@ -147,6 +147,13 @@ $('reloadBtn').click();
 check('installing tells the waiting worker to take over', waiting.posted === 'skip-waiting',
       JSON.stringify(waiting.posted));
 check('and the app reloads itself when it does', reloaded, String(reloaded));
+
+// The first visit has no controller to replace: the worker installs, activates
+// and claims the page a second after it loads. Reloading there would restart
+// the app under someone's finger, possibly mid-session, for no gain.
+reloaded = false;
+swFire('controllerchange', {});
+check('but an unasked-for handover does not reload the page', reloaded === false);
 $('closeLog').click();
 
 /* ---------------------------------------------------------------- settings */
@@ -189,6 +196,7 @@ check('Recordings is out of reach mid-session', $('recBtn').classList.contains('
 check('the build line hides mid-session', $('buildLine').classList.contains('hidden'));
 
 const ctx = FakeAudioContext.last;
+let notice0 = '';
 run(180, 60);                               // three minutes at 60 Hz
 
 const rateTxt = $('vRate').textContent;
@@ -200,7 +208,7 @@ check('the header shows the sample rate', /demo|Hz/.test($('statusTag').textCont
       JSON.stringify($('statusTag').textContent));
 
 /* ---------------------------------------------------------------- try */
-const { Flags, Dim } = mod;
+const { Flags, Dim, Updater } = mod;
 
 const traceCtx = $('trace').getContext('2d');
 const rectsBefore = traceCtx.calls.fillRect || 0;
@@ -253,6 +261,15 @@ if(ctx){
         ctx.directSets() + ' direct sets');
 }
 
+// A version arriving mid-session must not raise a toast: the Changes screen is
+// out of reach while breathing anyway, and the notice is the one thing on this
+// screen that can pull attention back to the phone.
+notice0 = $('noticeTitle').textContent;
+const second = swUpdate();
+check('a version arriving mid-session waits its turn', Updater.pending === true);
+check('and says nothing while you are breathing', $('noticeTitle').textContent === notice0,
+      JSON.stringify($('noticeTitle').textContent));
+
 /* ---------------------------------------------------------------- end */
 // End must never leave the summary behind a dimmed screen. The tap that ends a
 // session goes through the catcher first, so nothing else would wake it.
@@ -268,6 +285,9 @@ await new Promise(r => setTimeout(r, 0));
 check('End returns the button to Start', $('mainBtn').textContent === 'Start',
       JSON.stringify($('mainBtn').textContent));
 check('and brings the screen back with it', !document.body.classList.contains('dimmed'));
+check('and the waiting version speaks up once the session is over',
+      $('noticeTitle').textContent === 'A new version is ready' && Updater.pending === false,
+      JSON.stringify($('noticeTitle').textContent));
 $('tglDim').click();
 check('the summary is on screen', $('review').classList.contains('open') ||
       !$('review').classList.contains('hidden'));

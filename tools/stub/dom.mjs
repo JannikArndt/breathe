@@ -37,9 +37,18 @@ export class El {
     this.style = new Proxy({}, {set:(o,k,v)=>{o[k]=v; return true;}});
     this.listeners = new Map();
     this.textContent = '';
-    this.value = '';
+    this._value = null;            // null until something assigns .value
     this._uid = ++uid;
   }
+  /** An <input>'s .value starts as its value attribute and detaches from it
+      on the first assignment, which is what the app relies on for defaults. */
+  get value(){
+    if(this._value !== null) return this._value;
+    const a = this.attrs.get('value');
+    return a === undefined ? '' : a;
+  }
+  set value(v){ this._value = String(v); }
+
   get className(){ return this.classList.value; }
   set className(v){ this.classList.set = new Set(String(v).split(/\s+/).filter(Boolean)); }
   get id(){ return this.attrs.get('id') || ''; }

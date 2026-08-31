@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { installDom } from './stub/dom.mjs';
 import { installAudio, FakeAudioContext } from './stub/audio.mjs';
+import { installIdb } from './stub/idb.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -35,6 +36,12 @@ globalThis.performance = { now: () => nowMs };
 globalThis.requestAnimationFrame = fn => { frames.push(fn); return frames.length; };
 globalThis.cancelAnimationFrame = () => {};
 
+/** Let every pending microtask and timer callback run. IndexedDB, the audio
+    promises and the store's own writes all resolve this way. */
+async function settle(times = 6){
+  for(let i = 0; i < times; i++) await new Promise(r => setTimeout(r, 0));
+}
+
 /** Advance the virtual clock and run whatever the loop scheduled. */
 function tick(ms){
   nowMs += ms;
@@ -49,6 +56,7 @@ function run(seconds, hz){
 /* ---------------------------------------------------------------- world */
 const { document } = installDom(resolve(root, 'index.html'));
 installAudio();
+installIdb();
 
 // Motion: granted, and delivered by dispatching on window the way Safari does.
 globalThis.DeviceMotionEvent = { requestPermission: async () => 'granted' };
@@ -57,6 +65,9 @@ globalThis.window.DeviceMotionEvent = globalThis.DeviceMotionEvent;
 const $ = id => document.getElementById(id);
 
 /* ---------------------------------------------------------------- import */
+// The store is a module singleton, so this is the same object main.js drives.
+const { Store } = await import(resolve(root, 'src/store.js'));
+
 let mod;
 try{
   mod = await import(resolve(root, 'src/main.js'));
@@ -68,7 +79,10 @@ try{
 check('the app imports without touching a missing element', true);
 check('the version stamp is on the home screen', /\d+\.\d+\.\d+ · /.test($('buildBtn').textContent),
       JSON.stringify($('buildBtn').textContent));
-check('the store degrades quietly with no IndexedDB', mod.Store ? !mod.Store.available : true);
+await settle();
+check('the store opens', Store.available, Store.lastError || '');
+check('the settings row exists after the v2 upgrade',
+      Store._db && Store._db.objectStoreNames.contains('prefs'));
 
 /* ---------------------------------------------------------------- panels */
 $('panelBtn').click();
@@ -82,6 +96,32 @@ check('Changes lists the releases', $('logList').children.length >= 3,
       $('logList').children.length + ' entries');
 $('closeLog').click();
 check('Changes closes from Back', !$('log').classList.contains('open'));
+
+/* ---------------------------------------------------------------- settings */
+// Every slider's default has to match its `value` in the markup, or Reset
+// would move a control somewhere it has never been.
+const DEFAULTS = {vol:'55', sens:'50', mSwell:'100', mBreak:'100', mFoam:'100',
+                  mSpray:'100', mUnder:'100', mBright:'50', mSpace:'50'};
+const wrong = Object.entries(DEFAULTS).filter(([id, v]) => $(id).getAttribute('value') !== v);
+check('the markup carries the documented defaults', wrong.length === 0,
+      wrong.map(([id]) => id).join(' '));
+
+$('mSpray').value = '140';
+$('mSpray').dispatch('input', {target: $('mSpray')});
+$('tglInvert').click();
+await new Promise(r => setTimeout(r, 500));   // the save is debounced at 400 ms
+await settle(12);
+const saved = await Store.readPrefs();
+check('moving a control writes it to the store', saved.spray === 140 && saved.invert === true,
+      JSON.stringify({spray: saved.spray, invert: saved.invert}));
+
+$('resetMixBtn').click();
+await settle(12);
+check('Reset puts the sound controls back', $('mSpray').value === '100',
+      JSON.stringify($('mSpray').value));
+check('Reset leaves volume and sensitivity alone', $('vol').value === '55' && $('sens').value === '50');
+$('tglInvert').click();                       // back to off for the session below
+await settle();
 
 /* ---------------------------------------------------------------- session */
 $('tglDemo').click();                       // simulated breathing, no sensor needed
@@ -134,6 +174,37 @@ check('the summary reports numbers', $('revSumGrid').children.length >= 3,
 const cells = $('revSumGrid').querySelectorAll('.cell').map(c =>
   c.querySelectorAll('.v').map(v => v.textContent).join(''));
 check('the summary is not all dashes', cells.some(t => /\d/.test(t)), cells.join(' | '));
+
+/* ---------------------------------------------------------------- stored */
+await settle(20);
+const metas = await Store.list();
+check('the session was written to the store', metas.length === 1, metas.length + ' recordings');
+if(metas.length){
+  const m = metas[0];
+  check('the recording knows which release made it', !!(m.app && m.app.build), JSON.stringify(m.app));
+  check('the recording carries the sensitivity it ran at',
+        m.app && typeof m.app.sensitivity === 'number', String(m.app && m.app.sensitivity));
+
+  const full = await Store.get(m.id, {motion:true, derived:true});
+  check('the raw motion channel survived the round trip',
+        !!full && full.motion.rows.length > 1000,
+        full ? full.motion.rows.length + ' samples' : 'none');
+  check('the derived channel survived too',
+        !!full && full.derived.rows.length > 100,
+        full ? full.derived.rows.length + ' rows' : 'none');
+  check('a motion row is [t, x, y, z] with real numbers',
+        !!full && full.motion.rows[10].length === 4 && full.motion.rows[10].every(Number.isFinite),
+        full ? JSON.stringify(full.motion.rows[10]) : '');
+
+  const json = Store.exportJson(full);
+  let parsed = null;
+  try{ parsed = JSON.parse(json); }catch(e){ /* reported by the check below */ }
+  check('the export is valid JSON in the documented format',
+        !!parsed && parsed.format === Store.FORMAT, parsed ? parsed.format : 'unparseable');
+  check('the export carries the rows, not just the header',
+        !!parsed && parsed.motion && parsed.motion.rows.length > 1000,
+        parsed && parsed.motion ? parsed.motion.rows.length + ' rows' : 'none');
+}
 
 $('revBack').click();
 check('Back from the summary lands on the home screen', !$('intro').classList.contains('hidden'));

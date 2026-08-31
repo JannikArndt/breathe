@@ -37,7 +37,7 @@ import { fin } from './util.js';
    ============================================================ */
 
 export const Store = {
-  DB_NAME:'tide', DB_VER:1,
+  DB_NAME:'tide', DB_VER:2,
 
   /* Optimistic until open() has actually decided. */
   available:true,
@@ -93,6 +93,11 @@ export const Store = {
         // browser and a label edit never read a megabyte off disk.
         if(!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', {keyPath:'id'});
         if(!db.objectStoreNames.contains('data')) db.createObjectStore('data', {keyPath:'id'});
+        // v2. One row, key 'settings'. It shares the database with the
+        // recordings because IndexedDB is the only store this app is allowed,
+        // and a second database for one object would be a second thing that
+        // can fail to open.
+        if(!db.objectStoreNames.contains('prefs')) db.createObjectStore('prefs');
       };
       req.onsuccess = function(){
         clearTimeout(timer);
@@ -207,6 +212,28 @@ export const Store = {
       for(let i=0;i<metas.length;i++) bytes += metas[i].bytes || 0;
       return {count:metas.length, bytes:bytes, budget:self.budgetBytes,
               pct: self.budgetBytes ? bytes/self.budgetBytes : 0};
+    });
+  },
+
+  /* ---------- settings ----------
+     Read once at startup, written on every change. Both sides swallow their
+     own failures: losing a slider position is an annoyance, and nothing about
+     it is worth showing a user mid-session, let alone interrupting one. */
+
+  /** @returns Promise<object> — {} when there is nothing saved or no store. */
+  readPrefs(){
+    return this._run(['prefs'], 'readonly', function(st){
+      const req = st.prefs.get('settings');
+      return function(){ return (req.result && typeof req.result === 'object') ? req.result : {}; };
+    }).then(function(v){ return v || {}; });
+  },
+
+  /** Whole-object write. There are a dozen values and they change on a slider
+      drag, so a read-modify-write per key would be far more traffic than
+      replacing the row. */
+  writePrefs(obj){
+    return this._run(['prefs'], 'readwrite', function(st){
+      st.prefs.put(obj, 'settings');
     });
   },
 

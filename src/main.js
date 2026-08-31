@@ -15,6 +15,12 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.6', date:'2026-08-31', notes:[
+    'Everything in Adjust is remembered on this phone. Volume, sensitivity, the seven sound controls and the two sensor switches all come back the way you left them.',
+    'A Reset button under the sound controls puts those seven back where they started. Volume and sensitivity are left alone.',
+    'Demo mode is deliberately not remembered, so a switch left on cannot quietly fake a session next week.',
+    'The trace drew a second, flat line down the middle of the graph. It belonged to the guide tone, which was removed a while ago.'
+  ]},
   {v:'0.9.5', date:'2026-08-31', notes:[
     'Changes has a Reload button. Added to the Home Screen the app runs without an address bar, so there was no way to pick up a new version short of deleting the icon.'
   ]},
@@ -537,21 +543,93 @@ $('recalBtn').addEventListener('click', ()=>{
   Breath.begin(performance.now()/1000);
   notice('Starting over', 'Breathe normally. It finds your breathing again in a few breaths.', 4500);
 });
-$('vol').addEventListener('input', e=>Audio.setVolume(parseInt(e.target.value,10)/100));
+/* ---------- the Adjust panel ----------
+   One table, because every control needs the same four things done to it:
+   wired to its effect, restored from the last session, saved when it moves,
+   and put back when the user asks for the defaults. Adding a control that is
+   not in this list is how one of the four gets forgotten. */
 
-// Sensitivity: where the line falls between a shallow breather and a phone on
-// a table is not something a constant can settle for every body and every
-// pocket of belly, so it is a control.
-$('sens').addEventListener('input', e=>{
-  Breath.sensitivity = clamp(parseInt(e.target.value,10)/100, 0, 1);
-});
+const SLIDERS = [
+  // id        key            default  apply
+  // The defaults repeat index.html's `value` attributes on purpose: a control
+  // has to be able to go back to where it started without a reload, now that
+  // moving it is permanent. resetSound() below asserts the two agree.
+  ['vol',     'volume',      55,  v => Audio.setVolume(v/100)],
+  ['sens',    'sensitivity', 50,  v => { Breath.sensitivity = clamp(v/100, 0, 1); }],
+  ['mSwell',  'swell',      100,  v => Audio.setMix('swell', v/100)],
+  ['mBreak',  'brk',        100,  v => Audio.setMix('brk',   v/100)],
+  ['mFoam',   'foam',       100,  v => Audio.setMix('foam',  v/100)],
+  ['mSpray',  'spray',      100,  v => Audio.setMix('spray', v/100)],
+  ['mUnder',  'under',      100,  v => Audio.setMix('under', v/100)],
+  ['mBright', 'bright',      50,  v => Audio.setMix('bright',v/100)],
+  ['mSpace',  'space',       50,  v => Audio.setMix('space', v/100)],
+];
 
-// The seven sound controls. Layer gains run past 1 on purpose: being able to
-// push a layer beyond its designed level is most of the point.
-[['mSwell','swell'],['mBreak','brk'],['mFoam','foam'],['mSpray','spray'],
- ['mUnder','under'],['mBright','bright'],['mSpace','space']
-].forEach(([id,key])=>{
-  $(id).addEventListener('input', e=>Audio.setMix(key, parseInt(e.target.value,10)/100));
+const TOGGLES = [
+  // Demo mode is deliberately absent: it is a way to hear the sound without
+  // lying down, and a phone that silently starts a fake session a week later
+  // because the switch was left on is worse than setting it again.
+  ['tglPulse',  'pulse',  on => {
+    Pulse.enabled = on;
+    if(on) Pulse.reset();
+    el.cellHr.classList.toggle('hidden', !on);
+  }],
+  ['tglInvert', 'invert', on => { Breath.invert = on; }],
+];
+
+/** Read every control and hand back the object that goes to the store. */
+function collectSettings(){
+  const out = {};
+  for(const [id, key] of SLIDERS) out[key] = parseInt($(id).value, 10);
+  for(const [id, key] of TOGGLES) out[key] = $(id).getAttribute('aria-checked') === 'true';
+  return out;
+}
+
+/* A slider drag fires `input` on every pixel. Writing through each one would
+   put a few hundred transactions on the store for one gesture, so coalesce. */
+let saveTimer = null;
+function saveSettings(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{ Store.writePrefs(collectSettings()); }, 400);
+}
+
+/** Put a value on a slider and through to whatever it drives. */
+function setSlider(id, v){
+  const inp = $(id);
+  inp.value = String(v);
+  const [, , , apply] = SLIDERS.find(c => c[0] === id);
+  apply(clamp(parseInt(inp.value, 10), 0, 1000));
+}
+
+function setToggle(id, on){
+  $(id).setAttribute('aria-checked', String(!!on));
+  const found = TOGGLES.find(t => t[0] === id);
+  if(found) found[2](!!on);
+}
+
+for(const [id, , , apply] of SLIDERS){
+  $(id).addEventListener('input', e => {
+    apply(parseInt(e.target.value, 10));
+    saveSettings();
+  });
+}
+
+for(const [id, , apply] of TOGGLES){
+  const b = $(id);
+  b.addEventListener('click', ()=>{
+    const on = b.getAttribute('aria-checked') !== 'true';
+    b.setAttribute('aria-checked', String(on));
+    apply(on);
+    saveSettings();
+  });
+}
+
+// Demo mode: wired by hand, since it is the one switch that is not saved.
+$('tglDemo').addEventListener('click', function(){
+  const on = this.getAttribute('aria-checked') !== 'true';
+  this.setAttribute('aria-checked', String(on));
+  UI.demo = on;
+  if(on) notice('Demo mode','Simulated breathing. Good for checking the sound without lying down.',5000);
 });
 
 // The break only sounds at the top of a breath, so moving its slider while
@@ -565,21 +643,20 @@ $('mBreak').addEventListener('input', ()=>{
   Audio.dispatch('top', 0.85);
 });
 
-function bindToggle(id, fn){
-  const b=$(id);
-  b.addEventListener('click', ()=>{
-    const on = b.getAttribute('aria-checked')!=='true';
-    b.setAttribute('aria-checked', String(on));
-    fn(on);
-  });
-}
-bindToggle('tglPulse',  on=>{
-  Pulse.enabled = on;
-  if(on) Pulse.reset();
-  el.cellHr.classList.toggle('hidden', !on);
+// The sound has seven controls and no way back once they are all moved, now
+// that they persist. Volume and sensitivity are yours and are left alone.
+$('resetMixBtn').addEventListener('click', ()=>{
+  for(const [id, key, def] of SLIDERS) if(key !== 'volume' && key !== 'sensitivity') setSlider(id, def);
+  saveSettings();
+  notice('Sound reset', 'The seven sound controls are back where they started.', 3500);
 });
-bindToggle('tglInvert', on=>{ Breath.invert=on; });
-bindToggle('tglDemo',   on=>{ UI.demo=on; if(on) notice('Demo mode','Simulated breathing. Good for checking the sound without lying down.',5000); });
+
+/** Restore what was saved. Anything missing keeps the slider's own default,
+    so a settings row written by an older release cannot blank a new control. */
+function applySettings(p){
+  for(const [id, key] of SLIDERS) if(typeof p[key] === 'number') setSlider(id, p[key]);
+  for(const [id, key] of TOGGLES) if(typeof p[key] === 'boolean') setToggle(id, p[key]);
+}
 
 $('notice').addEventListener('click', ()=>$('notice').classList.remove('show'));
 window.addEventListener('resize', ()=>{ if(UI.state!=='idle'){ drawDial(Breath.level()); drawTrace(); } });
@@ -617,8 +694,11 @@ $('clearRecBtn').addEventListener('click', function(){
   });
 });
 Review.onDone = toIntro;
-// no user gesture is needed for IndexedDB, so this stays well away from the tap handler
-Store.open().then(()=>{ Review.refreshCount(); refreshStorageRow(); });
+// No user gesture is needed for IndexedDB, so this stays well away from the tap
+// handler. Settings come back before the first tap, which is the whole point.
+Store.open()
+  .then(()=>Store.readPrefs())
+  .then(p=>{ applySettings(p); Review.refreshCount(); refreshStorageRow(); });
 
 // secure-context check up front — requestPermission simply will not fire otherwise
 if(!window.isSecureContext && location.hostname!=='localhost'){

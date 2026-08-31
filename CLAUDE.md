@@ -58,7 +58,7 @@ section, update the harness in the same commit.
 | `3. PULSE` | `Pulse` — experimental heart rate from the same accelerometer |
 | `4. RECORDER + STORE` | `Recorder` (typed-array capture) and `Store` (IndexedDB, eviction, export) |
 | `5. REVIEW UI` | `Review` — the summary End lands on, the session browser, labelling |
-| `6. APP` | `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
+| `6. APP` | `RELEASES`/`Log`, `UI`/`el`, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
 
 Sections 4–5 sit between the DSP and APP so the harness's slice of 0–3 is unchanged.
 **They must be inert at definition time** — no `document.getElementById`, `indexedDB`
@@ -410,8 +410,8 @@ Do these on a real phone over HTTPS before calling a change done:
 
 ## 6a. Views and how you move between them
 
-Seven screens. Two shells: `#app` (home and the live session) and two overlays that sit on
-top of it, `#panel` (settings) and `#review` (summary, list, detail).
+Eight screens. Two shells: `#app` (home and the live session) and three overlays that sit
+on top of it, `#panel` (settings), `#log` (changes) and `#review` (summary, list, detail).
 
 ```mermaid
 stateDiagram-v2
@@ -420,6 +420,7 @@ stateDiagram-v2
     Home --> Breathing: Start
     Home --> List: Recordings
     Home --> Settings: Adjust
+    Home --> Changes: version stamp
 
     Breathing --> Summary: End
     Breathing --> Settings: Adjust
@@ -432,6 +433,7 @@ stateDiagram-v2
     Detail --> List: Back (opened from the list)
     Detail --> List: Delete
 
+    Changes --> Home: Back
     Settings --> List: Storage, Open
 ```
 
@@ -451,6 +453,14 @@ detail, and leaving the Summary is what calls `onDone` and returns the app to Ho
 Adjust stays reachable while breathing — it holds volume, sensitivity and the sound
 controls. Recordings does
 not, because opening the browser over a running session is not something to do by accident.
+
+**The version stamp is the release, and `RELEASES` is where it comes from.** There is no
+build step, so the top entry of that array stamps the home screen and every recording's
+`app.build`. Nothing else in the app changes shape between releases, so without it a fixed
+version and a stale cache look identical on the phone — which is the whole reason it is
+there. Add an entry in the same commit as the change it describes, and write the notes for
+someone who has never read the code: what the sound or the screen does differently, never
+how. The changes screen and the build line hide during a session, like Recordings.
 
 ## 7. Style
 

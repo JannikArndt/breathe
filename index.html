@@ -202,6 +202,39 @@
     color:var(--mute);letter-spacing:.02em;cursor:pointer;
   }
   .link:hover,.link:focus-visible{color:var(--glass)}
+
+  /* The one line on screen that answers "did it actually reload?". Nothing
+     else in the app changes shape between releases, so without a stamp a
+     fixed version and a stale cache look identical. */
+  .buildline{flex:0 0 auto;display:flex;justify-content:center;margin-top:6px}
+  .build{
+    background:none;border:0;padding:5px 8px;cursor:pointer;
+    font-family:var(--data);font-size:10px;letter-spacing:.12em;
+    color:var(--mute);opacity:.75;text-transform:uppercase;
+  }
+  .build:hover,.build:focus-visible{color:var(--sand);opacity:1}
+
+  .log-rel{padding:15px 0;border-bottom:1px solid rgba(124,154,161,.14)}
+  .log-rel:last-child{border-bottom:0}
+  .log-when{
+    display:flex;align-items:baseline;gap:10px;
+    font-family:var(--data);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  }
+  .log-v{color:var(--sand)}
+  .log-d{color:var(--mute)}
+  .log-now{
+    margin-left:auto;color:var(--glass);border:1px solid rgba(124,154,161,.35);
+    border-radius:2px;padding:2px 6px;letter-spacing:.16em;
+  }
+  .log-notes{margin:9px 0 0;padding:0 0 0 15px;list-style:none}
+  .log-notes li{
+    position:relative;font-size:13.5px;line-height:1.55;color:#C7D8D4;
+    padding:3px 0;
+  }
+  .log-notes li::before{
+    content:'';position:absolute;left:-15px;top:11px;
+    width:5px;height:1px;background:var(--mute);
+  }
   .sheet-head{
     display:flex;align-items:center;gap:10px;margin-bottom:10px;
     padding-bottom:10px;border-bottom:1px solid var(--rev-rule);
@@ -601,6 +634,18 @@
     <button class="link" id="recBtn">Recordings</button>
     <button class="link" id="panelBtn">Adjust</button>
   </div>
+  <div class="buildline" id="buildLine">
+    <button class="build" id="buildBtn" aria-label="Version and changes"></button>
+  </div>
+</div>
+
+<!-- changes -->
+<div class="panel" id="log" role="dialog" aria-label="Changes">
+  <header class="sheet-head">
+    <button class="back" id="closeLog">Back</button>
+    <h2>Changes</h2>
+  </header>
+  <div id="logList"></div>
 </div>
 
 <!-- settings -->
@@ -3797,6 +3842,85 @@ const Review = {
 /* ============================================================
    6. APP
    ============================================================ */
+
+/** Releases, newest first. There is no build step, so this list *is* the
+    version: the top entry stamps the home screen and the exported session.
+    Add an entry in the same commit as the change it describes, and write the
+    notes for someone who has never seen the code — what the sound or the
+    screen does differently, never how. */
+const RELEASES = [
+  {v:'0.9.4', date:'2026-08-31', notes:[
+    'The version and date sit at the bottom of the home screen, so you can tell a reload from a page that has not changed. Tap it for this list.'
+  ]},
+  {v:'0.9.3', date:'2026-08-31', notes:[
+    'The sound no longer swells while you are still holding at the bottom of a breath. On slow breathing it was arriving up to ten seconds early.',
+    'Long holds now read as held, so the sound settles instead of following the drift.',
+    'The heart rate could never show a number, whatever it measured. It can now. Still experimental, and still unchecked against a real pulse.',
+    'Sessions record where the sensitivity slider was set.'
+  ]},
+  {v:'0.9.2', date:'2026-08-29', notes:[
+    'Swell, spray and undertow are louder: roughly their old maximum is the new default.',
+    'The foam drops in pitch after the wave breaks, then drains.',
+    'Space opens the stereo field as well as the reverb, so it is audible on headphones.',
+    'Moving the Break slider plays the crest, so you can hear what you are setting.',
+    'Tone is gone. It read as a drone laid over the sea rather than part of it.',
+    'Brightness covers a wider range.'
+  ]},
+  {v:'0.9.1', date:'2026-08-29', notes:[
+    'No length, no learning phase, no voice. Start asks for motion access and the session begins.',
+    'One sound, Shore, with seven controls over it.',
+    'Sensitivity decides how readily the app follows you.',
+    'The app judges whether it is hearing breathing at all, and stays quiet about a rate it cannot back.'
+  ]},
+  {v:'0.9.0', date:'2026-08-28', notes:[
+    'The summary reports breaths, rate and length, and has a way out.',
+    'Recordings are reachable from the home screen.',
+    'Back is top-left on every screen that has one.',
+    'An experimental heart rate estimate, off by default.'
+  ]}
+];
+const BUILD = RELEASES[0];
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+/** '2026-08-31' -> '31 Aug 2026'. Parsed by hand rather than through Date, so
+    a phone in any time zone reads the same day back. */
+function relDate(iso){
+  const p = String(iso).split('-');
+  return `${+p[2]} ${MONTHS[+p[1]-1]} ${p[0]}`;
+}
+
+/** The change log. Built once, on first open — there is no reason to put five
+    releases in the DOM for a screen most sessions never visit. */
+const Log = {
+  built:false,
+  open(){
+    if(!this.built){ this.render(); this.built = true; }
+    el.panel.classList.remove('open');       // one sheet up at a time
+    $('log').classList.add('open');
+  },
+  close(){ $('log').classList.remove('open'); },
+  render(){
+    const host = $('logList');
+    host.textContent = '';
+    RELEASES.forEach((r, i)=>{
+      const box = document.createElement('div'); box.className = 'log-rel';
+      const head = document.createElement('div'); head.className = 'log-when';
+      const v = document.createElement('span'); v.className = 'log-v'; v.textContent = r.v;
+      const d = document.createElement('span'); d.className = 'log-d'; d.textContent = relDate(r.date);
+      head.append(v, d);
+      if(i === 0){
+        const now = document.createElement('span');
+        now.className = 'log-now'; now.textContent = 'running';
+        head.append(now);
+      }
+      const ul = document.createElement('ul'); ul.className = 'log-notes';
+      r.notes.forEach(n=>{ const li = document.createElement('li'); li.textContent = n; ul.append(li); });
+      box.append(head, ul);
+      host.append(box);
+    });
+  }
+};
+
 const UI = {
   state:'idle',                       // idle | running
   demo:false, demoPhase:0,
@@ -3809,7 +3933,7 @@ const UI = {
 
 const el = {
   main:$('mainBtn'), panelBtn:$('panelBtn'), panel:$('panel'), intro:$('intro'),
-  homeSub:$('homeSub'), recBtn:$('recBtn'),
+  homeSub:$('homeSub'), recBtn:$('recBtn'), buildLine:$('buildLine'),
   dial:$('dial'), centerRead:$('centerRead'), cue:$('cue'), sub:$('sub'),
   traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
   vRate:$('vRate'), vRatio:$('vRatio'), vHr:$('vHr'), cellHr:$('cellHr'),
@@ -3908,6 +4032,7 @@ async function begin(sensorP, audioP){
   // goes, since opening the browser over a running session is not a thing to
   // do by accident.
   el.recBtn.classList.add('hidden');
+  el.buildLine.classList.add('hidden');
   const audioOk = await audioP;
   const sensor  = await sensorP;
   UI.sensorPerm = sensor;
@@ -3939,7 +4064,11 @@ async function begin(sensorP, audioP){
       // Where the sensitivity sat decides how much of the session the tracker
       // followed, so a recording cannot be interpreted without it.
       sensitivity: Breath.sensitivity,
-      pulse:       Pulse.enabled
+      pulse:       Pulse.enabled,
+      // which release produced this session, so a recording made before an
+      // algorithm change can be told from one made after it
+      build:       BUILD.v,
+      buildDate:   BUILD.date
     }}, performance.now()/1000);        // session zero, the same clock onMotion reads
   }
   Review.hide();
@@ -4009,6 +4138,7 @@ async function end(){
 function toIntro(){
   el.intro.classList.remove('hidden');
   el.recBtn.classList.remove('hidden');
+  el.buildLine.classList.remove('hidden');
   el.statusTag.textContent = 'standby';
 }
 
@@ -4218,12 +4348,16 @@ el.main.addEventListener('click', ()=>{
   begin(sensorP, audioP);
 });
 el.panelBtn.addEventListener('click', ()=>{
+  Log.close();
   el.panel.classList.add('open');
   // Recalibrating only means something while a session is running.
   $('recalBar').classList.toggle('hidden', UI.state === 'idle');
   Review.refreshCount(); refreshStorageRow();
 });
 $('recBtn').addEventListener('click', ()=>Review.showList());
+$('buildBtn').textContent = `${BUILD.v} · ${relDate(BUILD.date)}`;
+$('buildBtn').addEventListener('click', ()=>Log.open());
+$('closeLog').addEventListener('click', ()=>Log.close());
 $('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
 $('recalBtn').addEventListener('click', ()=>{
   el.panel.classList.remove('open');

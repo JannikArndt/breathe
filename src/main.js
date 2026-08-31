@@ -26,7 +26,8 @@ const RELEASES = [
     'A new Try section holds four things that are not sure of themselves yet, all off until you turn them on. Show what it hears shades the live trace where it reads you as holding and ticks each breath it counted. Dim the screen fades the display while you breathe, and the tap that brings it back cannot press End. Show the numbers puts the live sensor readings under the trace. Crest follows depth breaks the wave harder after a deeper breath rather than a longer one.',
     'Recordings take about a third less space, and Export all no longer asks the phone for the whole file in one piece.',
     'Demo mode breathes the way a person does now — a long flat bottom, a quick rise, a pause at the top — instead of a sine wave.',
-    'The trace was drawing a second, flat line down the middle of the graph for the whole session. It belonged to the guide tone, which was removed a while ago.'
+    'The trace was drawing a second, flat line down the middle of the graph for the whole session. It belonged to the guide tone, which was removed a while ago.',
+    'If an update is found but cannot be stored, the app says so rather than going quiet. What you are running is never disturbed by a failed one.'
   ]},
   {v:'0.9.5', date:'2026-08-31', notes:[
     'Changes has a Reload button. Added to the Home Screen the app runs without an address bar, so there was no way to pick up a new version short of deleting the icon.'
@@ -105,6 +106,11 @@ export const Updater = {
         sw.addEventListener('statechange', ()=>{
           // A first-ever install has nothing to replace, so it is not an update.
           if(sw.state === 'installed' && navigator.serviceWorker.controller) this.arrived(sw);
+          // The worker precaches the whole app as one set and gives up if any
+          // part of it is missing — a half-finished deploy, say. Silence there
+          // would look exactly like "nothing new", which is the one thing this
+          // panel exists to be able to tell apart from a real answer.
+          else if(sw.state === 'redundant') this.failed();
         });
       });
     }).catch(()=>{ this.state = 'unsupported'; });
@@ -137,6 +143,16 @@ export const Updater = {
     // one thing on this screen that can pull attention back to the phone.
     if(UI.state === 'running'){ this.pending = true; return; }
     this.announce();
+  },
+
+  /** An install that could not complete. The running version is untouched — the
+      worker only ever replaces a version it managed to cache whole. */
+  failed(){
+    if(this.state === 'ready') return;              // a later attempt already won
+    this.state = 'idle'; this.pending = false; this.paint();
+    if(UI.state === 'running') return;              // never over a session
+    notice('Update did not finish',
+      'A new version was found but could not be stored. What you are running is unaffected. Try again in a minute.', 6000);
   },
 
   announce(){

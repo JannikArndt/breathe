@@ -420,7 +420,7 @@ node tools/smoke.mjs            # everything else
 
 ### The DSP harness
 
-26 checks against synthetic tilt: axis recovery with no calibration step, rate tracking at
+28 checks against synthetic tilt: axis recovery with no calibration step, rate tracking at
 12 and 6/min, inhale/exhale split, sign correction with the phone inverted, tolerance to
 0.6 m/s² per minute of postural drift, the quality meter, the phase convention, that the
 signal is live in the first seconds without detecting cycles, the learned stroke
@@ -448,9 +448,11 @@ regression.
 
 `tools/smoke.mjs` runs the whole app in Node — `src/main.js` and everything it pulls in —
 against a stub DOM built from `index.html`, a stub Web Audio and an in-memory IndexedDB,
-all in `tools/stub/`. It opens each panel, turns on Demo mode, taps Start, breathes for
-three simulated minutes through the real render loop, taps End, and reads the summary and
-the store.
+all in `tools/stub/`. Ninety-eight checks: it opens each panel, drives the update flow
+(check, nothing new, a version arriving, a failed install, the handover), turns on Demo
+mode, taps Start, breathes for three simulated minutes through the real render loop,
+switches each experiment on and looks at what changed, taps End, reads the summary, then
+browses, labels, exports and deletes the recording.
 
 This is what covers the wiring: an id that no longer resolves, a symbol that moved to
 another module, a control wired to its effect but not to the thing that saves it, a

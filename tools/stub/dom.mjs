@@ -257,6 +257,15 @@ export function installDom(htmlPath){
   };
   globalThis.swRegistration = registration;
   globalThis.swFire = (t, e) => fire(swListeners, t, e);
+  /** An install that fails: the worker goes installing -> redundant. */
+  globalThis.swUpdateFails = () => {
+    const wListeners = new Map();
+    const worker = {state:'installing', addEventListener:(t,f)=>on(wListeners,t,f)};
+    registration.installing = worker;
+    fire(regListeners, 'updatefound', {});
+    worker.state = 'redundant';
+    fire(wListeners, 'statechange', {});
+  };
   globalThis.swUpdate = () => {
     const wListeners = new Map();
     const worker = {

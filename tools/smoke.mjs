@@ -174,6 +174,15 @@ await new Promise(r => setTimeout(r, 1400));
 check('nothing new leaves it saying so', $('noticeTitle').textContent === 'Up to date',
       JSON.stringify($('noticeTitle').textContent));
 
+// An install that cannot complete must not read as "nothing new". The worker
+// caches the app as one set and gives up if any part of it is missing.
+swUpdateFails();
+check('a failed install says so rather than going quiet',
+      $('noticeTitle').textContent === 'Update did not finish',
+      JSON.stringify($('noticeTitle').textContent));
+check('and the row goes back to offering a check', $('reloadBtn').textContent === 'Check',
+      JSON.stringify($('reloadBtn').textContent));
+
 const waiting = swUpdate();
 check('an arriving version turns the row into an install', $('reloadBtn').textContent === 'Install',
       JSON.stringify($('reloadBtn').textContent));

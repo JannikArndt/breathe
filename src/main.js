@@ -1,0 +1,618 @@
+import { $, clamp, lerp, lp, fin, TAU, notice, fitCanvas } from './util.js';
+import { Audio } from './audio.js';
+import { Breath } from './breath.js';
+import { Pulse } from './pulse.js';
+import { Store, Recorder } from './store.js';
+import { Review } from './review.js';
+
+/* ============================================================
+   6. APP
+   ============================================================ */
+
+/** Releases, newest first. There is no build step, so this list *is* the
+    version: the top entry stamps the home screen and the exported session.
+    Add an entry in the same commit as the change it describes, and write the
+    notes for someone who has never seen the code — what the sound or the
+    screen does differently, never how. */
+const RELEASES = [
+  {v:'0.9.5', date:'2026-08-31', notes:[
+    'Changes has a Reload button. Added to the Home Screen the app runs without an address bar, so there was no way to pick up a new version short of deleting the icon.'
+  ]},
+  {v:'0.9.4', date:'2026-08-31', notes:[
+    'The version and date sit at the bottom of the home screen, so you can tell a reload from a page that has not changed. Tap it for this list.'
+  ]},
+  {v:'0.9.3', date:'2026-08-31', notes:[
+    'The sound no longer swells while you are still holding at the bottom of a breath. On slow breathing it was arriving up to ten seconds early.',
+    'Long holds now read as held, so the sound settles instead of following the drift.',
+    'The heart rate could never show a number, whatever it measured. It can now. Still experimental, and still unchecked against a real pulse.',
+    'Sessions record where the sensitivity slider was set.'
+  ]},
+  {v:'0.9.2', date:'2026-08-29', notes:[
+    'Swell, spray and undertow are louder: roughly their old maximum is the new default.',
+    'The foam drops in pitch after the wave breaks, then drains.',
+    'Space opens the stereo field as well as the reverb, so it is audible on headphones.',
+    'Moving the Break slider plays the crest, so you can hear what you are setting.',
+    'Tone is gone. It read as a drone laid over the sea rather than part of it.',
+    'Brightness covers a wider range.'
+  ]},
+  {v:'0.9.1', date:'2026-08-29', notes:[
+    'No length, no learning phase, no voice. Start asks for motion access and the session begins.',
+    'One sound, Shore, with seven controls over it.',
+    'Sensitivity decides how readily the app follows you.',
+    'The app judges whether it is hearing breathing at all, and stays quiet about a rate it cannot back.'
+  ]},
+  {v:'0.9.0', date:'2026-08-28', notes:[
+    'The summary reports breaths, rate and length, and has a way out.',
+    'Recordings are reachable from the home screen.',
+    'Back is top-left on every screen that has one.',
+    'An experimental heart rate estimate, off by default.'
+  ]}
+];
+const BUILD = RELEASES[0];
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+/** '2026-08-31' -> '31 Aug 2026'. Parsed by hand rather than through Date, so
+    a phone in any time zone reads the same day back. */
+function relDate(iso){
+  const p = String(iso).split('-');
+  return `${+p[2]} ${MONTHS[+p[1]-1]} ${p[0]}`;
+}
+
+/** The change log. Built once, on first open — there is no reason to put five
+    releases in the DOM for a screen most sessions never visit. */
+const Log = {
+  built:false,
+  open(){
+    if(!this.built){ this.render(); this.built = true; }
+    el.panel.classList.remove('open');       // one sheet up at a time
+    $('log').classList.add('open');
+  },
+  close(){ $('log').classList.remove('open'); },
+  render(){
+    const host = $('logList');
+    host.textContent = '';
+    RELEASES.forEach((r, i)=>{
+      const box = document.createElement('div'); box.className = 'log-rel';
+      const head = document.createElement('div'); head.className = 'log-when';
+      const v = document.createElement('span'); v.className = 'log-v'; v.textContent = r.v;
+      const d = document.createElement('span'); d.className = 'log-d'; d.textContent = relDate(r.date);
+      head.append(v, d);
+      if(i === 0){
+        const now = document.createElement('span');
+        now.className = 'log-now'; now.textContent = 'running';
+        head.append(now);
+      }
+      const ul = document.createElement('ul'); ul.className = 'log-notes';
+      r.notes.forEach(n=>{ const li = document.createElement('li'); li.textContent = n; ul.append(li); });
+      box.append(head, ul);
+      host.append(box);
+    });
+  }
+};
+
+const UI = {
+  state:'idle',                       // idle | running
+  demo:false, demoPhase:0,
+  wakeLock:null, silentEl:null,
+  rich:0.4, lastFrame:0, sensorSeen:false, toldSaveTrouble:false,
+  badSince:0,
+  trace:[], traceAcc:0, axisAcc:29,
+  sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
+};
+
+const el = {
+  main:$('mainBtn'), panelBtn:$('panelBtn'), panel:$('panel'), intro:$('intro'),
+  homeSub:$('homeSub'), recBtn:$('recBtn'), buildLine:$('buildLine'),
+  dial:$('dial'), centerRead:$('centerRead'), cue:$('cue'), sub:$('sub'),
+  traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
+  vRate:$('vRate'), vRatio:$('vRatio'), vHr:$('vHr'), vHrUnit:$('vHrUnit'),
+  cellHr:$('cellHr'),
+  statusTag:$('statusTag'), qualityTxt:$('qualityTxt')
+};
+
+/* ---------- iOS: keep audio out of the "ringer" bucket ----------
+   Community-reported behaviour, not a documented API: starting a silent
+   <audio> element alongside Web Audio makes iOS treat the page as media
+   playback, so the hardware silent switch no longer mutes it. Harmless
+   elsewhere. If it does not work on your build, use headphones. */
+function primeSilentChannel(){
+  try{
+    const a = document.createElement('audio');
+    a.setAttribute('playsinline','');
+    a.loop = true; a.volume = 0.001;
+    // 0.2 s of digital silence, WAV
+    a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+    const p = a.play();
+    if(p && p.catch) p.catch(()=>{});
+    UI.silentEl = a;
+  }catch(e){}
+}
+
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator){
+      UI.wakeLock = await navigator.wakeLock.request('screen');
+      UI.wakeLock.addEventListener('release', ()=>{ UI.wakeLock=null; });
+    }
+  }catch(e){ /* not supported or denied — the session still runs */ }
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible'){
+    if(UI.state!=='idle' && !UI.wakeLock) requestWakeLock();
+    if(Audio.ctx && Audio.ctx.state==='suspended') Audio.ctx.resume();
+  }
+});
+
+/* ---------- sensor ---------- */
+function onMotion(e){
+  const g = e.accelerationIncludingGravity || e.acceleration;
+  if(!g || g.x===null || g.x===undefined) return;
+  UI.sensorSeen = true;
+  if(!Recorder.motionSource)
+    Recorder.motionSource = e.accelerationIncludingGravity
+      ? 'accelerationIncludingGravity' : 'acceleration';
+  const t = performance.now()/1000;     // read once: two clocks here would drift apart
+  Breath.push(g.x, g.y, g.z, t);
+  Recorder.sample(g.x, g.y, g.z, t);
+  if(Pulse.enabled){
+    // dt from the tracker, which already clamps a stall and falls back to 1/60
+    Pulse.push(Math.hypot(g.x, g.y, g.z), Breath.lastDt || 1/60, t);
+  }
+}
+
+/**
+ * MUST be called synchronously from inside the tap handler, and the returned
+ * promise must NOT be awaited before other gesture-gated calls are made.
+ *
+ * requestPermission() requires transient activation. WebKit's implementation is
+ * cruder than the spec: in practice you only have activation inside the same
+ * stack as the click handler, so a single `await` anywhere before this line
+ * loses it and the call rejects with NotAllowedError.
+ * Spec:     https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent/requestPermission_static
+ * WebKit:   https://macwright.com/2022/07/11/activation
+ *
+ * @returns Promise<'ok'|'denied'|'unsupported'|`error:${string}`>
+ */
+function requestSensor(){
+  const DM = window.DeviceMotionEvent;
+  if(!DM) return Promise.resolve('unsupported');
+
+  const attach = () => {
+    window.addEventListener('devicemotion', onMotion, {passive:true});
+    return 'ok';
+  };
+  // Android and older iOS: no gate at all
+  if(typeof DM.requestPermission !== 'function') return Promise.resolve(attach());
+
+  let p;
+  try{ p = DM.requestPermission(); }
+  catch(err){ return Promise.resolve('error:' + ((err && err.name) || 'unknown')); }
+  return Promise.resolve(p).then(
+    res => res === 'granted' ? attach() : 'denied',
+    err => 'error:' + ((err && err.name) || 'unknown')
+  );
+}
+
+/* ---------- session control ---------- */
+/** Both promises are started inside the tap handler; begin() only awaits them. */
+async function begin(sensorP, audioP){
+  UI.badSince = 0;
+  // Adjust stays reachable while breathing — it holds the volume and the
+  // recalibrate button, both of which are wanted mid-session. Only Recordings
+  // goes, since opening the browser over a running session is not a thing to
+  // do by accident.
+  el.recBtn.classList.add('hidden');
+  el.buildLine.classList.add('hidden');
+  const audioOk = await audioP;
+  const sensor  = await sensorP;
+  UI.sensorPerm = sensor;
+
+  if(!audioOk){
+    notice('No sound', 'This browser blocked audio. Reload the page and tap Begin again.', 0);
+    el.main.disabled = false; return;
+  }
+  if(sensor === 'denied'){
+    notice('Motion declined', 'Reload the page to be asked again. If no prompt appears, clear this site\u2019s data in Safari settings — a past "Don\u2019t Allow" is remembered per site.', 0);
+  }else if(sensor === 'unsupported'){
+    notice('No motion sensor', 'This device or browser has no motion sensor. Demo mode under Adjust will still show you how it sounds.', 0);
+  }else if(sensor.indexOf('error:') === 0){
+    const name = sensor.slice(6);
+    notice('Motion request failed', name === 'NotAllowedError'
+      ? 'Safari did not treat that as a direct tap. Reload the page and tap Begin as your first action, without scrolling first.'
+      : name + '. Reload and try again, or use Demo mode under Adjust.', 0);
+  }
+
+  requestWakeLock();
+  Audio.setVolume(parseInt($('vol').value,10)/100);
+
+  // Every session is recorded. There is nothing to record if the sensor never
+  // arrived, so a denied or unsupported run is left alone rather than saved empty.
+  if(sensor === 'ok' || UI.demo){
+    Recorder.start({app:{
+      invert:      $('tglInvert').getAttribute('aria-checked') === 'true',
+      demo:        UI.demo,
+      // Where the sensitivity sat decides how much of the session the tracker
+      // followed, so a recording cannot be interpreted without it.
+      sensitivity: Breath.sensitivity,
+      pulse:       Pulse.enabled,
+      // which release produced this session, so a recording made before an
+      // algorithm change can be told from one made after it
+      build:       BUILD.v,
+      buildDate:   BUILD.date
+    }}, performance.now()/1000);        // session zero, the same clock onMotion reads
+  }
+  Review.hide();
+  el.intro.classList.add('hidden');
+  [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.remove('hidden'));
+  el.main.textContent = 'End'; el.main.classList.remove('primary'); el.main.disabled = false;
+
+  UI.state = 'running';
+  UI.trace = [];
+  Breath.invert = $('tglInvert').getAttribute('aria-checked')==='true';
+  Breath.begin(performance.now()/1000);
+  el.statusTag.textContent = 'listening';
+  el.cue.textContent = 'Breathe';
+  el.sub.textContent = '';
+
+  Breath.onExhaleStart = (inD)=>{
+    const slow = clamp((inD-2.0)/3.0, 0, 1);
+    Audio.bell((0.55 + 0.45*slow*UI.rich) * Breath.follow);
+    // Only count it as a breath once the rhythm backs the claim. A phone being
+    // moved about produced 248 "breaths" at 26 a minute before this line.
+    if(Breath.conf > 0.45)
+      Recorder.event('breath', {inhaleSec:inD, exhaleSec:Breath.exhaleDur});
+  };
+
+  // If nothing arrives at all, say which of the two possible causes it is.
+  setTimeout(()=>{
+    if(UI.state!=='running' || UI.sensorSeen || UI.demo) return;
+    if(UI.sensorPerm === 'ok'){
+      notice('Allowed, but silent', 'Motion access was granted and no readings are arriving. Lock and unlock the screen, or reload the page. If this is inside another app, open it in Safari directly.', 0);
+    }else{
+      notice('Motion not active', 'Permission state: ' + UI.sensorPerm + '. Reload and tap Start first, or switch on Demo mode under Adjust.', 0);
+    }
+  }, 5000);
+
+  UI.lastFrame = performance.now();
+  requestAnimationFrame(loop);
+}
+
+async function end(){
+  UI.state='idle';
+  window.removeEventListener('devicemotion', onMotion);
+  Breath.onExhaleStart = null;
+  await Audio.stop(2.2);
+  if(UI.silentEl){ try{ UI.silentEl.pause(); }catch(e){} UI.silentEl=null; }
+  if(UI.wakeLock){ try{ UI.wakeLock.release(); }catch(e){} UI.wakeLock=null; }
+  [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.add('hidden'));
+  el.main.textContent='Start'; el.main.classList.add('primary');
+  el.statusTag.textContent='standby';
+  UI.sensorSeen=false;
+
+  let session = null;
+  try{ session = await Recorder.stop(); }catch(e){}
+  // Recorder.build() leaves motion and derived in columnar form with rows:[];
+  // Store.get() assembles the row shape the summary draws from. Motion is skipped
+  // because the summary only needs the derived channel, and materialising 70k
+  // motion rows on a phone just to draw a sparkline is not worth the pause.
+  if(session && Store.available){
+    try{ session = (await Store.get(session.id, {motion:false})) || session; }catch(e){}
+  }
+  reportSaveTrouble();
+  Review.showSummary(session);
+  refreshStorageRow();
+}
+
+/** Review's Done button. The list and detail screens never call this — they are
+    reachable mid-session, so closing those must return you to the session. */
+function toIntro(){
+  el.intro.classList.remove('hidden');
+  el.recBtn.classList.remove('hidden');
+  el.buildLine.classList.remove('hidden');
+  el.statusTag.textContent = 'standby';
+}
+
+/** Recording must never disturb a session, so trouble is reported once, after it. */
+function reportSaveTrouble(){
+  if(UI.toldSaveTrouble) return;
+  if(!Store.available){
+    UI.toldSaveTrouble = true;
+    notice('Not recorded', 'This browser will not let breathe store anything, so that session '
+      + 'was not kept. Your breathing was unaffected. Open the page in Safari directly, or '
+      + 'leave private browsing, if you want recordings.', 8000);
+  }else if(Recorder.saveError){
+    UI.toldSaveTrouble = true;
+    notice('Not recorded', 'That session could not be saved (' + Recorder.saveError
+      + '). Your breathing was unaffected. Try deleting older recordings under Adjust.', 8000);
+  }
+}
+
+/* ---------- main loop ---------- */
+function loop(now){
+  if(UI.state==='idle') return;
+  const dt = clamp((now-UI.lastFrame)/1000, 0.001, 0.1);
+  UI.lastFrame = now;
+
+  if(UI.demo){
+    // demo breathes at a steady, plausible rate; nothing is steering it now
+    const p = 60/9;
+    UI.demoPhase = (UI.demoPhase + dt/p) % 1;
+    const s = Math.sin(UI.demoPhase*TAU - Math.PI/2);
+    // 0.45 m/s^2 on each of two axes: the amplitude real sessions actually
+    // measured. It was 0.05, which the confidence gate would now read as a
+    // phone lying on a table.
+    const dx = s*0.45, dy = 0.2, dz = 9.79 + s*0.45, dt0 = now/1000;
+    Breath.push(dx, dy, dz, dt0);
+    Recorder.sample(dx, dy, dz, dt0);   // or a demo session has no raw channel to replay
+  }
+
+  // The sound runs from the first frame, calibration included. Waiting for the
+  // axis left the user lying in silence for twenty seconds wondering whether
+  // anything worked. Before finishCalibration() the projection uses the default
+  // z axis, which on a phone lying face-up on a belly already carries most of
+  // the movement, so it responds — just less precisely than it will in a moment.
+  // When there is nothing worth following, the sound settles to a neutral bed
+  // rather than chasing whatever the sensor happens to be doing. lvl goes to
+  // mid-breath, velocity to nothing.
+  const f = Breath.follow;
+  const level = 0.5 + (Breath.level() - 0.5)*f;
+  const speed = Breath.speed()*f;
+
+  // reward: slower breathing opens the sound up. bpmSmooth is 0 until the
+  // second breath is timed, and (14-14)/8 = 0 holds rich at its floor until
+  // there is a rate to reward.
+  const slow = clamp((14 - (Breath.bpmSmooth||14))/8, 0, 1);
+  UI.rich = lp(UI.rich, clamp(0.28 + 0.72*slow, 0, 1), dt, 3.0);
+
+  Audio.frame({
+    level, vel:Breath.vel()*f, speed, inhaling:Breath.rising, resting:Breath.resting,
+    rich:UI.rich, bpm:Breath.bpmSmooth||0, dt
+  });
+  if(UI.state==='running') updateReadout();
+
+  // live sample rate in the header: 0 Hz means no events are arriving at all
+  UI.hzAcc += dt;
+  if(UI.hzAcc >= 1){
+    UI.hz = Math.round((Breath.samples - UI.lastSamples)/UI.hzAcc);
+    UI.lastSamples = Breath.samples; UI.hzAcc = 0;
+    el.statusTag.textContent =
+      'listening' +
+      (UI.demo ? ' \u00b7 demo' : ' \u00b7 ' + UI.hz + ' Hz');
+  }
+
+  // The axis moves now, so a recording that only carried the final one would
+  // hide the tracker settling. 30 s is coarse enough to stay cheap.
+  UI.axisAcc += dt;
+  if(UI.axisAcc >= 30){
+    UI.axisAcc = 0;
+    Recorder.event('axis', {axis:Breath.u.slice(), ok:Breath.conf>0.45,
+                            amplitude:+Breath.axisAmp.toFixed(4),
+                            conf:+Breath.conf.toFixed(3), flipped:!!Breath.flipped});
+  }
+
+  // rolling trace at ~10 Hz
+  UI.traceAcc += dt;
+  if(UI.traceAcc>0.1){
+    UI.traceAcc-=0.1;              // carry the remainder: resetting to 0 ran the tick at ~8.6 Hz
+    UI.trace.push([clamp(Breath.s,-1.6,1.6), 0]);
+    if(UI.trace.length>620) UI.trace.shift();
+    Recorder.derived({t:now/1000, s:Breath.s, level:level, phase:Breath.phase,
+                      bpm:(Breath.conf>0.45 ? Breath.bpmSmooth : 0)||0,
+                      quality:Breath.quality(), rich:UI.rich,
+                      hr:Pulse.reading(Breath.motionRms), hrConf:Pulse.conf});
+  }
+
+  drawDial(level);
+  drawTrace();
+  requestAnimationFrame(loop);
+}
+
+function updateReadout(){
+  // A dash until the rhythm supports a number. Showing a rate the app does not
+  // stand behind is how the bogus session came to claim 26 breaths a minute.
+  const sure = Breath.conf > 0.45;
+  const b = sure ? Breath.bpmSmooth : 0;
+  el.vRate.textContent = b ? b.toFixed(1) : '—';
+  const i=Breath.inhaleDur, o=Breath.exhaleDur;
+  el.vRatio.textContent = (sure && i>0.4 && o>0.4) ? (i.toFixed(1)+' / '+o.toFixed(1)) : '—';
+  if(Pulse.enabled){
+    const hr = Pulse.reading(Breath.motionRms);
+    // A dash is the honest reading most of the time. Holding the last number on
+    // screen after the evidence went away would make it look far more reliable
+    // than it is.
+    el.vHr.textContent = hr ? String(Math.round(hr)) : '—';
+    // The unit would be a lie next to a dash: there is no rate to give units to.
+    el.vHrUnit.classList.toggle('hidden', !hr);
+  }
+  signalHint();
+}
+
+/**
+ * "signal: fair" told the user a number they could not act on. Say nothing
+ * while the signal is usable, and when it is not, say which of the two things
+ * is wrong — there is not much movement to read, or there is too much of the
+ * wrong sort — because those have different fixes.
+ *
+ * Debounced hard on purpose. The user is lying with their eyes closed; a line
+ * that appears and vanishes as quality crosses a threshold is worse than none,
+ * and by the time they look it should still be true.
+ */
+function signalHint(){
+  const bad = Breath.follow < 0.3, good = Breath.follow > 0.55;
+  const now = performance.now()/1000;
+
+  if(bad){ if(!UI.badSince) UI.badSince = now; }
+  else if(good){ UI.badSince = 0; }
+
+  if(!(UI.badSince && (now - UI.badSince) > 8)){
+    el.qualityTxt.textContent = '';
+    return;
+  }
+  // axisAmp is the size of the movement on the breath axis, in m/s^2. Real
+  // sessions measure 0.3-0.5; too little means the phone is not picking the
+  // breath up, too much means it is being handled rather than breathed on.
+  el.qualityTxt.textContent = Breath.axisAmp < 0.05
+    ? 'move the phone lower on your belly'
+    : 'lie still for a moment';
+  el.qualityTxt.style.color = 'var(--sand)';
+}
+
+/* ---------- drawing ---------- */
+function drawDial(level){
+  const {ctx,w,h}=fitCanvas(el.dial);
+  ctx.clearRect(0,0,w,h);
+  const cx=w/2, cy=h/2, R=Math.min(w,h)*0.40;
+
+  // your breath — filled swell
+  const br = R*(0.36 + 0.64*level);
+  const grd = ctx.createRadialGradient(cx,cy,br*0.15,cx,cy,br);
+  grd.addColorStop(0,'rgba(127,191,174,'+(0.10+0.24*UI.rich)+')');
+  grd.addColorStop(1,'rgba(127,191,174,0.015)');
+  ctx.beginPath(); ctx.arc(cx,cy,br,0,TAU); ctx.fillStyle=grd; ctx.fill();
+  ctx.strokeStyle='rgba(127,191,174,0.80)'; ctx.lineWidth=1.6; ctx.stroke();
+
+  // still centre
+  ctx.beginPath(); ctx.arc(cx,cy,2.2,0,TAU);
+  ctx.fillStyle='rgba(227,237,233,0.5)'; ctx.fill();
+}
+
+function drawTrace(){
+  const {ctx,w,h}=fitCanvas(el.trace);
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='rgba(14,39,50,0.55)'; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='rgba(124,154,161,0.20)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,h/2); ctx.lineTo(w,h/2); ctx.stroke();
+
+  const n=UI.trace.length; if(n<2) return;
+  const step=w/620, x0=w-n*step;
+  const line=(idx,color,width,alpha)=>{
+    ctx.beginPath();
+    for(let i=0;i<n;i++){
+      const y=h/2 - clamp(UI.trace[i][idx],-1.6,1.6)*(h/2-5)/1.6;
+      i?ctx.lineTo(x0+i*step,y):ctx.moveTo(x0+i*step,y);
+    }
+    ctx.strokeStyle=color; ctx.globalAlpha=alpha; ctx.lineWidth=width;
+    ctx.lineJoin='round'; ctx.stroke(); ctx.globalAlpha=1;
+  };
+  if(UI.state==='running') line(1,'#D9A85B',1,0.55);
+  line(0,'#7FBFAE',1.7,1);
+}
+
+/* ---------- wiring ---------- */
+el.main.addEventListener('click', ()=>{
+  if(UI.state !== 'idle'){ end(); return; }
+  // ---- everything gated on user activation happens synchronously, right here.
+  // Do not await anything above these three lines. See requestSensor().
+  primeSilentChannel();
+  const sensorP = UI.demo ? Promise.resolve('ok') : requestSensor();
+  const audioP  = Audio.start().then(()=>true, ()=>false);
+  el.main.disabled = true;
+  begin(sensorP, audioP);
+});
+el.panelBtn.addEventListener('click', ()=>{
+  Log.close();
+  el.panel.classList.add('open');
+  // Recalibrating only means something while a session is running.
+  $('recalBar').classList.toggle('hidden', UI.state === 'idle');
+  Review.refreshCount(); refreshStorageRow();
+});
+$('recBtn').addEventListener('click', ()=>Review.showList());
+$('buildBtn').textContent = `${BUILD.v} · ${relDate(BUILD.date)}`;
+$('buildBtn').addEventListener('click', ()=>Log.open());
+$('closeLog').addEventListener('click', ()=>Log.close());
+$('reloadBtn').addEventListener('click', ()=>{
+  // Added to the Home Screen the app runs standalone: no address bar, no
+  // reload gesture, and iOS will go on serving the copy it already has. A
+  // plain location.reload() can be answered from that same cache. A URL the
+  // phone has never seen cannot be, so give it one. location.replace keeps
+  // the stale copy from sitting in history behind the fresh one.
+  location.replace(location.pathname + '?r=' + Date.now());
+});
+$('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
+$('recalBtn').addEventListener('click', ()=>{
+  el.panel.classList.remove('open');
+  if(UI.state!=='idle') Breath.begin(performance.now()/1000);
+});
+$('vol').addEventListener('input', e=>Audio.setVolume(parseInt(e.target.value,10)/100));
+
+// Sensitivity: where the line falls between a shallow breather and a phone on
+// a table is not something a constant can settle for every body and every
+// pocket of belly, so it is a control.
+$('sens').addEventListener('input', e=>{
+  Breath.sensitivity = clamp(parseInt(e.target.value,10)/100, 0, 1);
+});
+
+// The seven sound controls. Layer gains run past 1 on purpose: being able to
+// push a layer beyond its designed level is most of the point.
+[['mSwell','swell'],['mBreak','brk'],['mFoam','foam'],['mSpray','spray'],
+ ['mUnder','under'],['mBright','bright'],['mSpace','space']
+].forEach(([id,key])=>{
+  $(id).addEventListener('input', e=>Audio.setMix(key, parseInt(e.target.value,10)/100));
+});
+
+// The break only sounds at the top of a breath, so moving its slider while
+// sitting up holding the phone changed nothing audible and read as a dead
+// control. Moving it now plays the crest, at the level being set.
+let breakPreviewAt = 0;
+$('mBreak').addEventListener('input', ()=>{
+  const now = Date.now();
+  if(now - breakPreviewAt < 900) return;
+  breakPreviewAt = now;
+  Audio.dispatch('top', 0.85);
+});
+
+function bindToggle(id, fn){
+  const b=$(id);
+  b.addEventListener('click', ()=>{
+    const on = b.getAttribute('aria-checked')!=='true';
+    b.setAttribute('aria-checked', String(on));
+    fn(on);
+  });
+}
+bindToggle('tglPulse',  on=>{
+  Pulse.enabled = on;
+  if(on) Pulse.reset();
+  el.cellHr.classList.toggle('hidden', !on);
+});
+bindToggle('tglInvert', on=>{ Breath.invert=on; });
+bindToggle('tglDemo',   on=>{ UI.demo=on; if(on) notice('Demo mode','Simulated breathing. Good for checking the sound without lying down.',5000); });
+
+$('notice').addEventListener('click', ()=>$('notice').classList.remove('show'));
+window.addEventListener('resize', ()=>{ if(UI.state!=='idle'){ drawDial(Breath.level()); drawTrace(); } });
+
+/* ---------- voice picker ---------- */
+// built from Audio.voices so the markup and the engine cannot drift apart
+/* ---------- recordings ---------- */
+function refreshStorageRow(){
+  const meter = $('storeMeterFill');
+  if(!Store.available){ if(meter) meter.style.width = '0%'; return; }
+  Store.usage().then(u=>{
+    if(!u || !meter) return;
+    meter.style.width = Math.round(clamp(u.bytes/(u.budget||1),0,1)*100) + '%';
+  });
+}
+$('openRecordings').addEventListener('click', ()=>{
+  el.panel.classList.remove('open');
+  Review.showList();
+});
+$('clearRecBtn').addEventListener('click', function(){
+  // asks twice rather than using confirm(), which iOS renders badly over the panel
+  if(this.getAttribute('data-armed') !== 'true'){
+    this.setAttribute('data-armed','true'); this.textContent = 'Tap again';
+    setTimeout(()=>{ this.setAttribute('data-armed','false'); this.textContent = 'Delete all'; }, 4000);
+    return;
+  }
+  this.setAttribute('data-armed','false'); this.textContent = 'Delete all';
+  Store.clear().then(()=>{
+    notice('Recordings deleted', 'Every recording is gone from this phone.', 4000);
+    Review.refreshCount(); refreshStorageRow();
+  });
+});
+Review.onDone = toIntro;
+// no user gesture is needed for IndexedDB, so this stays well away from the tap handler
+Store.open().then(()=>{ Review.refreshCount(); refreshStorageRow(); });
+
+// secure-context check up front — requestPermission simply will not fire otherwise
+if(!window.isSecureContext && location.hostname!=='localhost'){
+  notice('Not a secure page','Motion sensors need HTTPS. Open this page over https:// and it will work.',0);
+}

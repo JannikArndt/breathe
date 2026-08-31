@@ -13,27 +13,18 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const htmlPath = resolve(process.argv[2] || `${here}/../index.html`);
+const srcDir = resolve(process.argv[2] || `${here}/../src`);
 
-// ---------------------------------------------------------------- extract
-const html = readFileSync(htmlPath, 'utf8');
-const js = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
-if (!js) fail('no <script> block found in ' + htmlPath);
-
-const START = 'const clamp';
-const END = '   4. RECORDER + STORE';
-const a = js.indexOf(START);
-const b = js.indexOf(END);
-if (a < 0 || b < 0) fail('section markers moved — update START/END in this harness');
-
-// walk back to the start of the banner comment that precedes "3. SPEECH"
-const core = js.slice(a, js.lastIndexOf('/* =====', b));
-
-const { Breath, Pulse } = new Function(core + '\nreturn { Breath, Pulse };')();
+// The tracker is imported, not scraped. This used to slice sections out of
+// index.html between two banner comments, which meant renaming a section
+// silently broke every tool in this directory.
+const load = n => import(pathToFileURL(resolve(srcDir, n)).href);
+const { Breath } = await load('breath.js');
+const { Pulse }  = await load('pulse.js');
 
 // ---------------------------------------------------------------- utils
 const TAU = Math.PI * 2;
@@ -99,7 +90,7 @@ function session(opts) {
 }
 
 // ---------------------------------------------------------------- tests
-console.log('source: ' + htmlPath + '\n');
+console.log('source: ' + srcDir + '\n');
 
 // 1. axis recovery
 {

@@ -21,7 +21,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,11 +35,11 @@ for (let i = 0; i < argv.length; i++) {
   if (a === '--json') opt.json = true;
   else if (a === '--from') opt.from = parseFloat(take());
   else if (a === '--to') opt.to = parseFloat(take());
-  else if (a === '--html') opt.html = take();
+  else if (a === '--src') opt.src = take();
   else if (a === '--cycles') opt.cycles = parseInt(take(), 10);
   else if (a.startsWith('--from=')) opt.from = parseFloat(a.slice(7));
   else if (a.startsWith('--to=')) opt.to = parseFloat(a.slice(5));
-  else if (a.startsWith('--html=')) opt.html = a.slice(7);
+  else if (a.startsWith('--src=')) opt.src = a.slice(6);
   else if (a === '--session') opt.session = take();
   else if (a.startsWith('--session=')) opt.session = a.slice(10);
   else if (a === '-h' || a === '--help') { usage(); process.exit(0); }
@@ -54,7 +54,7 @@ function usage() {
 
   --from <sec>   first second to report on   (tracker still runs from 0)
   --to <sec>     last second to report on
-  --html <path>  app to slice the tracker out of (default ../index.html)
+  --src <path>   module directory to load the tracker from (default ../src)
   --cycles <n>   how many detected cycles to list (default 24, 0 = all)
   --json         machine-readable output, no plot
   --session <id> which session to replay out of an "Export all" bundle`);
@@ -62,34 +62,14 @@ function usage() {
 function die(msg) { console.error('replay: ' + msg); process.exit(1); }
 
 /* ---------------------------------------------------------------- the app */
-const htmlPath = resolve(opt.html || `${here}/../index.html`);
-let html;
-try { html = readFileSync(htmlPath, 'utf8'); }
-catch (e) { die(`cannot read ${htmlPath}: ${e.message}`); }
-
-const js = (html.match(/<script>([\s\S]*?)<\/script>/) || [])[1];
-if (!js) die('no <script> block found in ' + htmlPath);
-
-/* Sections 0-3, i.e. from `const clamp` to the banner of whatever section
-   follows the pacer. Keyed off "3. PACER" rather than the name of the next
-   section, so this keeps working as sections are inserted after it. */
-const a = js.indexOf('const clamp');
-const pacer = js.indexOf('3. PACER');
-let b = pacer >= 0 ? js.indexOf('/* =====', pacer) : -1;
-if (b < 0) {                                    // fall back to the harness's markers
-  for (const marker of ['   4. RECORDER + STORE', '   4. SPEECH', '   3. SPEECH', '   4. APP', '   4. ', '   7. APP']) {
-    const m = js.indexOf(marker);
-    if (m > 0) { b = js.lastIndexOf('/* =====', m); break; }
-  }
-}
-if (a < 0 || b < 0) die('section markers moved — update the slice in this file');
-
+/* The tracker that ships, imported rather than scraped out of the page. */
+const srcDir = resolve(opt.src || `${here}/../src`);
 let Breath, clamp, lp;
 try {
-  ({ Breath, clamp, lp } =
-    new Function(js.slice(a, b) + '\nreturn {Breath, clamp, lp};')());
-} catch (e) { die('sections 0-3 would not evaluate: ' + e.message); }
-if (!Breath) die('sliced code did not define Breath');
+  const load = n => import(pathToFileURL(resolve(srcDir, n)).href);
+  ({ Breath } = await load('breath.js'));
+  ({ clamp, lp } = await load('util.js'));
+} catch (e) { die(`cannot load the tracker from ${srcDir}: ${e.message}`); }
 
 /* ---------------------------------------------------------------- session */
 let S;
@@ -275,7 +255,7 @@ const stretches = labels.map((l, k) => {
 }).filter(s => s.toSec > s.fromSec && s.toSec > from - t0 && s.fromSec < to - t0);
 
 const out = {
-  file: opt.file, app: htmlPath,
+  file: opt.file, app: srcDir,
   session: { id: S.id, startedAt: S.startedAt, durationSec: S.durationSec, device: S.device || {}, app },
   window: { fromSec: r3(from - t0), toSec: r3(to - t0), warmedFromZero: (from - t0) > 0 },
   sampleRate: rate,
@@ -299,7 +279,7 @@ say(`session   ${S.id}`);
 say(`recorded  ${S.startedAt}   ${fmtDur(S.durationSec)}   ${(S.device && S.device.ua) || 'unknown device'}`);
 say(`settings  sound ${app.voice || '?'}` +
     ` · flip ${app.invert ? 'on' : 'off'}${app.demo ? ' · DEMO (simulated motion)' : ''}`);
-say(`app       ${htmlPath}`);
+say(`app       ${srcDir}`);
 hr();
 
 head('sample rate');

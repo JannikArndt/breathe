@@ -30,26 +30,23 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
-let file = null, html = resolve(here, '..', 'index.html');
+let file = null, srcDir = resolve(here, '..', 'src');
 for (let i = 0; i < argv.length; i++) {
-  if (argv[i] === '--html') html = argv[++i];
-  else if (argv[i].startsWith('--html=')) html = argv[i].slice(7);
+  if (argv[i] === '--src') srcDir = argv[++i];
+  else if (argv[i].startsWith('--src=')) srcDir = argv[i].slice(6);
   else if (!file) file = argv[i];
 }
-if (!file) { console.log('usage: node tools/onset.mjs <session.json> [--html app.html]'); process.exit(1); }
+if (!file) { console.log('usage: node tools/onset.mjs <session.json> [--src src/]'); process.exit(1); }
 
-/* ---- slice the tracker out of the app, the way the harness does ---- */
-const js = readFileSync(html, 'utf8').match(/<script>([\s\S]*)<\/script>/)[1];
-const a = js.indexOf('const clamp');
-const marker = js.indexOf('   4. RECORDER + STORE');
-const b = js.lastIndexOf('/* =====', marker);
-if (a < 0 || b < 0) { console.error('section markers moved — update the slice in this file'); process.exit(1); }
-const { Breath, lp } = new Function(js.slice(a, b) + '\nreturn {Breath, lp};')();
+/* ---- the tracker that ships, imported straight from the module ---- */
+const load = n => import(pathToFileURL(resolve(srcDir, n)).href);
+const { Breath } = await load('breath.js');
+const { lp } = await load('util.js');
 
 const S = JSON.parse(readFileSync(resolve(file), 'utf8'));
 if (!S.motion || !S.motion.rows || !S.motion.rows.length) {

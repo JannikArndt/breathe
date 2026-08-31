@@ -1,0 +1,565 @@
+:root{
+  --abyss:#08171E;
+  --deep:#0E2732;
+  --shelf:#163A46;
+  --glass:#7FBFAE;
+  --sand:#D9A85B;
+  --foam:#E3EDE9;
+  --mute:#7C9AA1;
+
+  --display:"Futura","Avenir Next Condensed","Jost","Century Gothic",system-ui,sans-serif;
+  --body:"Avenir Next","Avenir",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --data:ui-monospace,"SF Mono","Menlo","Roboto Mono",monospace;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;overscroll-behavior:none}
+body{
+  background:var(--abyss);
+  color:var(--foam);
+  font-family:var(--body);
+  -webkit-font-smoothing:antialiased;
+  touch-action:manipulation;
+  user-select:none;-webkit-user-select:none;
+}
+
+#app{
+  position:fixed;inset:0;
+  display:flex;flex-direction:column;
+  padding:calc(env(safe-area-inset-top) + 14px) 18px calc(env(safe-area-inset-bottom) + 14px);
+}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:baseline;justify-content:space-between;flex:0 0 auto}
+.wordmark{
+  font-family:var(--display);
+  font-size:15px;letter-spacing:.42em;text-transform:uppercase;
+  color:var(--foam);margin:0;font-weight:500;
+}
+.depth{
+  font-family:var(--data);font-size:11px;letter-spacing:.14em;
+  color:var(--mute);text-transform:uppercase;
+}
+
+/* ---------- stage ---------- */
+.stage{flex:1 1 auto;position:relative;display:flex;align-items:center;justify-content:center;min-height:0}
+#dial{width:100%;height:100%;display:block}
+
+.center-read{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;pointer-events:none;text-align:center;
+}
+.cue{
+  font-family:var(--display);
+  font-size:clamp(26px,9vw,40px);
+  letter-spacing:.30em;text-transform:uppercase;
+  margin:0 0 0 .30em;font-weight:500;
+  color:var(--foam);opacity:.92;
+  transition:opacity .5s ease;
+}
+.sub{
+  font-family:var(--data);font-size:12px;letter-spacing:.16em;
+  color:var(--mute);text-transform:uppercase;margin-top:12px;
+  max-width:15em;line-height:1.7;
+}
+
+/* ---------- trace ---------- */
+.trace-wrap{flex:0 0 auto;margin-top:10px}
+#trace{width:100%;height:74px;display:block;border-radius:2px}
+.trace-key{
+  display:flex;gap:16px;margin-top:7px;
+  font-family:var(--data);font-size:10px;letter-spacing:.1em;color:var(--mute);text-transform:uppercase;
+}
+.key-dot{display:inline-block;width:7px;height:2px;vertical-align:middle;margin-right:6px}
+
+/* ---------- readout strip ---------- */
+.readout{
+  flex:0 0 auto;display:grid;grid-template-columns:repeat(3,1fr);
+  gap:1px;background:rgba(124,154,161,.18);
+  margin-top:14px;border-radius:3px;overflow:hidden;
+}
+.cell{background:var(--abyss);padding:10px 8px}
+.cell .k{font-family:var(--data);font-size:9.5px;letter-spacing:.14em;color:var(--mute);text-transform:uppercase}
+.cell .v{font-family:var(--data);font-size:21px;margin-top:3px;color:var(--foam);font-variant-numeric:tabular-nums}
+.cell .v small{font-size:11px;color:var(--mute);margin-left:2px}
+
+/* ---------- controls ---------- */
+.bar{flex:0 0 auto;display:flex;gap:10px;margin-top:14px}
+button{
+  font-family:var(--display);font-size:13px;letter-spacing:.26em;text-transform:uppercase;
+  border:1px solid rgba(227,237,233,.28);background:transparent;color:var(--foam);
+  padding:15px 12px;border-radius:2px;flex:1;cursor:pointer;font-weight:500;
+  transition:background .18s ease,border-color .18s ease,opacity .18s ease;
+}
+button:active{background:rgba(227,237,233,.10)}
+button:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
+button.primary{background:var(--glass);border-color:var(--glass);color:#062028}
+button.ghost{flex:0 0 auto;padding:15px 16px;letter-spacing:.18em;font-size:12px;color:var(--mute);border-color:rgba(124,154,161,.3)}
+button[disabled]{opacity:.35;pointer-events:none}
+
+/* ---------- panel ---------- */
+.panel{
+  position:fixed;left:0;right:0;bottom:0;z-index:20;
+  background:var(--deep);
+  border-top:1px solid rgba(124,154,161,.28);
+  padding:20px 18px calc(env(safe-area-inset-bottom) + 20px);
+  transform:translateY(101%);transition:transform .3s cubic-bezier(.3,.7,.3,1);
+  max-height:82vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+.panel.open{transform:translateY(0)}
+.panel h2{
+  font-family:var(--display);font-size:12px;letter-spacing:.34em;text-transform:uppercase;
+  margin:0 0 18px;color:var(--mute);font-weight:500;
+}
+.row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid rgba(124,154,161,.14)}
+.row:last-of-type{border-bottom:0}
+.row label{font-size:14px;line-height:1.35}
+.row .hint{display:block;font-family:var(--data);font-size:10.5px;letter-spacing:.06em;color:var(--mute);margin-top:4px;text-transform:uppercase}
+input[type=range]{-webkit-appearance:none;appearance:none;width:130px;height:2px;background:rgba(227,237,233,.25);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--glass)}
+select{
+  font-family:var(--data);font-size:13px;background:var(--shelf);color:var(--foam);
+  border:1px solid rgba(227,237,233,.2);border-radius:2px;padding:9px 10px;
+}
+.toggle{
+  width:52px;height:30px;border-radius:15px;background:rgba(227,237,233,.16);
+  position:relative;flex:0 0 auto;cursor:pointer;transition:background .2s ease;border:0;padding:0;
+}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--foam);transition:transform .2s ease}
+.toggle[aria-checked=true]{background:var(--glass)}
+.toggle[aria-checked=true]::after{transform:translateX(22px)}
+
+/* ---------- notice ---------- */
+.notice{
+  position:fixed;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:30;
+  background:var(--shelf);border-left:2px solid var(--sand);
+  padding:14px 16px;border-radius:2px;font-size:13.5px;line-height:1.55;
+  box-shadow:0 12px 40px rgba(0,0,0,.5);
+  /* Travel the notice's own height *plus* the gap it sits above the bottom
+     edge. A bare 140% is not enough: with an empty body the box is ~44 px
+     tall, 140% of that is 62 px, and the box starts 48 px up — so 30 px of
+     it, the padding and the "NOTE" label, stayed on screen at rest. */
+  transform:translateY(calc(100% + env(safe-area-inset-bottom) + 30px));
+  visibility:hidden;
+  transition:transform .32s cubic-bezier(.3,.7,.3,1), visibility 0s linear .32s;
+}
+.notice.show{transform:translateY(0);visibility:visible;transition-delay:0s,0s}
+.notice b{font-family:var(--display);letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:var(--sand);display:block;margin-bottom:5px;font-weight:500}
+
+/* ---------- intro ---------- */
+/* The intro is absolutely positioned inside .stage, so anything taller than
+   the stage spills off the bottom of a fixed, unscrollable #app with no way
+   to reach it. Everything here is sized to fit a small phone: three prep
+   lines, one instruction, two controls, three lines of fineprint. */
+.intro{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  justify-content:center;gap:clamp(14px,3.2vh,26px);padding:0 4px;overflow:hidden;
+}
+.prep{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px}
+.prep li{display:flex;gap:12px;align-items:center;font-size:14.5px;line-height:1.4;color:#C7D8D4}
+.prep-i{
+  font-size:15px;color:var(--sand);flex:0 0 22px;text-align:center;
+}
+/* The ringer switch is on the phone's left edge, so the arrow runs off the
+   left of the screen towards it rather than sitting in a tidy icon column. */
+.prep-mute{margin-left:-22px}
+.prep-arrow{
+  flex:0 0 44px;height:12px;color:var(--sand);
+}
+.prep-arrow path{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.lede{margin:0;font-size:16px;line-height:1.5;color:var(--foam)}
+
+.set{display:flex;flex-direction:column;gap:9px}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.set-row label{font-size:14.5px;color:#C7D8D4}
+.set-v{font-family:var(--data);font-size:13px;color:var(--sand);letter-spacing:.06em}
+.set-hint{margin:-3px 0 0;font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute)}
+.panel-sub{
+  margin:22px 0 2px;font-family:var(--display);font-size:11px;font-weight:500;
+  letter-spacing:.22em;text-transform:uppercase;color:var(--sand);
+}
+.set select{min-width:9.5em}
+.set input[type=range]{width:100%}
+
+.fineprint{font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute);line-height:1.7;margin:0}
+
+/* Navigation: Back is top-left on every screen that has one, and the bottom
+   bar holds only actions. Buttons that merely returned ("Done", "Close") are
+   gone, so there is one way back and it is always in the same place. */
+.subbar{display:flex;gap:18px;justify-content:center;margin-top:12px}
+.link{
+  background:none;border:0;padding:6px 4px;font-family:var(--body);font-size:13px;
+  color:var(--mute);letter-spacing:.02em;cursor:pointer;
+}
+.link:hover,.link:focus-visible{color:var(--glass)}
+
+/* The one line on screen that answers "did it actually reload?". Nothing
+   else in the app changes shape between releases, so without a stamp a
+   fixed version and a stale cache look identical. */
+.buildline{flex:0 0 auto;display:flex;justify-content:center;margin-top:6px}
+.build{
+  background:none;border:0;padding:5px 8px;cursor:pointer;
+  font-family:var(--data);font-size:10px;letter-spacing:.12em;
+  color:var(--mute);opacity:.75;text-transform:uppercase;
+}
+.build:hover,.build:focus-visible{color:var(--sand);opacity:1}
+
+.log-rel{padding:15px 0;border-bottom:1px solid rgba(124,154,161,.14)}
+.log-rel:last-child{border-bottom:0}
+.log-when{
+  display:flex;align-items:baseline;gap:10px;
+  font-family:var(--data);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+}
+.log-v{color:var(--sand)}
+.log-d{color:var(--mute)}
+.log-now{
+  margin-left:auto;color:var(--glass);border:1px solid rgba(124,154,161,.35);
+  border-radius:2px;padding:2px 6px;letter-spacing:.16em;
+}
+.log-notes{margin:9px 0 0;padding:0 0 0 15px;list-style:none}
+.log-notes li{
+  position:relative;font-size:13.5px;line-height:1.55;color:#C7D8D4;
+  padding:3px 0;
+}
+.log-notes li::before{
+  content:'';position:absolute;left:-15px;top:11px;
+  width:5px;height:1px;background:var(--mute);
+}
+.sheet-head{
+  display:flex;align-items:center;gap:10px;margin-bottom:10px;
+  padding-bottom:10px;border-bottom:1px solid var(--rev-rule);
+}
+.sheet-head h2{margin:0;flex:1 1 auto}
+
+.hidden{display:none !important}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:.01ms !important}
+}
+
+/* ============================================================
+ Voice picker. No new colours and no new custom properties —
+ the row, the label, the hint and the select are all existing
+ patterns; these two rules only stop the longest voice name and
+ the longest hint from fighting each other for the same line.
+
+ Goes with the other .row rules in the panel block. Note the
+ .panel prefix: it keeps this below .bar in specificity, which
+ is where margins have collided before.
+ ============================================================ */
+
+.panel .row select{flex:0 0 auto;max-width:52%}
+.panel .row label{min-width:0}
+
+/* ============================================================
+   SPEECH — panel rows (section 4 lives in the script below)
+ Goes in the <style> block after the ".toggle" rules and before
+ the "notice" section. No new custom properties are needed: these
+ rows reuse .row, .hint, .toggle, input[type=range] and select.
+ ============================================================ */
+
+/* A long voice name ("Samantha (Enhanced)") would otherwise push the label off
+ a narrow phone. The select clips instead of wrapping the row. */
+
+/* Speed and voice only take effect while guidance is on. Dimming says so
+ without hiding them, so nothing jumps around when the toggle is flipped;
+ both stay operable, because a change made here is what the next spoken line
+ will use. Scoped to .panel so it wins over the bare .row rule. */
+.panel .row[data-off="true"]{opacity:.42}
+
+/* ============================================================
+ DATA — styles for the Adjust-panel recording rows.
+
+ Appended after the ".panel" block in index.html's <style>, before
+ the ".notice" block. No new custom properties are needed: the two
+ states use --glass (normal) and --sand (attention), which is the
+ same pairing .trace-key and .notice already use.
+ ============================================================ */
+
+/* Buttons living inside a .row rather than a .bar. The base rule gives
+ every button flex:1 and 15px padding, which makes a row control tower
+ over the label; .ghost already un-flexes it, this trims the height to
+ match the 30px .toggle sitting in the neighbouring rows. */
+.row .rowbtn{
+padding:9px 13px;
+font-size:11px;
+letter-spacing:.18em;
+min-width:88px;
+}
+
+/* Destructive action: the same sand the notice bar uses for attention,
+ never a fill, so it cannot be mistaken for the primary button. */
+.row .rowbtn.danger{
+color:var(--sand);
+border-color:rgba(217,168,91,.45);
+}
+.row .rowbtn.danger[data-armed="true"]{
+background:rgba(217,168,91,.14);
+}
+
+/* How full the 48 MB budget is. Sits under the hint inside the label,
+ so it inherits the label's width rather than fighting the row's
+ space-between. */
+.meter{
+display:block;
+width:132px;max-width:100%;
+height:2px;margin-top:7px;
+background:rgba(124,154,161,.28);
+border-radius:2px;overflow:hidden;
+}
+.meter i{
+display:block;height:100%;width:0;
+background:var(--glass);
+transition:width .3s ease;
+}
+/* Over ~85% the next session starts deleting the oldest one. */
+.meter[data-full="true"] i{ background:var(--sand); }
+
+/* The hint doubles as the storage readout; it turns sand when a
+ recording failed or the store is unavailable. */
+.row .hint.warn{ color:var(--sand); }
+
+/* ============================================================
+ REVIEW UI — summary, recordings, detail
+ Append to the existing <style> block. Every colour below comes
+ from the :root block; the additions are declared once, here.
+ ============================================================ */
+
+:root{
+/* Hairlines and washes reused from the live screens, named so no rule
+   below carries a raw colour. The values match what the app already
+   draws with: --rev-lane is the same ground the live trace paints. */
+--rev-rule:      rgba(124,154,161,.16);
+--rev-rule-firm: rgba(124,154,161,.30);
+--rev-lane:      rgba(14,39,50,.55);
+--rev-tint:      rgba(127,191,174,.14);
+--rev-press:     rgba(227,237,233,.10);
+--rev-haze:      #C7D8D4;            /* the body colour the intro steps use */
+
+/* Destructive only. Warm enough to read as "careful" beside --sand,
+   dim enough not to glare on an OLED screen in a dark room. */
+--ember:         #C4715A;
+--ember-tint:    rgba(196,113,90,.16);
+}
+
+/* ---------- overlay shell ---------- */
+.review{
+position:fixed;inset:0;z-index:25;          /* over the panel (20), under the notice (30) */
+display:flex;flex-direction:column;
+background:var(--abyss);
+padding:calc(env(safe-area-inset-top) + 12px) 18px calc(env(safe-area-inset-bottom) + 12px);
+animation:revIn .26s cubic-bezier(.3,.7,.3,1);
+}
+@keyframes revIn{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+
+.rev-head{
+flex:0 0 auto;display:flex;align-items:center;gap:10px;
+padding-bottom:10px;border-bottom:1px solid var(--rev-rule);
+}
+.back{
+flex:0 0 auto;min-width:44px;min-height:44px;padding:0 8px 0 0;
+display:flex;align-items:center;gap:7px;cursor:pointer;
+border:0;background:transparent;color:var(--mute);
+font-family:var(--display);font-size:11px;letter-spacing:.20em;text-transform:uppercase;
+}
+.back::before{content:'\2190';font-size:14px;letter-spacing:0}
+.rev-title{
+flex:1 1 auto;min-width:0;margin:0;font-weight:500;
+font-family:var(--display);font-size:12px;letter-spacing:.28em;text-transform:uppercase;
+color:var(--foam);
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rev-title:focus-visible{outline:2px solid var(--sand);outline-offset:4px;border-radius:2px}
+.rev-tag{flex:0 0 auto;font-size:9.5px;letter-spacing:.10em}
+
+.rev-scroll{
+flex:1 1 auto;min-height:0;padding-top:14px;
+overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+}
+.rev-foot{flex:0 0 auto}
+.rev-foot .bar{margin-top:12px}
+
+/* ---------- shared text bits ---------- */
+.rev-cap{
+margin:10px 0 0;
+font-family:var(--data);font-size:10.5px;line-height:1.7;letter-spacing:.04em;
+color:var(--mute);
+}
+.rev-flag{
+margin:12px 0 0;padding:11px 13px;border-radius:2px;
+background:var(--shelf);border-left:2px solid var(--sand);
+font-size:13px;line-height:1.55;color:var(--rev-haze);
+}
+.rev-sub{
+margin:24px 0 6px;font-weight:500;
+font-family:var(--display);font-size:11px;letter-spacing:.30em;text-transform:uppercase;
+color:var(--mute);
+}
+.rev-none,.rev-foot-note{
+margin:0;
+font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
+color:var(--mute);
+}
+.rev-foot-note{margin-top:16px}
+
+/* ---------- 1. summary ---------- */
+.spark{
+display:block;width:100%;height:184px;border-radius:2px;background:var(--rev-lane);
+}
+.rev-key{margin-top:8px}
+.key-you{background:var(--glass)}
+.key-pace{background:var(--sand)}
+
+/* two columns, not the live screen's three: the keys here are longer */
+.readout.rev-grid{grid-template-columns:repeat(2,1fr);margin-top:16px}
+.readout.rev-grid .cell{padding:14px 10px}
+.readout.rev-grid .v{font-size:19px}
+
+/* ---------- 2. recordings ---------- */
+.recs{display:flex;flex-direction:column}
+.rec{
+display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;
+border-bottom:1px solid var(--rev-rule);
+}
+.rec-open{
+flex:1 1 auto;min-width:0;min-height:64px;
+display:flex;flex-direction:column;justify-content:center;gap:5px;
+padding:12px 0;border:0;border-radius:0;background:transparent;text-align:left;
+font-family:var(--body);font-size:14.5px;font-weight:400;
+letter-spacing:normal;text-transform:none;color:var(--foam);
+}
+.rec-open:active{background:var(--rev-press)}
+.rec-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.rec-when{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec-len{
+flex:0 0 auto;
+font-family:var(--data);font-size:13px;color:var(--foam);font-variant-numeric:tabular-nums;
+}
+.rec-sub{
+font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
+color:var(--mute);
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rec-del{
+flex:0 0 auto;align-self:center;min-width:44px;min-height:44px;padding:0 11px;
+border:1px solid var(--rev-rule);border-radius:2px;background:transparent;
+font-family:var(--data);font-size:10px;letter-spacing:.10em;text-transform:uppercase;
+color:var(--mute);
+}
+.rec-del:active{background:var(--ember-tint);color:var(--ember)}
+
+.rec-ask{
+flex:1 1 100%;display:flex;align-items:center;gap:8px;padding:0 0 12px;
+}
+.rec-ask-q{flex:1 1 auto;min-width:0;font-size:13px;line-height:1.4;color:var(--rev-haze)}
+.rec-ask button{
+flex:0 0 auto;min-height:44px;padding:0 14px;
+font-size:11px;letter-spacing:.16em;
+}
+.danger{color:var(--ember);border-color:var(--ember)}
+.danger:active{background:var(--ember-tint)}
+
+.rev-empty{padding:24px 0 8px}
+.rev-empty h3{
+margin:0 0 10px;font-weight:500;
+font-family:var(--display);font-size:16px;letter-spacing:.04em;color:var(--foam);
+}
+.rev-empty p{margin:0;font-size:14px;line-height:1.6;color:var(--rev-haze)}
+
+/* ---------- 3. detail ---------- */
+/* The waveform and its readout stay pinned while the kinds scroll under,
+ so you never lose the moment you just scrubbed to. The negative margin
+ cancels .rev-scroll's padding so the sticky edge sits flush. */
+.scrub{
+position:sticky;top:0;z-index:2;
+margin-top:-14px;padding:14px 0 12px;
+background:var(--abyss);
+}
+.lane{
+display:block;width:100%;border-radius:2px;background:var(--rev-lane);
+touch-action:none;                 /* the lanes own horizontal drags */
+}
+.lane-over{height:54px;cursor:pointer}
+.lane-fine{height:146px;margin-top:6px;cursor:ew-resize}
+.lane-fine:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
+
+.readout.rev-read{grid-template-columns:repeat(3,1fr);margin-top:10px}
+.readout.rev-read .v{font-size:19px}
+
+.zoomrow{display:flex;align-items:stretch;gap:12px;margin-top:10px}
+.step{
+flex:0 0 auto;min-width:60px;min-height:44px;padding:0;
+border:0;border-radius:2px;background:var(--rev-lane);
+font-family:var(--data);font-size:12px;letter-spacing:.01em;text-transform:none;
+color:var(--foam);
+}
+.step:active{background:var(--rev-tint)}
+.seg{
+flex:1 1 auto;display:flex;gap:1px;
+background:var(--rev-rule-firm);border-radius:2px;overflow:hidden;
+}
+.seg button{
+flex:1 1 0;min-width:0;min-height:44px;padding:0 2px;
+border:0;border-radius:0;background:var(--abyss);
+font-family:var(--data);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+color:var(--mute);
+}
+/* The steppers either side are filled blocks too, so the chosen span needs
+ more than a tint to tell it apart: the glass underline does that. */
+.seg button[aria-pressed=true]{
+background:var(--rev-tint);color:var(--foam);
+box-shadow:inset 0 -2px 0 var(--glass);
+}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.chip{
+flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:22px;
+border:1px solid var(--rev-rule-firm);background:transparent;
+font-family:var(--body);font-size:13px;font-weight:400;
+letter-spacing:normal;text-transform:none;color:var(--rev-haze);
+}
+.chip[aria-pressed=true]{background:var(--rev-tint);border-color:var(--glass);color:var(--foam)}
+
+.rev-note{
+width:100%;min-height:48px;margin-top:14px;padding:13px 12px;
+border:1px solid var(--rev-rule-firm);border-radius:2px;
+background:var(--shelf);color:var(--foam);
+font-family:var(--body);font-size:16px;   /* 16px keeps iOS from zooming the field */
+user-select:text;-webkit-user-select:text;
+}
+.rev-note::placeholder{color:var(--mute)}
+.rev-note:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
+
+.rev-add{width:100%;margin-top:10px;font-size:12px;letter-spacing:.18em}
+
+.labs{display:flex;flex-direction:column}
+.lab{display:flex;align-items:stretch;gap:8px;border-bottom:1px solid var(--rev-rule)}
+.lab-go{
+flex:1 1 auto;min-width:0;min-height:52px;
+display:flex;align-items:center;gap:12px;padding:8px 0;
+border:0;border-radius:0;background:transparent;text-align:left;
+font-family:var(--body);font-weight:400;letter-spacing:normal;text-transform:none;
+color:var(--foam);
+}
+.lab-go:active{background:var(--rev-press)}
+.lab-t{
+flex:0 0 auto;min-width:42px;
+font-family:var(--data);font-size:12px;color:var(--sand);font-variant-numeric:tabular-nums;
+}
+.lab-txt{display:flex;flex-direction:column;gap:3px;min-width:0}
+.lab-kind{font-size:14px}
+.lab-note{
+font-family:var(--data);font-size:10.5px;letter-spacing:.04em;color:var(--mute);
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.lab-del{
+flex:0 0 auto;align-self:center;min-width:44px;min-height:44px;padding:0 11px;
+border:1px solid var(--rev-rule);border-radius:2px;background:transparent;
+font-family:var(--data);font-size:10px;letter-spacing:.10em;text-transform:uppercase;
+color:var(--mute);
+}
+.lab-del:active{background:var(--ember-tint);color:var(--ember)}
+
+@media (prefers-reduced-motion:reduce){
+.review{animation:none}
+}

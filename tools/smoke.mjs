@@ -1,0 +1,144 @@
+#!/usr/bin/env node
+/**
+ * smoke.mjs — runs the whole app in Node, with a stub DOM and a stub Web Audio.
+ *
+ * The harness tests the signal chain and nothing else. This is the other half:
+ * it imports index.html's actual entry module, taps Start, feeds a few minutes
+ * of breathing through the render loop, taps End, and looks at what the screens
+ * say. It is what catches the wiring — an id that no longer resolves, a symbol
+ * that moved to another module, a parameter written the wrong way — none of
+ * which the harness can see and all of which look fine until a phone opens the
+ * page.
+ *
+ *   node tools/smoke.mjs
+ *
+ * Exit code 0 = every check passed.
+ */
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { installDom } from './stub/dom.mjs';
+import { installAudio, FakeAudioContext } from './stub/audio.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = resolve(here, '..');
+
+let failures = 0;
+function check(name, ok, detail){
+  console.log(`${ok ? 'ok  ' : 'FAIL'}  ${name}${detail ? '   ' + detail : ''}`);
+  if(!ok) failures++;
+}
+
+/* ---------------------------------------------------------------- clock */
+let nowMs = 1000;
+const frames = [];
+globalThis.performance = { now: () => nowMs };
+globalThis.requestAnimationFrame = fn => { frames.push(fn); return frames.length; };
+globalThis.cancelAnimationFrame = () => {};
+
+/** Advance the virtual clock and run whatever the loop scheduled. */
+function tick(ms){
+  nowMs += ms;
+  const due = frames.splice(0, frames.length);
+  due.forEach(fn => fn(nowMs));
+}
+function run(seconds, hz){
+  const step = 1000/hz;
+  for(let e = 0; e < seconds*hz; e++) tick(step);
+}
+
+/* ---------------------------------------------------------------- world */
+const { document } = installDom(resolve(root, 'index.html'));
+installAudio();
+
+// Motion: granted, and delivered by dispatching on window the way Safari does.
+globalThis.DeviceMotionEvent = { requestPermission: async () => 'granted' };
+globalThis.window.DeviceMotionEvent = globalThis.DeviceMotionEvent;
+
+const $ = id => document.getElementById(id);
+
+/* ---------------------------------------------------------------- import */
+let mod;
+try{
+  mod = await import(resolve(root, 'src/main.js'));
+}catch(e){
+  console.error('FAIL  the app would not even import');
+  console.error(e);
+  process.exit(1);
+}
+check('the app imports without touching a missing element', true);
+check('the version stamp is on the home screen', /\d+\.\d+\.\d+ · /.test($('buildBtn').textContent),
+      JSON.stringify($('buildBtn').textContent));
+check('the store degrades quietly with no IndexedDB', mod.Store ? !mod.Store.available : true);
+
+/* ---------------------------------------------------------------- panels */
+$('panelBtn').click();
+check('Adjust opens', $('panel').classList.contains('open'));
+$('closePanel').click();
+check('Adjust closes from Back', !$('panel').classList.contains('open'));
+
+$('buildBtn').click();
+check('Changes opens from the version stamp', $('log').classList.contains('open'));
+check('Changes lists the releases', $('logList').children.length >= 3,
+      $('logList').children.length + ' entries');
+$('closeLog').click();
+check('Changes closes from Back', !$('log').classList.contains('open'));
+
+/* ---------------------------------------------------------------- session */
+$('tglDemo').click();                       // simulated breathing, no sensor needed
+$('mainBtn').click();                       // Start
+await Promise.resolve(); await new Promise(r => setTimeout(r, 0));
+await new Promise(r => setTimeout(r, 0));   // begin() awaits two promises
+
+check('Start switches the button to End', $('mainBtn').textContent === 'End',
+      JSON.stringify($('mainBtn').textContent));
+check('the intro is hidden while breathing', $('intro').classList.contains('hidden'));
+check('the trace appears', !$('traceWrap').classList.contains('hidden'));
+check('Recordings is out of reach mid-session', $('recBtn').classList.contains('hidden'));
+check('the build line hides mid-session', $('buildLine').classList.contains('hidden'));
+
+const ctx = FakeAudioContext.last;
+run(180, 60);                               // three minutes at 60 Hz
+
+const rateTxt = $('vRate').textContent;
+check('a rate is reported after three minutes', /^\d+(\.\d+)?/.test(rateTxt) && parseFloat(rateTxt) > 3,
+      JSON.stringify(rateTxt));
+check('the ratio readout fills in', $('vRatio').textContent !== '—',
+      JSON.stringify($('vRatio').textContent));
+check('the header shows the sample rate', /demo|Hz/.test($('statusTag').textContent),
+      JSON.stringify($('statusTag').textContent));
+
+/* ---------------------------------------------------------------- audio */
+check('an audio graph was built', !!ctx && ctx.nodes.length > 20, ctx ? ctx.nodes.length + ' nodes' : 'none');
+check('the output ends in a limiter', !!ctx && ctx.nodes.some(n =>
+        n.kind === 'compressor' && n.outputs.some(o => o.dest === ctx.destination)));
+if(ctx){
+  const writes = ctx.params().reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
+  check('the render loop drives parameters', writes > 500, writes + ' setTargetAtTime writes');
+  check('nothing writes .value in the render loop', ctx.directSets() === 0,
+        ctx.directSets() + ' direct sets');
+}
+
+/* ---------------------------------------------------------------- end */
+$('mainBtn').click();                       // End
+await new Promise(r => setTimeout(r, 0));
+await new Promise(r => setTimeout(r, 0));
+await new Promise(r => setTimeout(r, 0));
+
+check('End returns the button to Start', $('mainBtn').textContent === 'Start',
+      JSON.stringify($('mainBtn').textContent));
+check('the summary is on screen', $('review').classList.contains('open') ||
+      !$('review').classList.contains('hidden'));
+check('the summary reports numbers', $('revSumGrid').children.length >= 3,
+      $('revSumGrid').children.length + ' cells');
+
+const cells = $('revSumGrid').querySelectorAll('.cell').map(c =>
+  c.querySelectorAll('.v').map(v => v.textContent).join(''));
+check('the summary is not all dashes', cells.some(t => /\d/.test(t)), cells.join(' | '));
+
+$('revBack').click();
+check('Back from the summary lands on the home screen', !$('intro').classList.contains('hidden'));
+check('Recordings is reachable again', !$('recBtn').classList.contains('hidden'));
+check('the build line is back', !$('buildLine').classList.contains('hidden'));
+
+console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
+process.exit(failures ? 1 : 0);

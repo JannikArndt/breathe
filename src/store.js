@@ -272,10 +272,26 @@ export const Store = {
 
   _write(packed){
     const self = this;
+    let refused = false;
     return this._run(['meta','data'],'readwrite', function(st){
-      st.meta.put(packed.meta);
-      st.data.put(packed.data);
-      return function(){ return true; };
+      const prev = st.data.get(packed.meta.id);
+      prev.onsuccess = function(){
+        // A write that would replace samples with nothing is a caller handing
+        // back a session it fetched without them — which is the ordinary shape
+        // for every screen that only draws a summary. Keep what is there.
+        // Recording is the one thing here that cannot be redone, so this is a
+        // refusal rather than a merge: nothing but Recorder should ever be
+        // writing a sample channel at all.
+        const old = prev.result;
+        if(old && !packed.data.mT.length && old.mT && old.mT.length){
+          refused = true;
+          self.lastError = 'refused: would have erased ' + old.mT.length + ' samples';
+          return;
+        }
+        st.meta.put(packed.meta);
+        st.data.put(packed.data);
+      };
+      return function(){ return !refused; };
     }).then(function(v){ return v === true; });
   },
 

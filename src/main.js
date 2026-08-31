@@ -15,6 +15,9 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.10.1', date:'2026-08-31', notes:[
+    'Labelling a recording no longer erases its raw signal. Adding a label rewrote the whole recording from what was on screen, and the screen only ever holds the summary — so the one action you take to make a recording more useful was the action that threw most of it away. Recordings labelled before this update have already lost it, and it cannot be recovered.'
+  ]},
   {v:'0.10.0', date:'2026-08-31', notes:[
     'It works with no connection. The whole app is kept on the phone, so a session starts whether or not you have signal.',
     'When there is a new version the app tells you, and Changes installs it. No more deleting the icon and adding it back. The Reload row is a Check now: it asks, and says so when there is nothing new.',

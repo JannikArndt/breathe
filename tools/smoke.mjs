@@ -472,6 +472,26 @@ if(rows.length){
   check('the labels list shows it', $('revLabels').children.length === 1,
         $('revLabels').children.length + ' shown');
 
+  // Labelling must not touch the sample channels. It used to write the whole
+  // session back, and the object the summary and the detail hold is fetched
+  // without the motion channel — so adding a label overwrote every raw sample
+  // with nothing, permanently, on the one action taken to make a recording
+  // more useful.
+  const afterLabel = await Store.get(withLabel[0].id, {cols:true});
+  check('labelling leaves the raw motion where it was',
+        !!afterLabel && afterLabel.motion.cols && afterLabel.motion.cols.n > 1000,
+        afterLabel && afterLabel.motion.cols ? afterLabel.motion.cols.n + ' samples' : 'none');
+
+  // And the store refuses the write outright, whatever a future caller does:
+  // recording is the one thing in this app that cannot be redone.
+  const stripped = await Store.get(withLabel[0].id, {motion:false});
+  const wrote = await Store.put(stripped);
+  const afterPut = await Store.get(withLabel[0].id, {cols:true});
+  check('a write that would erase the samples is refused', wrote === false,
+        String(Store.lastError));
+  check('and the samples are still there afterwards',
+        afterPut.motion.cols.n > 1000, afterPut.motion.cols.n + ' samples');
+
   $('revBack').click();
   await settle();
   check('Back from a detail opened by the list returns to the list',

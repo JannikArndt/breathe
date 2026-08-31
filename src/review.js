@@ -855,12 +855,29 @@ export const Review = {
     });
   },
 
+  /** Labels are metadata, so write only metadata.
+      This used to call Store.put(this.session), which repacks and rewrites the
+      whole record — and the session object on this screen is fetched without
+      its motion channel, because materialising tens of thousands of rows to
+      draw a sparkline is not worth the pause. So adding a label overwrote every
+      raw sample of that recording with nothing, on disk, permanently. Three of
+      the four recordings in this repository lost their raw motion that way, and
+      it went unnoticed because the one action that destroys a recording is the
+      one taken to make it more useful.
+      Store.setLabels touches the meta row and nothing else. */
   persist(){
     if(typeof Store === 'undefined' || Store.available === false || !this.session) return;
-    Store.put(this.session).catch(err=>{
-      notice('Label not kept', ((err && err.name)||'The store refused the write') +
-        '. The label is on screen but will be gone when you leave this recording. Export it now to keep it.', 7000);
+    if(!this.session.id) return;
+    Store.setLabels(this.session.id, this.session.labels || []).then(saved=>{
+      if(saved === null) this.labelTrouble('The store did not have that recording');
+    }).catch(err=>{
+      this.labelTrouble((err && err.name) || 'The store refused the write');
     });
+  },
+
+  labelTrouble(why){
+    notice('Label not kept', why +
+      '. The label is on screen but will be gone when you leave this recording. Export it now to keep it.', 7000);
   },
 
   /* ---------- delete + export ---------- */

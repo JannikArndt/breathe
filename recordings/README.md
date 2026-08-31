@@ -19,9 +19,19 @@ node tools/replay.mjs recordings/one.json --from 40 --to 200
 | file | what it is |
 |---|---|
 | `tide-20260828T100652.json` | the first session, before the export carried raw motion |
-| `breathe-20260829T001709.json` | 7:35 that worked well, labelled — derived channels only |
+| `breathe-20260829T001709.json` | 7:35 that worked well, labelled. Its raw motion was destroyed by the labelling bug below |
 | `breathe-20260829T115717-bogus.json` | phone on a table, then waved by hand. Not breathing. The app once read 248 breaths at 26/min from it |
-| `breathe-20260830T223632.json` | 9:32 at ~3 breaths/min with long holds, full raw motion. The recording that showed the baseline filter was turning a hold into a ramp |
+| `breathe-20260830T223632.json` | 9:32 at ~3 breaths/min with long holds, full raw motion. The recording that showed the baseline filter was turning a hold into a ramp, and the two constants set for someone breathing three times faster |
+| `breathe-20260831-0853.json` | 7:00 on 0.10.0, labelled. Raw motion destroyed by the same bug |
+
+**Every labelled recording in this folder has lost its raw motion, and the unlabelled one
+has kept it.** That is not a coincidence: until 0.10.1, adding a label wrote the whole
+recording back from the object on screen, and that object is fetched without the sample
+channels because materialising tens of thousands of rows to draw a summary is not worth
+the pause. So the one action taken to make a recording more useful was the action that
+threw most of it away — silently, on disk, permanently. Two things stop it now: labelling
+edits the metadata row and nothing else, and the store refuses any write that would replace
+samples with nothing.
 
 Two of these are not a sample. Use them to find bugs, not to set constants — the
 sensitivity control exists because where the line falls between a shallow breather and a

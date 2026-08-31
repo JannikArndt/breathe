@@ -91,9 +91,16 @@ for (let i = 1; i < raw.length; i++) {
   else    { if (v < best) { best = v; bestI = i; } else if (v - best > H) { ext.push({ i: bestI, kind: 'trough', v: best }); up = true;  best = v; bestI = i; } }
 }
 
+/* Only the stretch the owner marked as usable, when there is one: the handling
+   at each end of a session is exactly the kind of movement this tool would
+   otherwise report as a breath with a wild onset. */
+const trim = S.trim || null;
+const inTrim = i => !trim || (tr[i].t >= trim.fromSec && tr[i].t <= trim.toSec);
+
 const leads = [], strokes = [], gates = [];
 for (let k = 0; k < ext.length - 1; k++) {
   if (ext[k].kind !== 'trough' || ext[k + 1].kind !== 'peak') continue;
+  if (!inTrim(ext[k].i) || !inTrim(ext[k + 1].i)) continue;
   const lowP = ext[k], highP = ext[k + 1];
   const thr = lowP.v + (highP.v - lowP.v) * 0.15;
   let iTake = lowP.i; while (iTake < highP.i && raw[iTake] < thr) iTake++;
@@ -134,7 +141,8 @@ if (di.rest != null && dv.rows && dv.rows.length) {
 }
 
 console.log(`${file}`);
-console.log(`  ${leads.length} breaths over ${t.toFixed(0)} s   sensitivity ${Breath.sensitivity}`);
+console.log(`  ${leads.length} breaths over ${t.toFixed(0)} s   sensitivity ${Breath.sensitivity}` +
+            (trim ? `   (marked usable ${trim.fromSec.toFixed(0)}-${trim.toSec.toFixed(0)} s)` : ''));
 console.log(`  inhale, takeoff to peak     median ${med(strokes)} s   range ${Math.min(...strokes)}–${Math.max(...strokes)} s`);
 console.log(`  sound starts before it      median ${med(leads)} s   worst ${Math.max(...leads)} s`);
 console.log(`  held (gate under half)      ${heldPct}% of the session` +

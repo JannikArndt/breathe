@@ -404,11 +404,6 @@ body.dimmed .dim-catch{
   background:var(--shelf);border-left:2px solid var(--sand);
   font-size:13px;line-height:1.55;color:var(--haze);
 }
-.rev-sub{
-  margin:24px 0 6px;font-weight:500;
-  font-family:var(--display);font-size:11px;letter-spacing:.30em;text-transform:uppercase;
-  color:var(--mute);
-}
 .rev-none,.rev-foot-note{
   margin:0;
   font-family:var(--data);font-size:10.5px;letter-spacing:.04em;
@@ -497,79 +492,8 @@ body.dimmed .dim-catch{
 .readout.rev-read{grid-template-columns:repeat(3,1fr);margin-top:10px}
 .readout.rev-read .v{font-size:19px}
 
-.zoomrow{display:flex;align-items:stretch;gap:12px;margin-top:10px}
-.step{
-  flex:0 0 auto;min-width:60px;min-height:44px;padding:0;
-  border:0;border-radius:2px;background:var(--lane);
-  font-family:var(--data);font-size:12px;letter-spacing:.01em;text-transform:none;
-  color:var(--foam);
-}
-.step:active{background:var(--tint)}
-.seg{
-  flex:1 1 auto;display:flex;gap:1px;
-  background:var(--rule-firm);border-radius:2px;overflow:hidden;
-}
-.seg button{
-  flex:1 1 0;min-width:0;min-height:44px;padding:0 2px;
-  border:0;border-radius:0;background:var(--abyss);
-  font-family:var(--data);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--mute);
-}
 /* The steppers either side are filled blocks too, so the chosen span needs
    more than a tint to tell it apart: the glass underline does that. */
-.seg button[aria-pressed=true]{
-  background:var(--tint);color:var(--foam);
-  box-shadow:inset 0 -2px 0 var(--glass);
-}
-
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
-.chip{
-  flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:22px;
-  border:1px solid var(--rule-firm);background:transparent;
-  font-family:var(--body);font-size:13px;font-weight:400;
-  letter-spacing:normal;text-transform:none;color:var(--haze);
-}
-.chip[aria-pressed=true]{background:var(--tint);border-color:var(--glass);color:var(--foam)}
-
-.rev-note{
-  width:100%;min-height:48px;margin-top:14px;padding:13px 12px;
-  border:1px solid var(--rule-firm);border-radius:2px;
-  background:var(--shelf);color:var(--foam);
-  font-family:var(--body);font-size:16px;   /* 16px keeps iOS from zooming the field */
-  user-select:text;-webkit-user-select:text;
-}
-.rev-note::placeholder{color:var(--mute)}
-.rev-note:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
-
-.rev-add{width:100%;margin-top:10px;font-size:12px;letter-spacing:.18em}
-
-.labs{display:flex;flex-direction:column}
-.lab{display:flex;align-items:stretch;gap:8px;border-bottom:1px solid var(--rule)}
-.lab-go{
-  flex:1 1 auto;min-width:0;min-height:52px;
-  display:flex;align-items:center;gap:12px;padding:8px 0;
-  border:0;border-radius:0;background:transparent;text-align:left;
-  font-family:var(--body);font-weight:400;letter-spacing:normal;text-transform:none;
-  color:var(--foam);
-}
-.lab-go:active{background:var(--press)}
-.lab-t{
-  flex:0 0 auto;min-width:42px;
-  font-family:var(--data);font-size:12px;color:var(--sand);font-variant-numeric:tabular-nums;
-}
-.lab-txt{display:flex;flex-direction:column;gap:3px;min-width:0}
-.lab-kind{font-size:14px}
-.lab-note{
-  font-family:var(--data);font-size:10.5px;letter-spacing:.04em;color:var(--mute);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
-.lab-del{
-  flex:0 0 auto;align-self:center;min-width:44px;min-height:44px;padding:0 11px;
-  border:1px solid var(--rule);border-radius:2px;background:transparent;
-  font-family:var(--data);font-size:10px;letter-spacing:.10em;text-transform:uppercase;
-  color:var(--mute);
-}
-.lab-del:active{background:var(--ember-tint);color:var(--ember)}
 
 @media (prefers-reduced-motion:reduce){
   .review{animation:none}
@@ -578,3 +502,35 @@ body.dimmed .dim-catch{
 /* The re-find button is the only .bar inside a panel, so it needs the gap the
    panel's own rows get. Written here rather than inline on the element. */
 .panel .bar#recalBar{margin-top:18px}
+
+/* ---------- the trim ----------
+   Two buttons and a line of state, in place of nine label chips, a note field
+   and a list. The buttons are the same weight as each other because neither is
+   the primary one: you set whichever end you are looking at. */
+.trimrow{
+  display:flex;gap:10px;margin-top:14px;
+}
+.trim-btn{
+  flex:1 1 0;min-width:0;min-height:46px;
+  border:1px solid rgba(127,191,174,.45);border-radius:2px;
+  background:transparent;color:var(--glass);
+  font-family:var(--display);font-size:11.5px;letter-spacing:.16em;
+  text-transform:uppercase;cursor:pointer;
+}
+.trim-btn:active{background:var(--tint)}
+
+.trim-state{
+  margin:12px 0 0;
+  font-family:var(--data);font-size:11px;letter-spacing:.05em;
+  color:var(--mute);font-variant-numeric:tabular-nums;
+}
+
+.trim-clear{margin-top:10px}
+
+/* Delete sits well away from Export, which is in the footer bar. They used to
+   be neighbours, which is a poor arrangement for two buttons where one is
+   irreversible. */
+.rev-danger{
+  margin-top:34px;padding-top:16px;
+  border-top:1px solid var(--rule);
+}

@@ -466,41 +466,69 @@ if(rows.length){
   rows[0].click();
   await settle(10);
   check('tapping a row opens the detail', !$('revDetail').classList.contains('hidden'));
-  check('the detail knows how long it is', /\d+:\d\d/.test($('revVAt').textContent),
-        JSON.stringify($('revVAt').textContent));
   const { Review } = await import(resolve(root, 'src/review.js'));
   check('the detail lane knows where the holds were',
         Review.sig.hasRest && [...Review.sig.g].some(v => v < 0.5),
         Review.sig.hasRest ? 'rest channel present' : 'no rest channel');
+  check('and it opens with the whole recording marked usable',
+        Review.trim === null && /All of it/.test($('revTrimState').textContent),
+        JSON.stringify($('revTrimState').textContent));
 
-  $('revNote').value = 'a note from the smoke test';
-  $('revAdd').click();
+  // The two marks. Everything before the first and after the last is someone
+  // handling a phone, and this screen exists to say where that stops and starts.
+  Review.setPlay(20);
+  $('revTrimFrom').click();
+  Review.setPlay(150);
+  $('revTrimTo').click();
+  await new Promise(r => setTimeout(r, 60));
   await settle(14);
-  const withLabel = await Store.list();
-  check('a label is written to the recording',
-        withLabel[0].labels && withLabel[0].labels.length === 1,
-        JSON.stringify(withLabel[0].labels));
-  check('and the note survives with it',
-        withLabel[0].labels[0].note === 'a note from the smoke test',
-        JSON.stringify(withLabel[0].labels[0]));
-  check('the labels list shows it', $('revLabels').children.length === 1,
-        $('revLabels').children.length + ' shown');
+  check('marking both ends sets the usable stretch',
+        !!Review.trim && Review.trim.fromSec === 20 && Review.trim.toSec === 150,
+        JSON.stringify(Review.trim));
+  check('and says so in words', /0:20 to 2:30/.test($('revTrimState').textContent),
+        JSON.stringify($('revTrimState').textContent));
 
-  // Labelling must not touch the sample channels. It used to write the whole
-  // session back, and the object the summary and the detail hold is fetched
-  // without the motion channel — so adding a label overwrote every raw sample
-  // with nothing, permanently, on the one action taken to make a recording
-  // more useful.
-  const afterLabel = await Store.get(withLabel[0].id, {cols:true});
-  check('labelling leaves the raw motion where it was',
-        !!afterLabel && afterLabel.motion.cols && afterLabel.motion.cols.n > 1000,
-        afterLabel && afterLabel.motion.cols ? afterLabel.motion.cols.n + ' samples' : 'none');
+  const trimmed = (await Store.list())[0];
+  check('the trim is written to the recording',
+        !!trimmed.trim && trimmed.trim.fromSec === 20 && trimmed.trim.toSec === 150,
+        JSON.stringify(trimmed.trim));
+
+  // Marking a start past the end is a correction, not an error to refuse.
+  Review.setPlay(200);
+  $('revTrimFrom').click();
+  check('a start past the end pushes the end out of the way',
+        Review.trim.fromSec === 200 && Review.trim.toSec > 200,
+        JSON.stringify(Review.trim));
+
+  $('revTrimClear').click();
+  await new Promise(r => setTimeout(r, 60));
+  await settle(14);
+  check('and it can be cleared again', Review.trim === null &&
+        /All of it/.test($('revTrimState').textContent));
+  check('the store forgets it too', (await Store.list())[0].trim === null,
+        JSON.stringify((await Store.list())[0].trim));
+
+  // Pinch stands in for the row of width buttons that used to be here.
+  const span0 = Review.det.span;
+  Review.zoomBy(0.5, Review.det.play);
+  check('zooming in halves what the lane shows', Math.abs(Review.det.span - span0/2) < 0.01,
+        `${span0.toFixed(0)}s -> ${Review.det.span.toFixed(0)}s`);
+  Review.zoomBy(1000, Review.det.play);
+  check('and zooming out stops at the whole recording',
+        Math.abs(Review.det.span - Review.det.dur) < 0.01,
+        Review.det.span.toFixed(0) + 's of ' + Review.det.dur.toFixed(0) + 's');
+
+  // Whatever this screen writes, it must never cost a sample.
+  const afterTrim = await Store.get(trimmed.id, {cols:true});
+  check('marking a recording leaves the raw motion where it was',
+        !!afterTrim && afterTrim.motion.cols && afterTrim.motion.cols.n > 1000,
+        afterTrim && afterTrim.motion.cols ? afterTrim.motion.cols.n + ' samples' : 'none');
 
   // And the store refuses the write outright, whatever a future caller does:
   // recording is the one thing in this app that cannot be redone.
-  const stripped = await Store.get(withLabel[0].id, {motion:false});
+  const stripped = await Store.get(trimmed.id, {motion:false});
   const wrote = await Store.put(stripped);
-  const afterPut = await Store.get(withLabel[0].id, {cols:true});
+  const afterPut = await Store.get(trimmed.id, {cols:true});
   check('a write that would erase the samples is refused', wrote === false,
         String(Store.lastError));
   check('and the samples are still there afterwards',

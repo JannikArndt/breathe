@@ -71,7 +71,10 @@ const events = (S.events || []).filter(e => e.type === 'breath' && e.inhaleSec >
 /* ---------- turning points from the signal itself ----------
    Needed for the amplitude and stillness numbers, which the events do not carry.
    Same hysteresis rule as the tracker, so the segmentation matches what shipped. */
-const H = 0.34;
+/* The tracker's hysteresis scales with the stroke depth it has learned; this is
+   the middle of that range and is only used for segmenting a recording after
+   the fact, never for deciding anything. */
+const H = 0.5;
 const turns = [];
 let rising = true, ext = s[0], extI = 0;
 for (let i = 1; i < n; i++) {
@@ -115,6 +118,17 @@ const medSlope = strokes.length ? med(strokes.map(x => x.peakSlope)) : 0;
 // peak slope. Below that the excursion over a whole second is a fifth of a
 // breath — a rest, not a stroke.
 const STILL = 0.18 * medSlope;
+/* The gate the app itself ran with, when the recording carries it. Everything
+   else in this section is re-derived after the fact from the signal; this one
+   is what the sound actually did, and the two are worth reading together. */
+const ci = {};
+((S.derived && S.derived.columns) || []).forEach((c, i) => { ci[c] = i; });
+let recordedHeld = null;
+if (ci.rest != null && S.derived.rows.length) {
+  const held = S.derived.rows.filter(r => r[ci.rest] < 0.5).length;
+  recordedHeld = Math.round(100 * held / S.derived.rows.length);
+}
+
 const pauses = [];
 let run = null;
 for (let i = 1; i < n; i++) {
@@ -201,10 +215,12 @@ R.push(`depth     ${out.cycles.amp.p10} / ${out.cycles.amp.med} / ${out.cycles.a
 R.push('');
 R.push(`stillness  a "pause" is >= 0.8 s under ${out.stillness.stillSlopeThreshold} units/s, 18% of a typical stroke's peak slope`);
 R.push(`           ${out.stillness.pauses} pauses, ${out.stillness.totalSec} s total — ${Math.round(out.stillness.shareOfSession * 100)}% of the session`);
+if (recordedHeld !== null)
+  R.push(`           the app's own gate read ${recordedHeld}% of the session as held`);
 R.push(`           median ${out.stillness.medianSec} s, longest ${out.stillness.longestSec} s`);
 R.push(`           ${out.stillness.afterExhaleBottom} after the bottom of an exhale, ${out.stillness.afterInhaleTop} after the top of an inhale`);
 R.push('');
-R.push(`early onset  of ${out.earlyOnset.troughs} exhale bottoms, ${out.earlyOnset.flaggedEarly} cross the H=0.34 hysteresis`);
+R.push(`early onset  of ${out.earlyOnset.troughs} exhale bottoms, ${out.earlyOnset.flaggedEarly} cross the H=${H} hysteresis`);
 R.push(`             more than 0.6 s before the signal reaches half a typical stroke.`);
 R.push(`             median lead ${out.earlyOnset.medianLeadSec} s, worst ${out.earlyOnset.worstLeadSec} s`);
 console.log(R.join('\n'));

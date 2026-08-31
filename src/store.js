@@ -53,7 +53,8 @@ export const Store = {
   DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich','hr','hrConf','rest'],
   DERIVED_HZ:10,
 
-  /* Fixed vocabulary. A label also carries a free `note`. */
+  /* Fixed vocabulary, kept for reading recordings made before the trim. The
+     app no longer writes labels; see setTrim. */
   LABEL_KINDS:['lay-down','settled','sat-up','phone-moved','talking',
                'drifted-off','bad-detection','good-stretch','other'],
 
@@ -226,6 +227,33 @@ export const Store = {
       const req = st.prefs.get('settings');
       return function(){ return (req.result && typeof req.result === 'object') ? req.result : {}; };
     }).then(function(v){ return v || {}; });
+  },
+
+  /* ---------- the trim ----------
+     Which stretch of a recording is worth reading. Every session begins with
+     someone putting the phone down and ends with them picking it up, and those
+     two minutes of handling are worth more than the rest of the session put
+     together at throwing an analysis off.
+
+     It replaced a vocabulary of nine label kinds and a free-text note, which
+     asked the user to describe a recording when all they ever wanted to say was
+     where the good part starts and stops. Metadata only: it never touches the
+     samples, so marking a recording cannot cost you one. */
+
+  /** @param trim {fromSec, toSec} — or null to mark the whole recording usable */
+  setTrim(id, trim){
+    const t = this._cleanTrim(trim);
+    return this._editMeta(id, function(meta){ meta.trim = t; })
+               .then(function(){ return t; });
+  },
+
+  _cleanTrim(t){
+    if(!t) return null;
+    const a = rnd(t.fromSec, 3), b = rnd(t.toSec, 3);
+    const from = (typeof a === 'number' && isFinite(a) && a > 0) ? a : 0;
+    const to   = (typeof b === 'number' && isFinite(b) && b > from) ? b : 0;
+    if(!from && !to) return null;
+    return {fromSec: from, toSec: to};
   },
 
   /** Whole-object write. There are a dozen values and they change on a slider
@@ -437,6 +465,7 @@ export const Store = {
       app: session.app || {},
       device: session.device || {},
       calibration: session.calibration || null,
+      trim: this._cleanTrim(session.trim),
       labels: session.labels || [],
       events: session.events || [],
       summary: session.summary || null,
@@ -473,6 +502,7 @@ export const Store = {
       app: meta.app || {},
       device: meta.device || {},
       calibration: meta.calibration || null,
+      trim: meta.trim || null,
       labels: meta.labels || [],
       events: meta.events || [],
       motion: {units: meta.motionUnits, source: meta.motionSource,
@@ -507,6 +537,7 @@ export const Store = {
     p.push('"app": '         + JSON.stringify(session.app || {}) + ',\n');
     p.push('"device": '      + JSON.stringify(session.device || {}) + ',\n');
     p.push('"calibration": ' + JSON.stringify(session.calibration || null) + ',\n');
+    p.push('"trim": '        + JSON.stringify(session.trim || null) + ',\n');
     p.push('"labels": '      + JSON.stringify(session.labels || []) + ',\n');
     p.push('"events": '      + JSON.stringify(session.events || []) + ',\n');
     p.push('"summary": '     + JSON.stringify(session.summary || null) + ',\n');
@@ -848,6 +879,7 @@ export const Recorder = {
       app: app,
       device: deviceInfo(hz),
       calibration: cal,
+      trim: null,
       labels: [],
       events: this.events.slice(),
       motion: {units:'m/s^2',

@@ -115,6 +115,14 @@ filter to ring on. It was a sinusoid, which is exactly the case the tracker find
 which hid both of the timing bugs this app has shipped. Do not put the sine back: demo mode
 is how the sound gets auditioned, and it should audition against something breathable.
 
+**Nothing but `Recorder` may write a sample channel.** `Store._write` refuses any write
+that would replace a non-empty motion channel with an empty one, and says so in
+`lastError`. This is not defensive coding for its own sake: `Review.persist()` called
+`Store.put(this.session)` for a year, the session on that screen is deliberately fetched
+without its samples, and so the one action a person takes to make a recording more useful
+silently destroyed the raw signal of three of the four recordings in this repository.
+Metadata edits go through `Store.setTrim` / `Store.setLabels` / `_editMeta`.
+
 **Every control in Adjust belongs in `SLIDERS` or `TOGGLES` in `src/main.js`.** Each row
 of those tables says what the control drives, what its default is, and what key it saves
 under; the wiring, the restore, the save and the reset are all generated from them. A
@@ -589,6 +597,20 @@ Two rules hold everywhere, and the previous layout broke both:
 **Back is top-left, and it is the only way out.** There are no Done or Close buttons. The
 bottom bar carries actions only — Begin, End, Label, Export, Export all, Delete. Before
 this, Back was at the top and Done at the bottom did the same job, on different screens.
+
+**The detail screen marks one interval, not nine kinds of event.** It carried a vocabulary
+of nine label chips, a free-text note and a list of what had been added. Everything anyone
+ever wanted to say about a recording was where the usable part starts and stops: a session
+begins with someone putting a phone down and ends with them picking it up, and those two
+minutes throw an analysis off more than the rest of the session put together. So it is two
+buttons and one line of state, stored as `meta.trim = {fromSec, toSec}`, and
+`tools/replay.mjs` and `tools/onset.mjs` honour it by default (`--all` on replay ignores
+it). Recordings made before it are read back through `trimFromLabels()`, which maps the two
+old kinds that meant the same thing. Do not add a second labelling mechanism beside it.
+
+**The fine lane zooms by pinch**, not by a row of width buttons, and `+`/`-` do the same
+from a keyboard. The readout row that used to sit under it — "At 3:20 / You 0.42 / Your
+rate 3.1" — is gone: the lane has a time axis and a signal on it, and the row restated both.
 
 **Recordings is a place, not a setting.** It is reachable from the home screen. Reaching it
 used to mean opening Adjust first, which is why it was hard to find. The row under Storage

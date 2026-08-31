@@ -274,59 +274,31 @@
     </section>
 
     <!-- ---------- 3. detail: scrub and label ---------- -->
+    <!-- ---------- 3. detail: mark the usable stretch ---------- -->
     <section class="rev-screen hidden" id="revDetail">
 
-      <!-- sticky: the waveform stays put while the kind chips scroll under it -->
       <div class="scrub">
         <canvas class="lane lane-over" id="revOver"></canvas>
         <canvas class="lane lane-fine" id="revFine"
                 tabindex="0" role="slider"
                 aria-label="Position in the recording"
                 aria-valuemin="0" aria-valuenow="0" aria-valuetext="0:00"></canvas>
-
-        <div class="readout rev-read">
-          <div class="cell"><div class="k">At</div><div class="v" id="revVAt">0:00</div></div>
-          <div class="cell"><div class="k">You</div><div class="v" id="revVSig">—</div></div>
-          <div class="cell"><div class="k">Your rate</div><div class="v"><span id="revVRate">—</span><small>/min</small></div></div>
-        </div>
-
-        <div class="zoomrow">
-          <button class="step" id="revBack05" aria-label="Move the marker back half a second">&minus;0.5 s</button>
-          <div class="seg" id="revSpans" role="group" aria-label="How much of the recording the lower lane shows">
-            <button type="button" data-span="0"   aria-pressed="false">Whole</button>
-            <button type="button" data-span="120" aria-pressed="false">2 min</button>
-            <button type="button" data-span="30"  aria-pressed="true">30 s</button>
-            <button type="button" data-span="8"   aria-pressed="false">8 s</button>
-          </div>
-          <button class="step" id="revFwd05" aria-label="Move the marker forward half a second">+0.5 s</button>
-        </div>
       </div>
 
-      <p class="rev-cap">Tap the top lane to jump. Drag the lower lane to slide
-         the recording past the marker. The shaded stretches are where the app
-         read you as holding rather than moving.</p>
-
-      <div class="chips" id="revKinds" role="group" aria-label="What happened">
-        <button type="button" class="chip" data-kind="lay-down"      aria-pressed="true">Lay down</button>
-        <button type="button" class="chip" data-kind="settled"       aria-pressed="false">Settled</button>
-        <button type="button" class="chip" data-kind="sat-up"        aria-pressed="false">Sat up</button>
-        <button type="button" class="chip" data-kind="phone-moved"   aria-pressed="false">Phone moved</button>
-        <button type="button" class="chip" data-kind="talking"       aria-pressed="false">Talking</button>
-        <button type="button" class="chip" data-kind="drifted-off"   aria-pressed="false">Drifted off</button>
-        <button type="button" class="chip" data-kind="bad-detection" aria-pressed="false">Bad detection</button>
-        <button type="button" class="chip" data-kind="good-stretch"  aria-pressed="false">Good stretch</button>
-        <button type="button" class="chip" data-kind="other"         aria-pressed="false">Other</button>
+      <div class="trimrow">
+        <button type="button" class="trim-btn" id="revTrimFrom">Starts here</button>
+        <button type="button" class="trim-btn" id="revTrimTo">Ends here</button>
       </div>
 
-      <input class="rev-note" id="revNote" type="text" maxlength="140"
-             placeholder="Optional note" aria-label="Optional note"
-             autocomplete="off" autocorrect="off" spellcheck="false">
+      <p class="trim-state" id="revTrimState"></p>
 
-      <button class="primary rev-add" id="revAdd">Add label at 0:00</button>
+      <div class="trim-clear">
+        <button type="button" class="ghost rowbtn" id="revTrimClear">Use all of it</button>
+      </div>
 
-      <h3 class="rev-sub">Labels</h3>
-      <p class="rev-none" id="revLabelsNone">No labels on this recording yet.</p>
-      <div class="labs" id="revLabels"></div>
+      <div class="rev-danger">
+        <button type="button" class="ghost rowbtn danger" id="revDetDelete" data-armed="0">Delete this recording</button>
+      </div>
     </section>
 
   </div>
@@ -341,7 +313,6 @@
     </div>
     <div class="bar hidden" id="revDetBar">
       <button id="revDetExport">Export</button>
-      <button id="revDetDelete" class="danger" data-armed="0">Delete</button>
     </div>
   </div>
 

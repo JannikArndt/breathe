@@ -33,6 +33,7 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   const take = () => argv[++i];
   if (a === '--json') opt.json = true;
+  else if (a === '--all') opt.all = true;
   else if (a === '--from') opt.from = parseFloat(take());
   else if (a === '--to') opt.to = parseFloat(take());
   else if (a === '--src') opt.src = take();
@@ -54,6 +55,7 @@ function usage() {
 
   --from <sec>   first second to report on   (tracker still runs from 0)
   --to <sec>     last second to report on
+  --all          ignore the usable stretch the recording carries
   --src <path>   module directory to load the tracker from (default ../src)
   --cycles <n>   how many detected cycles to list (default 24, 0 = all)
   --json         machine-readable output, no plot
@@ -109,8 +111,16 @@ const app = S.app || {};
 const labels = (S.labels || []).slice().sort((x, y) => x.tSec - y.tSec);
 const t0 = rows[0][0];
 const tEnd = rows[rows.length - 1][0];
-const from = opt.from === null || !isFinite(opt.from) ? t0 : Math.max(t0, opt.from);
-const to = opt.to === null || !isFinite(opt.to) ? tEnd : Math.min(tEnd, opt.to);
+/* A recording can carry its own bounds. Every session starts with someone
+   putting a phone down and ends with them picking it up, and those two minutes
+   throw an analysis off more than the rest of the session put together — so if
+   the owner has marked where the usable part is, honour it unless told
+   otherwise. --from/--to still win, and --all ignores the mark. */
+const trim = (!opt.all && S.trim) ? S.trim : null;
+const from = opt.from === null || !isFinite(opt.from)
+  ? (trim ? Math.max(t0, trim.fromSec) : t0) : Math.max(t0, opt.from);
+const to = opt.to === null || !isFinite(opt.to)
+  ? (trim ? Math.min(tEnd, trim.toSec) : tEnd) : Math.min(tEnd, opt.to);
 if (to <= from) die(`--from ${from} is not before --to ${to}`);
 
 /* ---------------------------------------------------------------- rate */

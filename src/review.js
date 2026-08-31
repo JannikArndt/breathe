@@ -40,23 +40,11 @@ export const Review = {
   confirmId:null,              // list row currently asking "delete this?"
 
   /** scrub state for the detail screen */
-  det:{ dur:0, play:0, span:30, drag:null, kind:'', dirty:false },
+  det:{ dur:0, play:0, span:30, drag:null, pinch:null },
+  trim:null,                   // {fromSec, toSec} or null for "all of it"
 
   /** projected signal unpacked from derived.rows, built once per session */
   sig:{ n:0 },
-
-  /* the contract's fixed vocabulary, in the order the chips read */
-  KINDS:[
-    ['lay-down',      'Lay down'],
-    ['settled',       'Settled'],
-    ['sat-up',        'Sat up'],
-    ['phone-moved',   'Phone moved'],
-    ['talking',       'Talking'],
-    ['drifted-off',   'Drifted off'],
-    ['bad-detection', 'Bad detection'],
-    ['good-stretch',  'Good stretch'],
-    ['other',         'Other']
-  ],
 
   /* fine-lane widths. 0 means "the whole recording". 8 s is the
      finest useful step: below that a breath no longer fits on screen. */
@@ -73,9 +61,8 @@ export const Review = {
       spark:$('revSpark'), sumGrid:$('revSumGrid'), sumFlag:$('revSumFlag'),
       rows:$('revRows'), listEmpty:$('revListEmpty'), listFoot:$('revListFoot'),
       over:$('revOver'), fine:$('revFine'),
-      vAt:$('revVAt'), vSig:$('revVSig'), vRate:$('revVRate'),
-      spans:$('revSpans'), kinds:$('revKinds'), note:$('revNote'),
-      add:$('revAdd'), labels:$('revLabels'), labelsNone:$('revLabelsNone')
+      trimFrom:$('revTrimFrom'), trimTo:$('revTrimTo'),
+      trimState:$('revTrimState'), trimClear:$('revTrimClear')
     };
     this.wire();
     return d;
@@ -102,18 +89,9 @@ export const Review = {
     $('revDetExport').addEventListener('click', ()=>this.exportOne(this.session));
     $('revDetDelete').addEventListener('click', ()=>this.deleteCurrent());
 
-    d.spans.addEventListener('click', e=>{
-      const b = e.target.closest('button'); if(!b) return;
-      this.setSpan(parseFloat(b.dataset.span));
-    });
-    d.kinds.addEventListener('click', e=>{
-      const b = e.target.closest('button'); if(!b) return;
-      this.det.kind = b.dataset.kind;
-      this.paintKinds();
-    });
-    $('revBack05').addEventListener('click', ()=>this.nudge(-0.5));
-    $('revFwd05').addEventListener('click', ()=>this.nudge(0.5));
-    d.add.addEventListener('click', ()=>this.addLabel());
+    d.trimFrom.addEventListener('click', ()=>this.markTrim('from'));
+    d.trimTo.addEventListener('click', ()=>this.markTrim('to'));
+    d.trimClear.addEventListener('click', ()=>this.clearTrim());
 
     this.bindLane(d.over, 'over');
     this.bindLane(d.fine, 'fine');
@@ -370,18 +348,31 @@ export const Review = {
     this.session = session;
     this.prepare(session);
     this.det.play = 0;
-    this.det.kind = this.det.kind || this.KINDS[0][0];
-    this.det.dirty = false;
-    this.setSpanSilent(this.det.dur > 90 ? 30 : 0);
+    // A recording made before the trim existed may still carry the old labels;
+    // a `settled` and a `sat-up` are exactly the two marks this screen now sets,
+    // so read them rather than throwing them away.
+    this.trim = session.trim || this.trimFromLabels(session.labels);
+    // Two breaths at the slowest rate the app follows is a minute and a half.
+    this.det.span = this.det.dur > 180 ? 90 : Math.max(this.det.dur, 1);
 
     d.title.textContent = 'Recording';
     d.tag.textContent = this.when(session.startedAt);
     this.show('detail');
-    this.paintSpans();
-    this.paintKinds();
-    d.note.value = '';
-    this.renderLabels();
+    this.paintTrim();
     this.redraw();
+  },
+
+  /** Recordings made before the trim carry a list of label kinds instead. Two of
+      the nine say the same thing the trim does, so they are read back rather
+      than discarded — nothing is written in the old shape again. */
+  trimFromLabels(labels){
+    let from = 0, to = 0;
+    for(const l of (labels || [])){
+      if((l.kind === 'settled' || l.kind === 'lay-down') && !from) from = l.tSec;
+      if(l.kind === 'sat-up') to = l.tSec;
+    }
+    if(!from && !to) return null;
+    return {fromSec: from, toSec: to > from ? to : this.det.dur};
   },
 
   /* ---------- session unpacking ---------- */
@@ -574,7 +565,6 @@ export const Review = {
       ctx.strokeStyle = K.you; ctx.lineWidth=1.8;
       this.rateLine(ctx,pw,ph,t0,t1,'b',R.lo,R.hi,pad);
     }
-    this.drawMarks(ctx,pw,ph,t0,t1,3);
 
     // ---- time along the bottom. Four ticks at most: on a phone this is about
     //      340 px wide, and five m:ss labels start colliding.
@@ -614,7 +604,7 @@ export const Review = {
     ctx.globalAlpha=.45; ctx.strokeStyle=K.foam; ctx.lineWidth=1;
     ctx.strokeRect(xa+0.5,0.5,Math.max(xb-xa-1,1),h-1);
     ctx.globalAlpha=1;
-    this.drawMarks(ctx,w,h,t0,t1,3);
+    this.veil(ctx,w,h,t0,t1);
     this.playMark(ctx,w,h,(this.det.play-t0)/(t1-t0)*w,false);
   },
 
@@ -654,7 +644,7 @@ export const Review = {
       ctx.strokeStyle=K.you; ctx.lineWidth=1.9;
       this.poly(ctx,w,h,t0,t1,'s',pad);
     }
-    this.drawMarks(ctx,w,h,t0,t1,7);
+    this.veil(ctx,w,h,t0,t1);
     this.playMark(ctx,w,h,(this.det.play-t0)/(t1-t0)*w,true);
   },
 
@@ -679,18 +669,27 @@ export const Review = {
     ctx.globalAlpha = 1;
   },
 
-  drawMarks(ctx,w,h,t0,t1,size){
-    const K=this.ink(), labels=(this.session && this.session.labels) || [];
-    ctx.strokeStyle=K.foam; ctx.fillStyle=K.foam;
-    labels.forEach(l=>{
-      const x=(l.tSec-t0)/(t1-t0)*w;
-      if(x<-2 || x>w+2) return;
-      ctx.globalAlpha=.42; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
-      ctx.globalAlpha=.9;
-      ctx.fillRect(x-size/2, 0, size, size);
-    });
-    ctx.globalAlpha=1;
+  /** Everything outside the usable stretch, veiled. This is the whole point of
+      the screen: the first minute and the last are someone handling a phone,
+      and they are worth more than the rest of the session put together at
+      throwing an analysis off. */
+  veil(ctx,w,h,t0,t1){
+    const t = this.trim;
+    if(!t) return;
+    const K = this.ink();
+    const xOf = s => (s - t0)/(t1 - t0)*w;
+    ctx.fillStyle = K.abyss; ctx.globalAlpha = .62;
+    const a = xOf(t.fromSec), b = xOf(t.toSec);
+    if(a > 0) ctx.fillRect(0, 0, Math.min(a, w), h);
+    if(b < w) ctx.fillRect(Math.max(b, 0), 0, w - Math.max(b, 0), h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = K.pace; ctx.lineWidth = 1.5; ctx.globalAlpha = .8;
+    ctx.beginPath();
+    for(const x of [a, b]){
+      if(x < -1 || x > w + 1) continue;
+      ctx.moveTo(Math.round(x)+0.5, 0); ctx.lineTo(Math.round(x)+0.5, h);
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
   },
 
   /** the pending label position: a pin, not a cursor, so it reads as "here" */
@@ -715,18 +714,52 @@ export const Review = {
       const r = canvas.getBoundingClientRect();
       return {x:e.clientX-r.left, w:r.width};
     };
+    // Live pointers, by id. One is a drag; two are a pinch. iOS delivers both
+    // through the same pointer events, so the two gestures share this map
+    // rather than fighting over a touch handler.
+    const live = new Map();
+    const spread = () => {
+      const p = [...live.values()];
+      return {gap: Math.abs(p[0].x - p[1].x), mid: (p[0].x + p[1].x)/2};
+    };
+
     canvas.addEventListener('pointerdown', e=>{
       canvas.setPointerCapture(e.pointerId);
       const p = at(e);
+      live.set(e.pointerId, p);
+      if(live.size === 2 && which === 'fine'){
+        const sp = spread();
+        this.det.drag = null;
+        this.det.pinch = {gap: Math.max(sp.gap, 1), span: this.det.span,
+                          anchor: this.timeAtX(sp.mid, p.w)};
+        e.preventDefault();
+        return;
+      }
       const win = which==='over' ? {t0:0,t1:Math.max(this.det.dur,1),centred:false} : this.fineWindow();
-      this.det.drag = {which, x0:p.x, play0:this.det.play, win, moved:0};
+      this.det.drag = {which, x0:p.x, play0:this.det.play, win};
       if(!win.centred) this.setPlay(win.t0 + (win.t1-win.t0)*(p.x/p.w));
       e.preventDefault();
     });
+
     canvas.addEventListener('pointermove', e=>{
-      const d = this.det.drag; if(!d || d.which!==which) return;
+      if(!live.has(e.pointerId)) return;
       const p = at(e);
-      d.moved = Math.max(d.moved, Math.abs(p.x-d.x0));
+      live.set(e.pointerId, p);
+
+      const z = this.det.pinch;
+      if(z && live.size === 2){
+        const sp = spread();
+        // Fingers apart zooms in, so the visible width shrinks by the ratio.
+        this.det.span = clamp(z.span * z.gap/Math.max(sp.gap,1), 4, Math.max(this.det.dur,1));
+        // and the moment between the fingers stays between the fingers
+        const k = sp.mid/p.w;
+        this.setPlay(z.anchor + (0.5 - k)*this.det.span);
+        this.redraw();
+        e.preventDefault();
+        return;
+      }
+
+      const d = this.det.drag; if(!d || d.which!==which) return;
       if(d.win.centred){
         // drag the strip, not the playhead: the moment you are aiming at
         // is never the pixel your thumb is covering
@@ -736,15 +769,21 @@ export const Review = {
       }
       e.preventDefault();
     });
+
     const done = e=>{
-      if(this.det.drag && this.det.drag.which===which) this.det.drag=null;
+      live.delete(e.pointerId);
+      if(live.size < 2) this.det.pinch = null;
+      // Lifting one finger of a pinch must not become a drag from wherever the
+      // other one happens to be sitting.
+      if(live.size === 0 && this.det.drag && this.det.drag.which===which) this.det.drag=null;
       try{ canvas.releasePointerCapture(e.pointerId); }catch(err){}
     };
     canvas.addEventListener('pointerup', done);
     canvas.addEventListener('pointercancel', done);
 
     // The lanes are canvases, so a keyboard has nothing to grab. The fine lane
-    // carries role=slider and takes the usual slider keys instead.
+    // carries role=slider and takes the usual slider keys; + and - stand in for
+    // the pinch, which was a row of width buttons before.
     if(which === 'fine') canvas.addEventListener('keydown', e=>{
       const page = Math.max(this.det.span/2, 5);
       let t = null;
@@ -754,10 +793,18 @@ export const Review = {
       else if(e.key === 'PageUp')   t = this.det.play + page;
       else if(e.key === 'Home')     t = 0;
       else if(e.key === 'End')      t = this.det.dur;
+      else if(e.key === '+' || e.key === '=' ){ e.preventDefault(); this.zoomBy(0.5, this.det.play); return; }
+      else if(e.key === '-' || e.key === '_' ){ e.preventDefault(); this.zoomBy(2.0, this.det.play); return; }
       if(t === null) return;
       e.preventDefault();
       this.setPlay(t);
     });
+  },
+
+  /** x within the fine lane -> the moment it is showing */
+  timeAtX(x, w){
+    const win = this.fineWindow();
+    return win.t0 + (win.t1 - win.t0)*(x/w);
   },
 
   setPlay(t){
@@ -765,119 +812,86 @@ export const Review = {
     if(this.screen==='detail'){ this.drawOverview(); this.drawFine(); this.readout(); }
   },
 
-  nudge(d){ this.setPlay(this.det.play + d); },
-
-  setSpan(v){ this.setSpanSilent(v); this.paintSpans(); this.redraw(); },
-
-  setSpanSilent(v){
-    this.det.spanChoice = v;
-    this.det.span = v>0 ? v : Math.max(this.det.dur,1);
-  },
-
-  paintSpans(){
-    const d=this._dom;
-    [].forEach.call(d.spans.querySelectorAll('button'), b=>{
-      b.setAttribute('aria-pressed', String(parseFloat(b.dataset.span) === this.det.spanChoice));
-    });
-  },
-
-  paintKinds(){
-    const d=this._dom;
-    [].forEach.call(d.kinds.querySelectorAll('button'), b=>{
-      b.setAttribute('aria-pressed', String(b.dataset.kind === this.det.kind));
-    });
-  },
-
+  /** The lane is a slider to a screen reader, and the only place the current
+      position is still written down: the readout row that used to sit under it
+      said "At 3:20" beside a graph with a time axis on it. */
   readout(){
-    const d=this._dom, t=this.det.play, i=this.idxAt(t);
-    d.vAt.textContent = this.clock(t);
-    if(i<0){ d.vSig.textContent='—'; d.vRate.textContent='—'; }
-    else{
-      const s=this.sig.s[i];
-      d.vSig.textContent = (s<0?'−':'') + Math.abs(s).toFixed(2);
-      const b=this.sig.b[i];
-      d.vRate.textContent = b>0 ? b.toFixed(1) : '—';
-    }
-    d.add.textContent = 'Add label at ' + this.clock(t);
+    const d = this._dom, t = this.det.play;
     d.fine.setAttribute('aria-valuemax',  String(Math.round(this.det.dur)));
     d.fine.setAttribute('aria-valuenow',  String(Math.round(t)));
     d.fine.setAttribute('aria-valuetext', this.clock(t));
   },
 
-  /* ---------- labels ---------- */
+  /** Zoom, as a factor on the visible width. Pinch calls this; so do + and −. */
+  zoomBy(f, anchorT){
+    const dur = Math.max(this.det.dur, 1);
+    const before = this.det.span;
+    // 4 s is about two breaths at a fast rate and is as far in as the 10 Hz
+    // signal has anything to show; the whole recording is as far out as there is.
+    this.det.span = clamp(before*f, 4, dur);
+    // Keep the anchor where the fingers are: the moment under the midpoint of a
+    // pinch must not slide out from under it.
+    if(anchorT != null){
+      const k = (anchorT - (this.det.play - before/2))/before;
+      this.setPlay(anchorT - (k - 0.5)*this.det.span);
+    }
+    this.redraw();
+  },
 
-  addLabel(){
+  /* ---------- the trim ----------
+     One interval: where the usable part of a recording starts and stops. It
+     replaced nine label kinds, a free-text note and a list, because the only
+     thing anyone ever wanted to record about a session was "I had lain down by
+     here" and "I sat up after here" — everything before and after is handling
+     the phone, and it throws an analysis off more than the rest of the session
+     put together. */
+
+  markTrim(end){
     if(!this.session) return;
-    const d=this._dom;
-    if(!this.det.kind) this.det.kind = this.KINDS[0][0];
-    const label = {
-      tSec: Math.round(this.det.play*1000)/1000,   // 3 dp, matching the export rounding
-      kind: this.det.kind,
-      note: (d.note.value||'').trim().slice(0,140)
-    };
-    this.session.labels = (this.session.labels||[]).concat([label]);
-    this.session.labels.sort((a,b)=>a.tSec-b.tSec);
-    d.note.value = '';
-    this.renderLabels();
-    this.drawOverview(); this.drawFine();
+    const t = Math.round(this.det.play*1000)/1000;
+    const cur = this.trim || {fromSec:0, toSec:this.det.dur};
+    let from = end === 'from' ? t : cur.fromSec;
+    let to   = end === 'to'   ? t : cur.toSec;
+    // Marking a start past the end (or the other way) is a correction, not a
+    // mistake to refuse: take the new mark and push the other one out of its way.
+    if(end === 'from' && to <= from) to = this.det.dur;
+    if(end === 'to'   && from >= to) from = 0;
+    this.trim = {fromSec: from, toSec: to};
+    this.paintTrim();
+    this.redraw();
     this.persist();
   },
 
-  removeLabel(label){
+  clearTrim(){
     if(!this.session) return;
-    const i = (this.session.labels||[]).indexOf(label);
-    if(i<0) return;
-    this.session.labels.splice(i,1);
-    this.renderLabels();
-    this.drawOverview(); this.drawFine();
+    this.trim = null;
+    this.paintTrim();
+    this.redraw();
     this.persist();
   },
 
-  renderLabels(){
-    const d=this._dom, list=(this.session && this.session.labels)||[];
-    d.labels.textContent='';
-    d.labelsNone.classList.toggle('hidden', list.length>0);
-    const name = k => { const f=this.KINDS.filter(x=>x[0]===k)[0]; return f?f[1]:k; };
-    list.forEach(l=>{
-      const row=this.h('div','lab');
-      const go=this.h('button','lab-go'); go.type='button';
-      go.appendChild(this.h('span','lab-t', this.clock(l.tSec)));
-      const txt=this.h('span','lab-txt');
-      txt.appendChild(this.h('span','lab-kind', name(l.kind)));
-      if(l.note) txt.appendChild(this.h('span','lab-note', l.note));
-      go.appendChild(txt);
-      go.addEventListener('click', ()=>this.setPlay(l.tSec));
-      const del=this.h('button','lab-del','Remove'); del.type='button';
-      del.setAttribute('aria-label','Remove the '+name(l.kind)+' label at '+this.clock(l.tSec));
-      del.addEventListener('click', ()=>this.removeLabel(l));
-      row.appendChild(go); row.appendChild(del);
-      d.labels.appendChild(row);
-    });
+  paintTrim(){
+    const d = this._dom, t = this.trim;
+    const whole = !t || (t.fromSec <= 0 && t.toSec >= this.det.dur - 0.05);
+    d.trimState.textContent = whole
+      ? 'All of it is marked usable.'
+      : 'Usable: ' + this.clock(t.fromSec) + ' to ' + this.clock(t.toSec) +
+        ' of ' + this.clock(this.det.dur);
+    d.trimClear.classList.toggle('hidden', whole);
   },
 
-  /** Labels are metadata, so write only metadata.
-      This used to call Store.put(this.session), which repacks and rewrites the
-      whole record — and the session object on this screen is fetched without
-      its motion channel, because materialising tens of thousands of rows to
-      draw a sparkline is not worth the pause. So adding a label overwrote every
-      raw sample of that recording with nothing, on disk, permanently. Three of
-      the four recordings in this repository lost their raw motion that way, and
-      it went unnoticed because the one action that destroys a recording is the
-      one taken to make it more useful.
-      Store.setLabels touches the meta row and nothing else. */
+  /** Metadata only — it never touches the samples, so marking a recording can
+      never cost you one. This screen holds a session fetched without its motion
+      channel, and writing that object back is what silently destroyed the raw
+      signal of three recordings. */
   persist(){
     if(typeof Store === 'undefined' || Store.available === false || !this.session) return;
     if(!this.session.id) return;
-    Store.setLabels(this.session.id, this.session.labels || []).then(saved=>{
-      if(saved === null) this.labelTrouble('The store did not have that recording');
-    }).catch(err=>{
-      this.labelTrouble((err && err.name) || 'The store refused the write');
+    this.session.trim = this.trim;
+    Store.setTrim(this.session.id, this.trim).catch(err=>{
+      notice('Not kept', ((err && err.name) || 'The store refused the write') +
+        '. The mark is on screen but will be gone when you leave this recording.', 6000);
     });
-  },
-
-  labelTrouble(why){
-    notice('Label not kept', why +
-      '. The label is on screen but will be gone when you leave this recording. Export it now to keep it.', 7000);
   },
 
   /* ---------- delete + export ---------- */

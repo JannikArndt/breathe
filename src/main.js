@@ -15,6 +15,11 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.12.0', date:'2026-08-31', notes:[
+    'Opening a recording is now about one thing: marking where the usable part starts and stops. Two buttons, and everything outside the marks is veiled on both graphs.',
+    'Gone from that screen: the nine categories, the note field, the list of labels, the row of numbers under the graph and the row of zoom buttons.',
+    'Pinch the lower graph to zoom. Delete has moved away from Export.'
+  ]},
   {v:'0.11.0', date:'2026-08-31', notes:[
     'The sound keeps opening up below six breaths a minute, all the way to one. It used to reach its fullest at six and stop — on a seven-minute session that went from 6.2 down to 2.5 a minute, it stopped responding ninety seconds in and stayed put for the rest.',
     'Getting there is rewarded a little less than before if you settle around six a minute, and a lot more if you keep going. That trade is deliberate.',

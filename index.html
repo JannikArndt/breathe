@@ -17,7 +17,7 @@
 <div id="app">
   <header>
     <h1 class="wordmark">breathe</h1>
-    <span class="depth" id="statusTag">standby</span>
+    <span class="depth" id="statusTag" data-t="tag.standby">standby</span>
   </header>
 
   <div class="stage">
@@ -26,25 +26,27 @@
       <canvas id="waves" aria-hidden="true"></canvas>
 
       <ul class="steps">
-        <li>Lie on your back.</li>
-        <li>Phone display-up on your belly, at the navel.</li>
-        <li>Sound on, notifications off. Headphones work best.</li>
-        <li>Breathe, and listen to the waves.</li>
+        <li data-t="step.back">Lie on your back.</li>
+        <li data-t="step.phone">Phone display-up on your belly, at the navel.</li>
+        <li data-t="step.sound">Sound on, notifications off. Headphones work best.</li>
+        <li data-t="step.breathe">Breathe, and listen to the waves.</li>
       </ul>
 
       <div class="hear">
-        <button type="button" class="link" id="hearBtn">Hear the waves</button>
+        <button type="button" class="link" id="hearBtn" data-t="home.hear">Hear the waves</button>
       </div>
 
-      <p class="fineprint">The sound follows your belly, and runs until you end it.<br>
-      Motion never leaves the phone. Sessions are kept here and go nowhere unless
-      you export them. A relaxation tool, not a medical device.</p>
+      <p class="fineprint">
+        <span data-t="home.fine">The sound follows your belly, and runs until you end it.</span><br>
+        <span data-t="home.fine2">Motion never leaves the phone. Sessions are kept here and go
+        nowhere unless you export them. A relaxation tool, not a medical device.</span>
+      </p>
     </div>
 
     <!-- live dial -->
     <canvas id="dial" class="hidden"></canvas>
     <div class="center-read hidden" id="centerRead">
-      <p class="cue" id="cue">Breathe</p>
+      <p class="cue" id="cue" data-t="cue.breathe">Breathe</p>
       <p class="sub" id="sub"></p>
     </div>
   </div>
@@ -60,17 +62,17 @@
   <div class="nerd hidden" id="nerd" aria-live="off"></div>
 
   <div class="readout hidden" id="readout">
-    <div class="cell"><div class="k">Your rate</div><div class="v"><span id="vRate">—</span><small>/min</small></div></div>
-    <div class="cell"><div class="k">In / out</div><div class="v" id="vRatio">—</div></div>
-    <div class="cell hidden" id="cellHr"><div class="k">Heart</div><div class="v"><span id="vHr">—</span><small class="hr-unit" id="vHrUnit">/min</small></div></div>
+    <div class="cell"><div class="k" data-t="read.rate">Your rate</div><div class="v"><span id="vRate">—</span><small>/min</small></div></div>
+    <div class="cell"><div class="k" data-t="read.ratio">In / out</div><div class="v" id="vRatio">—</div></div>
+    <div class="cell hidden" id="cellHr"><div class="k" data-t="read.heart">Heart</div><div class="v"><span id="vHr">—</span><small class="hr-unit" id="vHrUnit">/min</small></div></div>
   </div>
 
   <div class="bar">
-    <button id="mainBtn" class="primary">Start</button>
+    <button id="mainBtn" class="primary" data-t="btn.start">Start</button>
   </div>
   <div class="subbar" id="homeSub">
-    <button class="link" id="recBtn">Recordings</button>
-    <button class="link" id="panelBtn">Adjust</button>
+    <button class="link" id="recBtn" data-t="nav.recordings">Recordings</button>
+    <button class="link" id="panelBtn" data-t="nav.adjust">Adjust</button>
   </div>
   <div class="buildline" id="buildLine">
     <button class="build" id="buildBtn" aria-label="Version and changes"></button>
@@ -80,15 +82,15 @@
 <!-- changes -->
 <div class="panel" id="log" role="dialog" aria-label="Changes">
   <header class="sheet-head">
-    <button class="back" id="closeLog">Back</button>
-    <h2>Changes</h2>
+    <button class="back" id="closeLog" data-t="nav.back">Back</button>
+    <h2 data-t="log.title">Changes</h2>
   </header>
 
   <div class="row">
-    <label>Get the latest version
+    <label><span data-t="log.get">Get the latest version</span>
       <span class="hint" id="reloadHint">fetches the page again, past the cache</span>
     </label>
-    <button class="ghost rowbtn" id="reloadBtn">Reload</button>
+    <button class="ghost rowbtn" id="reloadBtn" data-t="log.btn.reload">Reload</button>
   </div>
 
   <div id="logList"></div>
@@ -97,159 +99,164 @@
 <!-- settings -->
 <div class="panel" id="panel" role="dialog" aria-label="Settings">
   <header class="sheet-head">
-    <button class="back" id="closePanel">Back</button>
-    <h2>Adjust</h2>
+    <button class="back" id="closePanel" data-t="nav.back">Back</button>
+    <h2 data-t="adj.title">Adjust</h2>
   </header>
 
   <div class="row">
-    <label for="vol">Volume</label>
+    <label for="vol" data-t="adj.volume">Volume</label>
     <input type="range" id="vol" min="0" max="100" value="55">
   </div>
 
   <div class="row">
-    <label for="sens">Sensitivity
-      <span class="hint">how readily it decides you are breathing</span>
+    <label for="sens"><span data-t="adj.sens">Sensitivity</span>
+      <span class="hint" data-t="adj.sens.hint">how readily it decides you are breathing</span>
     </label>
     <input type="range" id="sens" min="0" max="100" value="50" aria-label="Sensitivity">
   </div>
 
-  <h3 class="panel-sub">Sound</h3>
+  <div class="row">
+    <label data-t="adj.lang">Language</label>
+    <div class="seg" id="langPick" role="group" data-t-aria="adj.lang" aria-label="Language"></div>
+  </div>
+
+  <h3 class="panel-sub" data-t="adj.sound">Sound</h3>
 
   <div class="row">
-    <label for="mSwell">Swell
-      <span class="hint">the wave gathering as you draw in</span>
+    <label for="mSwell"><span data-t="adj.swell">Swell</span>
+      <span class="hint" data-t="adj.swell.hint">the wave gathering as you draw in</span>
     </label>
     <input type="range" id="mSwell" min="0" max="150" value="100" aria-label="Swell">
   </div>
 
   <div class="row">
-    <label for="mBreak">Break
-      <span class="hint">the crest, at the top of each inhale</span>
+    <label for="mBreak"><span data-t="adj.break">Break</span>
+      <span class="hint" data-t="adj.break.hint">the crest, at the top of each inhale</span>
     </label>
     <input type="range" id="mBreak" min="0" max="150" value="100" aria-label="Break">
   </div>
 
   <div class="row">
-    <label for="mFoam">Foam
-      <span class="hint">hiss draining through the exhale</span>
+    <label for="mFoam"><span data-t="adj.foam">Foam</span>
+      <span class="hint" data-t="adj.foam.hint">hiss draining through the exhale</span>
     </label>
     <input type="range" id="mFoam" min="0" max="150" value="100" aria-label="Foam">
   </div>
 
   <div class="row">
-    <label for="mSpray">Spray
-      <span class="hint">a thin band drifting across the field</span>
+    <label for="mSpray"><span data-t="adj.spray">Spray</span>
+      <span class="hint" data-t="adj.spray.hint">a thin band drifting across the field</span>
     </label>
     <input type="range" id="mSpray" min="0" max="150" value="100" aria-label="Spray">
   </div>
 
   <div class="row">
-    <label for="mUnder">Undertow
-      <span class="hint">the low drag at the bottom of the breath</span>
+    <label for="mUnder"><span data-t="adj.under">Undertow</span>
+      <span class="hint" data-t="adj.under.hint">the low drag at the bottom of the breath</span>
     </label>
     <input type="range" id="mUnder" min="0" max="150" value="100" aria-label="Undertow">
   </div>
 
   <div class="row">
-    <label for="mBright">Brightness
-      <span class="hint">dark and near, or open and airy</span>
+    <label for="mBright"><span data-t="adj.bright">Brightness</span>
+      <span class="hint" data-t="adj.bright.hint">dark and near, or open and airy</span>
     </label>
     <input type="range" id="mBright" min="0" max="100" value="50" aria-label="Brightness">
   </div>
 
   <div class="row">
-    <label for="mSpace">Space
-      <span class="hint">narrow and close, or wide and open</span>
+    <label for="mSpace"><span data-t="adj.space">Space</span>
+      <span class="hint" data-t="adj.space.hint">narrow and close, or wide and open</span>
     </label>
     <input type="range" id="mSpace" min="0" max="100" value="50" aria-label="Space">
   </div>
 
   <div class="row">
-    <label>Sound settings
-      <span class="hint">they are kept on this phone between sessions</span>
+    <label><span data-t="adj.reset">Sound settings</span>
+      <span class="hint" data-t="adj.reset.hint">they are kept on this phone between sessions</span>
     </label>
-    <button class="ghost rowbtn" id="resetMixBtn">Reset</button>
+    <button class="ghost rowbtn" id="resetMixBtn" data-t="adj.reset.btn">Reset</button>
   </div>
 
-  <h3 class="panel-sub">Try
-    <span class="sub-note">off by default, and not sure of themselves yet</span>
+  <h3 class="panel-sub"><span data-t="adj.try">Try</span>
+    <span class="sub-note" data-t="adj.try.note">off by default, and not sure of themselves yet</span>
   </h3>
 
   <div class="row">
-    <label>Show what it hears
-      <span class="hint">shades the trace where it reads you as holding</span>
+    <label><span data-t="adj.heard">Show what it hears</span>
+      <span class="hint" data-t="adj.heard.hint">shades the trace where it reads you as holding</span>
     </label>
     <button class="toggle" id="tglHeard" role="switch" aria-checked="false" aria-label="Show what it hears"></button>
   </div>
 
   <div class="row">
-    <label>Dim the screen
-      <span class="hint">fades the display while you breathe; a tap brings it back</span>
+    <label><span data-t="adj.dim">Dim the screen</span>
+      <span class="hint" data-t="adj.dim.hint">fades the display while you breathe; a tap brings it back</span>
     </label>
     <button class="toggle" id="tglDim" role="switch" aria-checked="false" aria-label="Dim the screen"></button>
   </div>
 
   <div class="row">
-    <label>Show the numbers
-      <span class="hint">what the sensor is giving it, live, under the trace</span>
+    <label><span data-t="adj.nerd">Show the numbers</span>
+      <span class="hint" data-t="adj.nerd.hint">what the sensor is giving it, live, under the trace</span>
     </label>
     <button class="toggle" id="tglNerd" role="switch" aria-checked="false" aria-label="Show the numbers"></button>
   </div>
 
   <div class="row">
-    <label>Crest follows depth
-      <span class="hint">the wave breaks harder after a deeper breath, not a longer one</span>
+    <label><span data-t="adj.depth">Crest follows depth</span>
+      <span class="hint" data-t="adj.depth.hint">the wave breaks harder after a deeper breath, not a longer one</span>
     </label>
     <button class="toggle" id="tglDepth" role="switch" aria-checked="false" aria-label="Crest follows depth"></button>
   </div>
 
-  <h3 class="panel-sub">Sensor</h3>
+  <h3 class="panel-sub" data-t="adj.sensor">Sensor</h3>
 
   <div class="row">
-    <label>Flip direction
-      <span class="hint">use if sound falls when you breathe in</span>
+    <label><span data-t="adj.flip">Flip direction</span>
+      <span class="hint" data-t="adj.flip.hint">use if sound falls when you breathe in</span>
     </label>
     <button class="toggle" id="tglInvert" role="switch" aria-checked="false" aria-label="Flip direction"></button>
   </div>
 
   <div class="row">
-    <label>Heart rate
-      <span class="hint">experimental: often finds nothing, and says so</span>
+    <label><span data-t="adj.pulse">Heart rate</span>
+      <span class="hint" data-t="adj.pulse.hint">experimental: often finds nothing, and says so</span>
     </label>
     <button class="toggle" id="tglPulse" role="switch" aria-checked="false" aria-label="Heart rate"></button>
   </div>
 
   <div class="row">
-    <label>Demo mode
-      <span class="hint">simulated breathing, no sensor needed</span>
+    <label><span data-t="adj.demo">Demo mode</span>
+      <span class="hint" data-t="adj.demo.hint">simulated breathing, no sensor needed</span>
     </label>
     <button class="toggle" id="tglDemo" role="switch" aria-checked="false" aria-label="Demo mode"></button>
   </div>
 
   <div class="row">
-    <label>Storage
+    <label><span data-t="adj.storage">Storage</span>
       <span class="hint" id="recCount">checking storage</span>
       <span class="meter" id="storeMeter" aria-hidden="true"><i id="storeMeterFill"></i></span>
     </label>
-    <button class="ghost rowbtn" id="openRecordings">Open</button>
+    <button class="ghost rowbtn" id="openRecordings" data-t="adj.storage.open">Open</button>
   </div>
 
   <div class="row">
-    <label>Delete every recording
-      <span class="hint">cannot be undone</span>
+    <label><span data-t="adj.clear">Delete every recording</span>
+      <span class="hint" data-t="adj.clear.hint">cannot be undone</span>
     </label>
-    <button class="ghost rowbtn danger" id="clearRecBtn">Delete all</button>
+    <button class="ghost rowbtn danger" id="clearRecBtn" data-t="adj.clear.btn">Delete all</button>
   </div>
 
   <div class="bar hidden" id="recalBar">
-    <button id="recalBtn">Find my breathing again</button>
+    <button id="recalBtn" data-t="adj.refind">Find my breathing again</button>
   </div>
 </div>
 
 <div class="review hidden" id="review" role="dialog" aria-modal="true" aria-labelledby="revTitle">
 
   <header class="rev-head">
-    <button class="back" id="revBack">Back</button>
+    <button class="back" id="revBack" data-t="nav.back">Back</button>
     <h2 class="rev-title" id="revTitle" tabindex="-1">This session</h2>
     <span class="depth rev-tag" id="revTag"></span>
   </header>
@@ -259,7 +266,7 @@
     <!-- ---------- 1. summary: where End lands ---------- -->
     <section class="rev-screen hidden" id="revSummary">
       <canvas class="spark" id="revSpark"></canvas>
-      <p class="rev-cap">The line is your breathing rate. The shading behind it is
+      <p class="rev-cap" data-t="rev.cap">The line is your breathing rate. The shading behind it is
          how deep each breath was.</p>
       <p class="rev-flag hidden" id="revSumFlag"></p>
       <div class="readout rev-grid" id="revSumGrid"></div>
@@ -285,18 +292,18 @@
       </div>
 
       <div class="trimrow">
-        <button type="button" class="trim-btn" id="revTrimFrom">Starts here</button>
-        <button type="button" class="trim-btn" id="revTrimTo">Ends here</button>
+        <button type="button" class="trim-btn" id="revTrimFrom" data-t="rev.trim.from">Starts here</button>
+        <button type="button" class="trim-btn" id="revTrimTo" data-t="rev.trim.to">Ends here</button>
       </div>
 
       <p class="trim-state" id="revTrimState"></p>
 
       <div class="trim-clear">
-        <button type="button" class="ghost rowbtn" id="revTrimClear">Use all of it</button>
+        <button type="button" class="ghost rowbtn" id="revTrimClear" data-t="rev.trim.clear">Use all of it</button>
       </div>
 
       <div class="rev-danger">
-        <button type="button" class="ghost rowbtn danger" id="revDetDelete" data-armed="0">Delete this recording</button>
+        <button type="button" class="ghost rowbtn danger" id="revDetDelete" data-armed="0" data-t="rev.delete">Delete this recording</button>
       </div>
     </section>
 
@@ -304,14 +311,14 @@
 
   <div class="rev-foot">
     <div class="bar hidden" id="revSumBar">
-      <button id="revLabelBtn">Label</button>
-      <button id="revSumExport">Export</button>
+      <button id="revLabelBtn" data-t="rev.label">Label</button>
+      <button id="revSumExport" data-t="rev.export">Export</button>
     </div>
     <div class="bar hidden" id="revListBar">
-      <button id="revExportAll">Export all</button>
+      <button id="revExportAll" data-t="rev.exportall">Export all</button>
     </div>
     <div class="bar hidden" id="revDetBar">
-      <button id="revDetExport">Export</button>
+      <button id="revDetExport" data-t="rev.export">Export</button>
     </div>
   </div>
 

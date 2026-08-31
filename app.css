@@ -309,6 +309,20 @@ body.dimmed .dim-catch{
 
 .panel .row label{min-width:0}
 
+/* A pick-one row: the options sit side by side and the chosen one is filled.
+   Two languages today; it takes a third without changing shape. */
+.seg{
+  display:flex;flex:0 0 auto;gap:2px;
+  border:1px solid rgba(227,237,233,.2);border-radius:2px;overflow:hidden;
+}
+.seg button{
+  flex:0 0 auto;padding:8px 12px;min-height:34px;border:0;border-radius:0;
+  background:transparent;color:var(--mute);
+  font-family:var(--data);font-size:11px;letter-spacing:.06em;
+  text-transform:none;cursor:pointer;
+}
+.seg button[aria-pressed="true"]{background:var(--glass);color:var(--ink)}
+
 /* ---------- recording rows in Adjust ---------- */
 
 /* Buttons living inside a .row rather than a .bar. The base rule gives

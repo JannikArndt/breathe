@@ -1,4 +1,5 @@
 import { $, clamp, lerp, lp, fin, TAU, notice, fitCanvas, palette, alpha } from './util.js';
+import { LANGS, pickLang, setLang, getLang, t, n as nfmt, apply as applyLang } from './i18n.js';
 import { Audio } from './audio.js';
 import { Breath } from './breath.js';
 import { Pulse } from './pulse.js';
@@ -15,6 +16,10 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.14.0', date:'2026-08-31', notes:[
+    'The app speaks German. It picks your phone\u2019s language on the first run, and there is a switch at the top of Adjust.',
+    'These release notes stay in English: they grow every time something changes, and a translation of them would be out of date within a day.'
+  ]},
   {v:'0.13.0', date:'2026-08-31', notes:[
     'The home screen has waves rolling in from the top of the phone, which is where the sea is when you are lying down with this on your belly.',
     'Hear the waves plays the sound before you lie down, so you can set the volume with your eyes open.',
@@ -169,13 +174,13 @@ export const Updater = {
     if(this.state === 'ready') return;              // a later attempt already won
     this.state = 'idle'; this.pending = false; this.paint();
     if(UI.state === 'running') return;              // never over a session
-    notice('Update did not finish',
-      'A new version was found but could not be stored. What you are running is unaffected. Try again in a minute.', 6000);
+    notice(t('n.updfail', null, 'Update did not finish'),
+      t('n.updfail.b', null, 'A new version was found but could not be stored. What you are running is unaffected. Try again in a minute.'), 6000);
   },
 
   announce(){
     this.pending = false;
-    notice('A new version is ready', 'Open Changes from the bottom of the home screen to install it.', 8000);
+    notice(t('n.newver', null, 'A new version is ready'), t('n.newver.b', null, 'Open Changes from the bottom of the home screen to install it.'), 8000);
   },
 
   /** The Reload button. Asks the server, then says what it found — including
@@ -194,11 +199,11 @@ export const Updater = {
       .then(()=>{
         if(this.state === 'ready') return;             // arrived() already said so
         this.state = 'idle'; this.paint();
-        notice('Up to date', 'This is the newest version. Nothing to install.', 4000);
+        notice(t('n.uptodate', null, 'Up to date'), t('n.uptodate.b', null, 'This is the newest version. Nothing to install.'), 4000);
       })
       .catch(()=>{
         this.state = 'idle'; this.paint();
-        notice('Could not check', 'No answer from the network. The app keeps working offline.', 5000);
+        notice(t('n.nocheck', null, 'Could not check'), t('n.nocheck.b', null, 'No answer from the network. The app keeps working offline.'), 5000);
       });
   },
 
@@ -213,10 +218,10 @@ export const Updater = {
     const btn = $('reloadBtn'), hint = $('reloadHint');
     if(!btn || !hint) return;
     const say = {
-      unsupported: ['Reload', 'fetches the page again, past the cache'],
-      idle:        ['Check',  'asks whether a newer version exists'],
-      checking:    ['…',      'asking'],
-      ready:       ['Install','a new version is ready to take over']
+      unsupported: [t('log.btn.reload','',null) || 'Reload',   t('log.hint.plain','',null) || 'fetches the page again, past the cache'],
+      idle:        [t('log.btn.check','',null)  || 'Check',    t('log.hint.check','',null) || 'asks whether a newer version exists'],
+      checking:    ['…',                                      t('log.hint.asking','',null) || 'asking'],
+      ready:       [t('log.btn.install','',null)|| 'Install',  t('log.hint.ready','',null) || 'a new version is ready to take over']
     }[this.state];
     btn.textContent = say[0];
     btn.disabled = this.state === 'checking';
@@ -245,7 +250,7 @@ const Log = {
       head.append(v, d);
       if(i === 0){
         const now = document.createElement('span');
-        now.className = 'log-now'; now.textContent = 'running';
+        now.className = 'log-now'; now.textContent = t('log.running', null, 'running');
         head.append(now);
       }
       const ul = document.createElement('ul'); ul.className = 'log-notes';
@@ -377,18 +382,18 @@ async function begin(sensorP, audioP){
   UI.sensorPerm = sensor;
 
   if(!audioOk){
-    notice('No sound', 'This browser blocked audio. Reload the page and tap Begin again.', 0);
+    notice(t('n.nosound', null, 'No sound'), t('n.nosound.b', null, 'This browser blocked audio. Reload the page and tap Start again.'), 0);
     el.main.disabled = false; return;
   }
   if(sensor === 'denied'){
-    notice('Motion declined', 'Reload the page to be asked again. If no prompt appears, clear this site\u2019s data in Safari settings — a past "Don\u2019t Allow" is remembered per site.', 0);
+    notice(t('n.denied', null, 'Motion declined'), t('n.denied.b', null, 'Reload the page to be asked again. If no prompt appears, clear this site\u2019s data in Safari settings — a past "Don\u2019t Allow" is remembered per site.'), 0);
   }else if(sensor === 'unsupported'){
-    notice('No motion sensor', 'This device or browser has no motion sensor. Demo mode under Adjust will still show you how it sounds.', 0);
+    notice(t('n.unsupported', null, 'No motion sensor'), t('n.unsupported.b', null, 'This device or browser has no motion sensor. Demo mode under Adjust will still show you how it sounds.'), 0);
   }else if(sensor.indexOf('error:') === 0){
     const name = sensor.slice(6);
-    notice('Motion request failed', name === 'NotAllowedError'
-      ? 'The browser did not treat that as a direct tap. Reload the page and tap Start as your first action, without scrolling first.'
-      : name + '. Reload and try again, or use Demo mode under Adjust.', 0);
+    notice(t('n.reqfail', null, 'Motion request failed'), name === 'NotAllowedError'
+      ? t('n.reqfail.tap', null, 'The browser did not treat that as a direct tap. Reload the page and tap Start as your first action, without scrolling first.')
+      : t('n.reqfail.b', [name], name + '. Reload and try again, or use Demo mode under Adjust.'), 0);
   }
 
   requestWakeLock();
@@ -414,15 +419,15 @@ async function begin(sensorP, audioP){
   el.intro.classList.add('hidden');
   [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.remove('hidden'));
   el.nerd.classList.toggle('hidden', !Flags.nerd);
-  el.main.textContent = 'End'; el.main.classList.remove('primary'); el.main.disabled = false;
+  el.main.textContent = t('btn.end', null, 'End'); el.main.classList.remove('primary'); el.main.disabled = false;
 
   UI.state = 'running';
   UI.trace = []; UI.held = []; UI.marks = [];
   Dim.arm();
   Breath.invert = $('tglInvert').getAttribute('aria-checked')==='true';
   Breath.begin(performance.now()/1000);
-  el.statusTag.textContent = 'listening';
-  el.cue.textContent = 'Breathe';
+  el.statusTag.textContent = t('tag.listening', null, 'listening');
+  el.cue.textContent = t('cue.breathe', null, 'Breathe');
   el.sub.textContent = '';
 
   Breath.onExhaleStart = (inD)=>{
@@ -448,9 +453,9 @@ async function begin(sensorP, audioP){
   setTimeout(()=>{
     if(UI.state!=='running' || UI.sensorSeen || UI.demo) return;
     if(UI.sensorPerm === 'ok'){
-      notice('Allowed, but silent', 'Motion access was granted and no readings are arriving. Lock and unlock the screen, or reload the page. If this is inside another app, open it in your browser directly.', 0);
+      notice(t('n.silent', null, 'Allowed, but silent'), t('n.silent.b', null, 'Motion access was granted and no readings are arriving. Lock and unlock the screen, or reload the page. If this is inside another app, open it in your browser directly.'), 0);
     }else{
-      notice('Motion not active', 'Permission state: ' + UI.sensorPerm + '. Reload and tap Start first, or switch on Demo mode under Adjust.', 0);
+      notice(t('n.inactive', null, 'Motion not active'), t('n.inactive.b', [UI.sensorPerm], 'Permission state: ' + UI.sensorPerm + '. Reload and tap Start first, or switch on Demo mode under Adjust.'), 0);
     }
   }, 5000);
 
@@ -467,8 +472,8 @@ async function end(){
   if(UI.silentEl){ try{ UI.silentEl.pause(); }catch(e){} UI.silentEl=null; }
   if(UI.wakeLock){ try{ UI.wakeLock.release(); }catch(e){} UI.wakeLock=null; }
   [el.dial, el.centerRead, el.traceWrap, el.readout, el.nerd].forEach(n=>n.classList.add('hidden'));
-  el.main.textContent='Start'; el.main.classList.add('primary');
-  el.statusTag.textContent='standby';
+  el.main.textContent = t('btn.start', null, 'Start'); el.main.classList.add('primary');
+  el.statusTag.textContent = t('tag.standby', null, 'standby');
   UI.sensorSeen=false;
 
   let session = null;
@@ -494,7 +499,7 @@ function toIntro(){
   Waves.start();
   el.recBtn.classList.remove('hidden');
   el.buildLine.classList.remove('hidden');
-  el.statusTag.textContent = 'standby';
+  el.statusTag.textContent = t('tag.standby', null, 'standby');
 }
 
 /** Recording must never disturb a session, so trouble is reported once, after it. */
@@ -502,13 +507,12 @@ function reportSaveTrouble(){
   if(UI.toldSaveTrouble) return;
   if(!Store.available){
     UI.toldSaveTrouble = true;
-    notice('Not recorded', 'This browser will not let breathe store anything, so that session '
-      + 'was not kept. Your breathing was unaffected. Open the page in your browser directly, '
-      + 'or leave private browsing, if you want recordings.', 8000);
+    notice(t('n.notrec', null, 'Not recorded'), t('n.notrec.store', null,
+      'This browser will not let breathe store anything, so that session was not kept. Your breathing was unaffected. Open the page in your browser directly, or leave private browsing, if you want recordings.'), 8000);
   }else if(Recorder.saveError){
     UI.toldSaveTrouble = true;
-    notice('Not recorded', 'That session could not be saved (' + Recorder.saveError
-      + '). Your breathing was unaffected. Try deleting older recordings under Adjust.', 8000);
+    notice(t('n.notrec', null, 'Not recorded'), t('n.notrec.err', [Recorder.saveError],
+      'That session could not be saved (' + Recorder.saveError + '). Your breathing was unaffected. Try deleting older recordings under Adjust.'), 8000);
   }
 }
 
@@ -619,8 +623,8 @@ function loop(now){
     UI.hz = Math.round((Breath.samples - UI.lastSamples)/UI.hzAcc);
     UI.lastSamples = Breath.samples; UI.hzAcc = 0;
     el.statusTag.textContent =
-      'listening' +
-      (UI.demo ? ' \u00b7 demo' : ' \u00b7 ' + UI.hz + ' Hz');
+      t('tag.listening', null, 'listening') +
+      (UI.demo ? ' \u00b7 ' + t('tag.demo', null, 'demo') : ' \u00b7 ' + UI.hz + ' Hz');
   }
 
   // The axis moves now, so a recording that only carried the final one would
@@ -661,9 +665,9 @@ function updateReadout(){
   // stand behind is how the bogus session came to claim 26 breaths a minute.
   const sure = Breath.conf > 0.45;
   const b = sure ? Breath.bpmSmooth : 0;
-  el.vRate.textContent = b ? b.toFixed(1) : '—';
+  el.vRate.textContent = b ? nfmt(b, 1) : '—';
   const i=Breath.inhaleDur, o=Breath.exhaleDur;
-  el.vRatio.textContent = (sure && i>0.4 && o>0.4) ? (i.toFixed(1)+' / '+o.toFixed(1)) : '—';
+  el.vRatio.textContent = (sure && i>0.4 && o>0.4) ? (nfmt(i,1)+' / '+nfmt(o,1)) : '—';
   // What the sensor is actually giving it. Four times a second rather than
   // sixty: these are for reading, and a digit that changes every frame is not
   // readable. Every number here is one a bug report would need.
@@ -717,8 +721,8 @@ function signalHint(){
   // sessions measure 0.3-0.5; too little means the phone is not picking the
   // breath up, too much means it is being handled rather than breathed on.
   el.qualityTxt.textContent = Breath.axisAmp < 0.05
-    ? 'move the phone lower on your belly'
-    : 'lie still for a moment';
+    ? t('hint.lower', null, 'move the phone lower on your belly')
+    : t('hint.still', null, 'lie still for a moment');
   el.qualityTxt.style.color = 'var(--sand)';
 }
 
@@ -817,21 +821,21 @@ export const Preview = {
     Audio.start().then(()=>{
       Audio.setVolume(parseInt($('vol').value, 10)/100);
     }, ()=>{
-      notice('No sound', 'This browser blocked audio. Reload the page and try again.', 6000);
+      notice(t('n.nosound', null, 'No sound'), t('n.nosound.b', null, 'This browser blocked audio. Reload the page and try again.'), 6000);
       this.stop();
     });
     this.on = true;
     this.phase = 0.62;                 // start near the bottom, so it swells at you
     this.last = performance.now();
     this.until = this.last + 45000;    // it stops itself; nobody should have to
-    el.hear.textContent = 'Stop';
+      el.hear.textContent = t('home.hear.stop', null, 'Stop');
     requestAnimationFrame(t => this.frame(t));
   },
 
   stop(keepAudio){
     if(!this.on) return;
     this.on = false;
-    el.hear.textContent = 'Hear the waves';
+    el.hear.textContent = t('home.hear', null, 'Hear the waves');
     if(!keepAudio) Audio.stop(1.2);
   },
 
@@ -958,7 +962,7 @@ $('recalBtn').addEventListener('click', ()=>{
   el.panel.classList.remove('open');
   if(UI.state==='idle') return;
   Breath.begin(performance.now()/1000);
-  notice('Starting over', 'Breathe normally. It finds your breathing again in a few breaths.', 4500);
+  notice(t('n.refind', null, 'Starting over'), t('n.refind.b', null, 'Breathe normally. It finds your breathing again in a few breaths.'), 4500);
 });
 /* ---------- the Adjust panel ----------
    One table, because every control needs the same four things done to it:
@@ -993,6 +997,17 @@ const SLIDERS = [
    Adjust rather than mixed in with the settled controls, because a control the
    app is not sure of should say so. */
 export const Flags = { heard:false, dim:false, nerd:false, depthBreak:false };
+
+/* Pick-one controls. Neither a slider nor a switch, so a third table rather
+   than a hand-wired exception — the point of the tables is that a control
+   cannot be wired to its effect and forgotten by the thing that saves it. */
+const CHOICES = [
+  ['langPick', 'lang', () => pickLang(), LANGS, code => {
+    setLang(code);
+    applyLang();
+    repaintLabels();
+  }],
+];
 
 const TOGGLES = [
   // Demo mode is deliberately absent: it is a way to hear the sound without
@@ -1055,7 +1070,49 @@ function collectSettings(){
   const out = {};
   for(const [id, key] of SLIDERS) out[key] = parseInt($(id).value, 10);
   for(const [id, key] of TOGGLES) out[key] = $(id).getAttribute('aria-checked') === 'true';
+  out.lang = getLang();
   return out;
+}
+
+/** Build the pick-one rows and wire them. */
+function buildChoices(){
+  for(const [id, key, , options, apply] of CHOICES){
+    const host = $(id);
+    host.textContent = '';
+    for(const [code, label] of options){
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.value = code;
+      b.textContent = label;
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', ()=>{
+        apply(code);
+        paintChoice(id);
+        saveSettings();
+      });
+      host.appendChild(b);
+    }
+  }
+}
+
+function paintChoice(id){
+  const row = CHOICES.find(c => c[0] === id);
+  const now = row[2]();
+  for(const b of $(id).querySelectorAll('button'))
+    b.setAttribute('aria-pressed', String(b.dataset.value === now));
+}
+
+/* The labels the script owns rather than the markup: they change with state,
+   so applyLang() cannot reach them. */
+function repaintLabels(){
+  el.main.textContent = t(UI.state === 'idle' ? 'btn.start' : 'btn.end',
+                          null, UI.state === 'idle' ? 'Start' : 'End');
+  el.hear.textContent = t(Preview.on ? 'home.hear.stop' : 'home.hear',
+                          null, Preview.on ? 'Stop' : 'Hear the waves');
+  if(UI.state === 'idle') el.statusTag.textContent = t('tag.standby', null, 'standby');
+  Updater.paint();
+  Review.repaint();
+  Log.built = false;
 }
 
 /* A slider drag fires `input` on every pixel. Writing through each one would
@@ -1102,7 +1159,7 @@ $('tglDemo').addEventListener('click', function(){
   const on = this.getAttribute('aria-checked') !== 'true';
   this.setAttribute('aria-checked', String(on));
   UI.demo = on;
-  if(on) notice('Demo mode','Simulated breathing. Good for checking the sound without lying down.',5000);
+  if(on) notice(t('n.demo', null, 'Demo mode'), t('n.demo.b', null, 'Simulated breathing. Good for checking the sound without lying down.'), 5000);
 });
 
 // The break only sounds at the top of a breath, so moving its slider while
@@ -1121,7 +1178,7 @@ $('mBreak').addEventListener('input', ()=>{
 $('resetMixBtn').addEventListener('click', ()=>{
   for(const [id, key, def] of SLIDERS) if(key !== 'volume' && key !== 'sensitivity') setSlider(id, def);
   saveSettings();
-  notice('Sound reset', 'The seven sound controls are back where they started.', 3500);
+  notice(t('n.soundreset', null, 'Sound reset'), t('n.soundreset.b', null, 'The seven sound controls are back where they started.'), 3500);
 });
 
 /** Restore what was saved. Anything missing keeps the slider's own default,
@@ -1129,6 +1186,13 @@ $('resetMixBtn').addEventListener('click', ()=>{
 function applySettings(p){
   for(const [id, key] of SLIDERS) if(typeof p[key] === 'number') setSlider(id, p[key]);
   for(const [id, key] of TOGGLES) if(typeof p[key] === 'boolean') setToggle(id, p[key]);
+  // Language before anything else that draws text: the phone's own language
+  // when nothing is saved, so a German phone opens in German.
+  setLang(pickLang(p.lang));
+  applyLang();
+  buildChoices();
+  paintChoice('langPick');
+  repaintLabels();
 }
 
 $('notice').addEventListener('click', ()=>$('notice').classList.remove('show'));
@@ -1156,13 +1220,13 @@ $('openRecordings').addEventListener('click', ()=>{
 $('clearRecBtn').addEventListener('click', function(){
   // asks twice rather than using confirm(), which iOS renders badly over the panel
   if(this.getAttribute('data-armed') !== 'true'){
-    this.setAttribute('data-armed','true'); this.textContent = 'Tap again';
-    setTimeout(()=>{ this.setAttribute('data-armed','false'); this.textContent = 'Delete all'; }, 4000);
+    this.setAttribute('data-armed','true'); this.textContent = t('adj.clear.again', null, 'Tap again');
+    setTimeout(()=>{ this.setAttribute('data-armed','false'); this.textContent = t('adj.clear.btn', null, 'Delete all'); }, 4000);
     return;
   }
-  this.setAttribute('data-armed','false'); this.textContent = 'Delete all';
+  this.setAttribute('data-armed','false'); this.textContent = t('adj.clear.btn', null, 'Delete all');
   Store.clear().then(()=>{
-    notice('Recordings deleted', 'Every recording is gone from this phone.', 4000);
+    notice(t('n.deleted', null, 'Recordings deleted'), t('n.deleted.b', null, 'Every recording is gone from this phone.'), 4000);
     Review.refreshCount(); refreshStorageRow();
   });
 });
@@ -1178,5 +1242,5 @@ Updater.start();
 
 // secure-context check up front — requestPermission simply will not fire otherwise
 if(!window.isSecureContext && location.hostname!=='localhost'){
-  notice('Not a secure page','Motion sensors need HTTPS. Open this page over https:// and it will work.',0);
+  notice(t('n.insecure', null, 'Not a secure page'), t('n.insecure.b', null, 'Motion sensors need HTTPS. Open this page over https:// and it will work.'), 0);
 }

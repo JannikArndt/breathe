@@ -36,10 +36,24 @@ export class El {
     this.dataset = {};
     this.style = new Proxy({}, {set:(o,k,v)=>{o[k]=v; return true;}});
     this.listeners = new Map();
-    this.textContent = '';
+    this._text = '';               // this element's own text, not its children's
     this._value = null;            // null until something assigns .value
     this._uid = ++uid;
   }
+  /** Setting textContent replaces everything inside, children included — which
+      is how half this app clears a list before rebuilding it. A stub that let
+      the old children survive would report a screen with three copies of its
+      contents as fine. */
+  get textContent(){
+    let out = this._text;
+    for(const c of this.children) out += c.textContent;
+    return out;
+  }
+  set textContent(v){
+    this.children.length = 0;
+    this._text = v === null || v === undefined ? '' : String(v);
+  }
+
   /** An <input>'s .value starts as its value attribute and detaches from it
       on the first assignment, which is what the app relies on for defaults. */
   get value(){
@@ -105,9 +119,22 @@ export class El {
   scrollTo(){}
   getBoundingClientRect(){ return {width:390, height:220, top:0, left:0, right:390, bottom:220, x:0, y:0}; }
 
-  /** Only the shapes the app actually asks for: a tag name or a .class. */
+  /** The shapes the app actually asks for: a tag name, a .class, an #id, and
+      an [attribute] — the last because the language pass finds its elements
+      that way, and a stub that quietly matched nothing would have made a
+      broken translation look like a working one. */
   matches(sel){
+    sel = sel.trim();
+    if(sel.startsWith('[') && sel.endsWith(']')){
+      const body = sel.slice(1, -1);
+      const eq = body.indexOf('=');
+      if(eq < 0) return this.attrs.has(body);
+      const name = body.slice(0, eq);
+      const want = body.slice(eq+1).replace(/^["']|["']$/g, '');
+      return this.getAttribute(name) === want;
+    }
     if(sel.startsWith('.')) return this.classList.contains(sel.slice(1));
+    if(sel.startsWith('#')) return this.id === sel.slice(1);
     return this.tagName === sel.toUpperCase();
   }
   closest(sel){
@@ -161,8 +188,17 @@ function parse(html){
   const stack = [root];
   const VOID = new Set(['meta','link','br','hr','img','input','source','path','use','circle','rect','area','col','embed','track','wbr']);
   const tagRe = /<(\/)?([a-zA-Z][a-zA-Z0-9-]*)((?:\s+[^>]*?)?)(\/)?>|<!--[\s\S]*?-->/g;
-  let m;
+  let m, textFrom = 0;
+  const take = end => {
+    // The text between two tags belongs to whatever element is open. Collapsed
+    // the way a browser collapses it, so a check can compare against the
+    // sentence as written rather than against the markup's line breaks.
+    const raw = body.slice(textFrom, end).replace(/\s+/g, ' ');
+    if(raw.trim()) stack[stack.length-1]._text += raw;
+  };
   while((m = tagRe.exec(body))){
+    take(m.index);
+    textFrom = m.index + m[0].length;
     if(m[0].startsWith('<!--')) continue;
     const [, close, tag, attrText, selfClose] = m;
     if(close){
@@ -196,7 +232,7 @@ export function installDom(htmlPath){
     visibilityState: 'visible',
     getElementById: id => byId.get(id) || null,
     createElement: tag => new El(tag),
-    createTextNode: t => Object.assign(new El('#text'), {textContent: t}),
+    createTextNode: t => { const n = new El('#text'); n.textContent = t; return n; },
     querySelector: s => body.querySelector(s),
     querySelectorAll: s => body.querySelectorAll(s),
     addEventListener: (t, f) => documentEl.addEventListener(t, f),

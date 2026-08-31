@@ -1,4 +1,5 @@
 import { $, clamp, notice, fitCanvas, palette } from './util.js';
+import { t, n as nfmt } from './i18n.js';
 import { Store } from './store.js';
 
 /* ============================================================
@@ -66,6 +67,16 @@ export const Review = {
     };
     this.wire();
     return d;
+  },
+
+  /** Redraw whatever is on screen in the current language. Only the strings
+      this module writes itself need it; the markup is handled by i18n.apply. */
+  repaint(){
+    if(!this._dom) return;
+    if(this.screen === 'summary'){ this._dom.title.textContent = t('rev.session', null, 'This session'); this.renderSummary(); }
+    else if(this.screen === 'list'){ this._dom.title.textContent = t('rev.recordings', null, 'Recordings'); this.renderList(); }
+    else if(this.screen === 'detail'){ this._dom.title.textContent = t('rev.recording', null, 'Recording'); this.paintTrim(); }
+    this.refreshCount();
   },
 
   /** canvas colours live in :root like every other colour in the app */
@@ -140,7 +151,7 @@ export const Review = {
     const d = this.dom();
     this.session = session || null;
     this.from = 'summary';
-    d.title.textContent = 'This session';
+    d.title.textContent = t('rev.session', null, 'This session');
     // No date or time here. You just finished it, and the phone puts the clock
     // at the top of the screen anyway. The recordings list still shows it,
     // because there it is how you tell one session from another.
@@ -168,7 +179,7 @@ export const Review = {
       c.appendChild(val);
       return c;
     };
-    const bpm = n => (n>0 && isFinite(n)) ? n.toFixed(1) : '—';
+    const bpm = v => (v>0 && isFinite(v)) ? nfmt(v, 1) : '—';
 
     const q = (sum.meanQuality!=null) ? sum.meanQuality : this.meanOf('q');
     // Recordings made before these were summarised fall back to the signal.
@@ -176,31 +187,32 @@ export const Review = {
 
     const g = d.sumGrid;
     g.textContent = '';
-    g.appendChild(cell('Length', this.clock(dur)));
-    g.appendChild(cell('Breaths', (sum.breaths!=null && sum.breaths>0) ? String(sum.breaths) : '—'));
-    g.appendChild(cell('Average rate', bpm(rate.avg), '/min'));
-    g.appendChild(cell('Slowest',      bpm(rate.min), '/min'));
-    g.appendChild(cell('Fastest',      bpm(rate.max), '/min'));
+    const min = t('unit.min', null, '/min');
+    g.appendChild(cell(t('rev.length', null, 'Length'), this.clock(dur)));
+    g.appendChild(cell(t('rev.breaths', null, 'Breaths'), (sum.breaths!=null && sum.breaths>0) ? String(sum.breaths) : '—'));
+    g.appendChild(cell(t('rev.avg', null, 'Average rate'), bpm(rate.avg), min));
+    g.appendChild(cell(t('rev.slowest', null, 'Slowest'), bpm(rate.min), min));
+    g.appendChild(cell(t('rev.fastest', null, 'Fastest'), bpm(rate.max), min));
 
     // Two more measurements, not two more verdicts. In and out are the halves
     // the live readout shows, averaged; held is how much of the session the app
     // read as a pause rather than a stroke, which for slow breathing is most of
     // what distinguishes one session from another.
     const inS = sum.meanInhaleSec, outS = sum.meanExhaleSec;
-    g.appendChild(cell('In / out',
-      (inS > 0 && outS > 0) ? inS.toFixed(1) + ' / ' + outS.toFixed(1) : '—', 's'));
-    g.appendChild(cell('Held still',
+    g.appendChild(cell(t('rev.inout', null, 'In / out'),
+      (inS > 0 && outS > 0) ? nfmt(inS,1) + ' / ' + nfmt(outS,1) : '—', 's'));
+    g.appendChild(cell(t('rev.held', null, 'Held still'),
       (sum.heldFraction != null && this.sig.n) ? Math.round(sum.heldFraction*100) + '%' : '—'));
 
     // Facts about the recording, not about the person. A failed calibration
     // or a noisy signal changes how much the numbers above are worth, so say so.
     const flags = [];
     if(rate.avg === 0)
-      flags.push('This recording never settled into a rhythm the app could read, so no rate is given.');
+      flags.push(t('rev.noflag.rate', null, 'This recording never settled into a rhythm the app could read, so no rate is given.'));
     else if(q > 0 && q < 0.4)
-      flags.push('The signal was noisy for most of this session. The rates above are approximate.');
+      flags.push(t('rev.noflag.q', null, 'The signal was noisy for most of this session. The rates above are approximate.'));
     if(!this.sig.n)
-      flags.push('This recording has no waveform stored, so the trace is empty.');
+      flags.push(t('rev.noflag.sig', null, 'This recording has no waveform stored, so the trace is empty.'));
     d.sumFlag.textContent = flags.join(' ');
     d.sumFlag.classList.toggle('hidden', !flags.length);
   },
@@ -225,7 +237,7 @@ export const Review = {
 
   async showList(){
     const d = this.dom();
-    d.title.textContent = 'Recordings';
+    d.title.textContent = t('rev.recordings', null, 'Recordings');
     d.tag.textContent = '';
     this.from = 'list';
     this.show('list');
@@ -282,9 +294,9 @@ export const Review = {
       const sub = this.h('span','rec-sub');
       const mean = this.metaBpm(m);
       sub.textContent = [
-        mean>0 ? mean.toFixed(1)+' /min' : 'rate unknown',
+        mean>0 ? nfmt(mean,1)+' '+t('unit.min', null, '/min') : t('rev.rateunknown', null, 'rate unknown'),
         this.bytes(this.metaBytes(m)),
-        (m.labels && m.labels.length) ? m.labels.length + (m.labels.length===1?' label':' labels') : 'no labels'
+        (m.trim ? this.clock(m.trim.toSec - m.trim.fromSec) + ' ' + t('rev.marked', null, 'marked') : t('rev.nolabels', null, 'no marks'))
       ].join(' · ');
       open.appendChild(top); open.appendChild(sub);
       open.addEventListener('click', ()=>this.showDetail(m.id, 'list'));
@@ -355,7 +367,7 @@ export const Review = {
     // Two breaths at the slowest rate the app follows is a minute and a half.
     this.det.span = this.det.dur > 180 ? 90 : Math.max(this.det.dur, 1);
 
-    d.title.textContent = 'Recording';
+    d.title.textContent = t('rev.recording', null, 'Recording');
     d.tag.textContent = this.when(session.startedAt);
     this.show('detail');
     this.paintTrim();
@@ -871,12 +883,12 @@ export const Review = {
   },
 
   paintTrim(){
-    const d = this._dom, t = this.trim;
-    const whole = !t || (t.fromSec <= 0 && t.toSec >= this.det.dur - 0.05);
+    const d = this._dom, tr = this.trim;
+    const whole = !tr || (tr.fromSec <= 0 && tr.toSec >= this.det.dur - 0.05);
     d.trimState.textContent = whole
-      ? 'All of it is marked usable.'
-      : 'Usable: ' + this.clock(t.fromSec) + ' to ' + this.clock(t.toSec) +
-        ' of ' + this.clock(this.det.dur);
+      ? t('rev.trim.all', null, 'All of it is marked usable.')
+      : t('rev.trim.some', [this.clock(tr.fromSec), this.clock(tr.toSec), this.clock(this.det.dur)],
+          'Usable: ' + this.clock(tr.fromSec) + ' to ' + this.clock(tr.toSec) + ' of ' + this.clock(this.det.dur));
     d.trimClear.classList.toggle('hidden', whole);
   },
 
@@ -899,11 +911,11 @@ export const Review = {
   async deleteCurrent(){
     const b = $('revDetDelete');
     if(b.dataset.armed !== '1'){
-      b.dataset.armed='1'; b.textContent='Delete, really';
-      setTimeout(()=>{ if(b.dataset.armed==='1'){ b.dataset.armed='0'; b.textContent='Delete'; } }, 5000);
+      b.dataset.armed='1'; b.textContent=t('rev.delete2', null, 'Delete, really');
+      setTimeout(()=>{ if(b.dataset.armed==='1'){ b.dataset.armed='0'; b.textContent=t('rev.delete', null, 'Delete this recording'); } }, 5000);
       return;
     }
-    b.dataset.armed='0'; b.textContent='Delete';
+    b.dataset.armed='0'; b.textContent=t('rev.delete', null, 'Delete this recording');
     const id = this.session && this.session.id;
     if(typeof Store !== 'undefined' && Store.available !== false && id){
       try{ await Store.delete(id); }
@@ -991,14 +1003,14 @@ export const Review = {
 
   async refreshCount(){
     const n = $('recCount'); if(!n) return;
-    if(typeof Store === 'undefined' || Store.available === false){ n.textContent = 'storage unavailable'; return; }
+    if(typeof Store === 'undefined' || Store.available === false){ n.textContent = t('n.storeunavail', null, 'storage unavailable'); return; }
     try{
       await Store.open();
       const u = await Store.usage();
-      n.textContent = u && u.count
-        ? u.count + (u.count===1?' recording kept':' recordings kept')
-        : 'nothing kept yet';
-    }catch(err){ n.textContent = 'storage unavailable'; }
+      n.textContent = !u || !u.count ? t('rev.count.0', null, 'nothing kept yet')
+        : u.count === 1 ? t('rev.count.1', null, '1 recording kept')
+        : t('rev.count.n', [u.count], u.count + ' recordings kept');
+    }catch(err){ n.textContent = t('n.storeunavail', null, 'storage unavailable'); }
   },
 
   /* ---------- small formatting ---------- */

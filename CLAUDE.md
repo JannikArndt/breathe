@@ -66,6 +66,7 @@ comment in the codebase refers to them.
 | Module | Contents |
 |---|---|
 | `src/util.js` | `$`, `clamp`, `lerp`, `TAU`, `lp()` one-pole filter, `fin()` finite guard, `notice()` toast, `fitCanvas()`, `palette()`/`alpha()` |
+| `src/i18n.js` | `LANGS`, the string tables, `t()`, `n()` localised decimal, `apply()` |
 | `src/audio.js` | `Audio` — one voice (shore), procedural noise and impulse response, mid/side width, per-frame parameter updates |
 | `src/breath.js` | `Breath` — filtering, continuous axis tracking, projection, AGC, cycle detection, rest, confidence, phase |
 | `src/pulse.js` | `Pulse` — experimental heart rate from the same accelerometer |
@@ -123,7 +124,18 @@ without its samples, and so the one action a person takes to make a recording mo
 silently destroyed the raw signal of three of the four recordings in this repository.
 Metadata edits go through `Store.setTrim` / `Store.setLabels` / `_editMeta`.
 
-**Every control in Adjust belongs in `SLIDERS` or `TOGGLES` in `src/main.js`.** Each row
+**Language: the English lives in `index.html`, keyed by `data-t`.** `src/i18n.js` holds a
+table per language and `apply()` swaps the text in. So the page reads correctly before any
+script runs, a missing key falls back to the English in the markup rather than showing a
+key name, and the markup is still what you edit to change the English. Strings the script
+raises — notices, labels that change with state — call `t(key, vals, english)`; the third
+argument is the fallback, and it is not optional in practice. `tools/smoke.mjs` asserts
+that every key used anywhere has a German string, and drives every screen in German.
+
+**`RELEASES` is deliberately not translated.** It grows by a paragraph whenever anything
+changes, and a translation of it would be stale within a day of being written.
+
+**Every control in Adjust belongs in `SLIDERS`, `TOGGLES` or `CHOICES` in `src/main.js`.** Each row
 of those tables says what the control drives, what its default is, and what key it saves
 under; the wiring, the restore, the save and the reset are all generated from them. A
 control wired by hand gets three of the four and looks fine until someone reloads. Demo
@@ -551,6 +563,12 @@ baseline, the AGC, or rest detection.**
 `tools/analyze.mjs` describes a recording rather than re-running the tracker over it:
 cycle timing, stroke depth, how much of the session was spent held still, and how often
 the hysteresis would trip early. Use it to check a DSP change against real breathing.
+
+### Language
+
+`node tools/smoke.mjs` opens every screen in German at the end of its run, and checks that
+every key the app asks for exists. It asserts nothing about the words themselves — the
+failure it catches is a screen that cannot render, not a clumsy translation.
 
 ### Android
 

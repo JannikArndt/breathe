@@ -100,6 +100,52 @@ check('the store opens', Store.available, Store.lastError || '');
 check('the settings row exists after the v2 upgrade',
       Store._db && Store._db.objectStoreNames.contains('prefs'));
 
+/* ---------------------------------------------------------------- language */
+const { t, setLang, getLang, LANGS } = await import(resolve(root, 'src/i18n.js'));
+check('the app opens in English by default', getLang() === 'en', getLang());
+check('the language picker offers what the table holds',
+      $('langPick').children.length === LANGS.length,
+      `${$('langPick').children.length} of ${LANGS.length}`);
+
+// Every key the script asks for must exist in every language, or a German
+// phone shows an English sentence in the middle of a German screen.
+{
+  const jsText = readdirSync(resolve(root, 'src')).map(f =>
+    readFileSync(resolve(root, 'src', f), 'utf8')).join('\n');
+  const htmlText = readFileSync(resolve(root, 'index.html'), 'utf8');
+  const used = new Set([
+    ...[...jsText.matchAll(/\bt\('([a-z0-9.]+)'/g)].map(m => m[1]),
+    ...[...htmlText.matchAll(/data-t(?:-aria)?="([a-z0-9.]+)"/g)].map(m => m[1]),
+  ]);
+  const i18nText = readFileSync(resolve(root, 'src/i18n.js'), 'utf8');
+  const missing = [...used].filter(k => !i18nText.includes(`'${k}':`)).sort();
+  check('every key the app uses has a German string', missing.length === 0,
+        missing.join(' '));
+}
+
+// Switching language must change what is on the screen and change it back.
+// A label the markup does not own: Updater rewrites this row as its state
+// changes, so it is the one that proves the script's own strings translate.
+const enStep = $('intro').querySelector('.steps').children[0].textContent;
+const enRow  = $('reloadBtn').textContent;
+$('langPick').children[1].click();
+await settle();
+check('switching to German changes the markup',
+      $('intro').querySelector('.steps').children[0].textContent !== enStep,
+      JSON.stringify($('intro').querySelector('.steps').children[0].textContent));
+check('and the labels the script owns', $('reloadBtn').textContent !== enRow,
+      `${JSON.stringify(enRow)} -> ${JSON.stringify($('reloadBtn').textContent)}`);
+{
+  const { n } = await import(resolve(root, 'src/i18n.js'));
+  check('German writes a decimal comma', n(3.4, 1) === '3,4', n(3.4, 1));
+}
+$('langPick').children[0].click();
+await settle();
+check('and switching back restores the English',
+      $('intro').querySelector('.steps').children[0].textContent === enStep &&
+      $('reloadBtn').textContent === enRow,
+      JSON.stringify($('reloadBtn').textContent));
+
 /* ---------------------------------------------------------------- home */
 const wavesCtx = $('waves').getContext('2d');
 tick(16);                                      // one frame of the wave loop
@@ -629,6 +675,47 @@ await Store.clear();
 await settle();
 check('Recordings is reachable again', !$('recBtn').classList.contains('hidden'));
 check('the build line is back', !$('buildLine').classList.contains('hidden'));
+
+/* ---------------------------------------------------------------- in German */
+/* Every screen, in the other language, with nothing asserted about the words —
+   only that opening each one does not throw and that the German is actually
+   reaching the page. A missing key falls back to English rather than to a key
+   name, so the failure mode this catches is a screen that cannot render at
+   all. */
+$('panelBtn').click();
+$('langPick').children[1].click();
+await settle();
+$('closePanel').click();
+$('buildBtn').click();
+check('Changes opens in German', $('log').classList.contains('open') &&
+      /Neueste|Version/.test($('logList').parentNode.textContent || 'x'));
+$('closeLog').click();
+$('recBtn').click();
+await settle(10);
+check('Recordings opens in German', !$('revList').classList.contains('hidden'));
+$('revBack').click();
+await settle();
+
+$('tglDemo').click();
+$('mainBtn').click();
+await settle();
+check('a session starts in German', $('mainBtn').textContent === 'Ende',
+      JSON.stringify($('mainBtn').textContent));
+run(90, 60);
+check('and the readout fills in', $('vRate').textContent !== '',
+      JSON.stringify($('vRate').textContent + ' / ' + $('vRatio').textContent));
+$('mainBtn').click();
+await settle(20);
+check('and the summary renders in German',
+      $('revSumGrid').children.length >= 5 &&
+      /Dauer|Atemzüge/.test($('revSumGrid').textContent || $('revSumGrid').children.map(c=>c.textContent).join(' ')),
+      $('revSumGrid').children.map(c => c.querySelectorAll('.k').map(k=>k.textContent).join('')).join(' | '));
+$('revBack').click();
+await settle();
+$('panelBtn').click();
+$('langPick').children[0].click();
+$('closePanel').click();
+await settle();
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

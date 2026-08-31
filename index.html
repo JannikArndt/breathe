@@ -58,6 +58,8 @@
     </div>
   </div>
 
+  <div class="nerd hidden" id="nerd" aria-live="off"></div>
+
   <div class="readout hidden" id="readout">
     <div class="cell"><div class="k">Your rate</div><div class="v"><span id="vRate">—</span><small>/min</small></div></div>
     <div class="cell"><div class="k">In / out</div><div class="v" id="vRatio">—</div></div>
@@ -186,6 +188,13 @@
       <span class="hint">fades the display while you breathe; a tap brings it back</span>
     </label>
     <button class="toggle" id="tglDim" role="switch" aria-checked="false" aria-label="Dim the screen"></button>
+  </div>
+
+  <div class="row">
+    <label>Show the numbers
+      <span class="hint">what the sensor is giving it, live, under the trace</span>
+    </label>
+    <button class="toggle" id="tglNerd" role="switch" aria-checked="false" aria-label="Show the numbers"></button>
   </div>
 
   <div class="row">

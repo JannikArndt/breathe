@@ -220,6 +220,14 @@ check('showing what it hears paints the held stretches',
 $('tglDepth').click();
 check('the crest can be told to follow depth', Flags.depthBreak === true);
 
+$('tglNerd').click();
+run(3, 60);
+check('the numbers appear under the trace', !$('nerd').classList.contains('hidden'));
+check('and say what the sensor is giving it', /amp [\d.]+ m\/s².*conf [\d.]+.*gate [\d.]+/.test($('nerd').textContent),
+      JSON.stringify($('nerd').textContent));
+$('tglNerd').click();
+check('and go away again', $('nerd').classList.contains('hidden'));
+
 $('tglDim').click();
 check('dimming arms itself when switched on mid-session', Dim.timer !== null);
 Dim.sleep();

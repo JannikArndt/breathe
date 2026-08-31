@@ -15,6 +15,10 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.12', date:'2026-08-31', notes:[
+    'Show the numbers, under Try, puts the live sensor readings under the trace: how big your breathing is in m/s\u00b2, how sure the app is, how much other movement there is, and whether it currently reads you as holding. Useful when something looks wrong and you want to say what.',
+    'Opening a recording shades the holds on the whole-session lane too, where the pattern is easier to see.'
+  ]},
   {v:'0.9.11', date:'2026-08-31', notes:[
     'The summary reports how long your breaths were, in and out, and how much of the session the app read as held rather than moving.',
     'Opening a recording shades the stretches where it thought you were holding, so you can check it against what you remember.',
@@ -231,7 +235,7 @@ export const UI = {
   // trace is the signal; held and marks are what "Show what it hears" draws
   // over it. They share the trace's index, so they shift together.
   trace:[], held:[], marks:[], traceAcc:0, axisAcc:29,
-  sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
+  sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0, nerdAcc:0
 };
 
 const el = {
@@ -241,7 +245,7 @@ const el = {
   traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
   vRate:$('vRate'), vRatio:$('vRatio'), vHr:$('vHr'), vHrUnit:$('vHrUnit'),
   cellHr:$('cellHr'),
-  statusTag:$('statusTag'), qualityTxt:$('qualityTxt')
+  statusTag:$('statusTag'), qualityTxt:$('qualityTxt'), nerd:$('nerd')
 };
 
 /* ---------- iOS: keep audio out of the "ringer" bucket ----------
@@ -378,6 +382,7 @@ async function begin(sensorP, audioP){
   Review.hide();
   el.intro.classList.add('hidden');
   [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.remove('hidden'));
+  el.nerd.classList.toggle('hidden', !Flags.nerd);
   el.main.textContent = 'End'; el.main.classList.remove('primary'); el.main.disabled = false;
 
   UI.state = 'running';
@@ -430,7 +435,7 @@ async function end(){
   await Audio.stop(2.2);
   if(UI.silentEl){ try{ UI.silentEl.pause(); }catch(e){} UI.silentEl=null; }
   if(UI.wakeLock){ try{ UI.wakeLock.release(); }catch(e){} UI.wakeLock=null; }
-  [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.add('hidden'));
+  [el.dial, el.centerRead, el.traceWrap, el.readout, el.nerd].forEach(n=>n.classList.add('hidden'));
   el.main.textContent='Start'; el.main.classList.add('primary');
   el.statusTag.textContent='standby';
   UI.sensorSeen=false;
@@ -596,6 +601,22 @@ function updateReadout(){
   el.vRate.textContent = b ? b.toFixed(1) : '—';
   const i=Breath.inhaleDur, o=Breath.exhaleDur;
   el.vRatio.textContent = (sure && i>0.4 && o>0.4) ? (i.toFixed(1)+' / '+o.toFixed(1)) : '—';
+  // What the sensor is actually giving it. Four times a second rather than
+  // sixty: these are for reading, and a digit that changes every frame is not
+  // readable. Every number here is one a bug report would need.
+  if(Flags.nerd){
+    UI.nerdAcc = (UI.nerdAcc || 0) + 1;
+    if(UI.nerdAcc >= 15){
+      UI.nerdAcc = 0;
+      el.nerd.textContent =
+        'amp ' + Breath.axisAmp.toFixed(3) + ' m/s\u00b2' +
+        ' \u00b7 conf ' + Breath.conf.toFixed(2) +
+        ' \u00b7 follow ' + Breath.follow.toFixed(2) +
+        ' \u00b7 noise ' + Breath.motionRms.toFixed(3) +
+        ' \u00b7 gate ' + Breath.restGate.toFixed(2) +
+        ' \u00b7 stroke ' + Breath.strokeAmp.toFixed(2);
+    }
+  }
   if(Pulse.enabled){
     const hr = Pulse.reading(Breath.motionRms);
     // A dash is the honest reading most of the time. Holding the last number on
@@ -769,7 +790,7 @@ const SLIDERS = [
    costs a tap and keeping it costs nothing. They are grouped under "Try" in
    Adjust rather than mixed in with the settled controls, because a control the
    app is not sure of should say so. */
-export const Flags = { heard:false, dim:false, depthBreak:false };
+export const Flags = { heard:false, dim:false, nerd:false, depthBreak:false };
 
 const TOGGLES = [
   // Demo mode is deliberately absent: it is a way to hear the sound without
@@ -783,6 +804,10 @@ const TOGGLES = [
   ['tglInvert', 'invert', on => { Breath.invert = on; }],
 
   ['tglHeard',  'heard',  on => { Flags.heard = on; }],
+  ['tglNerd',   'nerd',   on => {
+    Flags.nerd = on;
+    el.nerd.classList.toggle('hidden', !(on && UI.state === 'running'));
+  }],
   ['tglDim',    'dim',    on => {
     Flags.dim = on;
     if(!on) Dim.wake();

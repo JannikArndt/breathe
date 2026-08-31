@@ -598,6 +598,10 @@ export const Review = {
     this.ground(ctx,w,h);
     const t0=0, t1=Math.max(this.det.dur,1);
     if(this.sig.n){
+      // The whole session at once is where the pattern of holds is legible —
+      // a long flat bottom every twenty seconds looks like nothing on the fine
+      // lane and like a rhythm from here.
+      this.held(ctx,w,h,t0,t1);
       ctx.fillStyle = K.you; ctx.globalAlpha = 0.34;
       this.band(ctx,w,h,t0,t1,'s',pad);
       ctx.globalAlpha = 1;

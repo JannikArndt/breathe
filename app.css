@@ -243,6 +243,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 
 .hidden{display:none !important}
 
+/* The live sensor numbers, behind a switch in Try. Monospace and dim: this is
+   for reading deliberately, not for glancing at while breathing. */
+.nerd{
+  margin-top:7px;
+  font-family:var(--data);font-size:10px;letter-spacing:.05em;
+  color:var(--mute);text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+
 /* ---------- dimming ----------
    The page fades rather than the backlight, because a web page cannot touch
    the backlight. 0.10 is dark enough to stop lighting a room and bright enough

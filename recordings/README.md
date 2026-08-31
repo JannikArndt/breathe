@@ -27,6 +27,25 @@ Two of these are not a sample. Use them to find bugs, not to set constants — t
 sensitivity control exists because where the line falls between a shallow breather and a
 still phone depends on the body, and no two recordings can settle it.
 
+That said, the one real session with raw motion in it has now produced four fixes that
+nothing else would have found: the baseline turning a hold into a ramp, the rest gate
+comparing velocity against the wrong reference, a period ceiling that discarded its longest
+breath, and an audio clamp that under-scaled every velocity-fed layer by a quarter at that
+person's rate. Finding a bug in one recording and setting a threshold from one recording
+are different things.
+
+## Reading one
+
+The `derived` block names its own columns, so read the index out of `columns` rather than
+assuming a position — the list has grown. As of `breathe-session/1` with a `rest` channel
+it is `t, s, level, phase, bpm, quality, rich, hr, hrConf, rest`. A recording made before a
+column existed simply does not list it. `motion` is always `t, x, y, z` in m/s², at
+whatever rate the device produced.
+
+`rest` is the gate the audio engine multiplies velocity by: 1 while you are moving, 0 while
+the app reads you as holding. Under 0.5 is what the summary, the review lanes and
+`tools/onset.mjs` all call "held".
+
 Label a recording before exporting it. The first half-minute is always you getting
 settled, and a `lay-down` marker is the difference between data that can be trusted and
 data that has to be guessed at.

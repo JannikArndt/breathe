@@ -847,44 +847,48 @@ export const Review = {
     // materialise 40k rows to draw a sparkline. Exporting that object shipped a file
     // with motion.count set and motion.rows empty — the raw signal, which is the whole
     // point of exporting, was missing. Re-read the full record here.
-    let full = session;
-    if(Store.available && session.id){
-      try{ full = (await Store.get(session.id)) || session; }catch(err){}
+    //
+    // Store builds the file: it writes the columns straight out as string pieces
+    // into a Blob. JSON.stringify on the assembled session produced the same
+    // bytes and needed the whole megabyte contiguous in memory to do it.
+    let blob = null;
+    try{
+      blob = await Store.exportBlob(Store.available && session.id ? session.id : session);
+    }catch(err){ blob = null; }
+    if(!blob){
+      notice('Export failed', 'That recording could not be read back off this phone.', 6000);
+      return;
     }
-    this.save(this.filename(full), JSON.stringify(full));
+    this.saveBlob(Store.exportName(session), blob);
   },
 
   async exportAll(){
     if(typeof Store === 'undefined' || Store.available === false){
       notice('Nothing to export','Storage is unavailable, so there is no list of recordings to write out.',5000); return;
     }
-    let sessions=[];
+    // One file, because a phone browser will not accept a burst of downloads —
+    // and built by the store, one recording at a time, straight into a Blob.
+    // Reading every session into memory first and then calling JSON.stringify
+    // on the lot needed the whole export twice over: once as row objects and
+    // once as a single string. Thirty full-length sessions is tens of MB, which
+    // is more than a phone will hand over in one contiguous allocation.
+    let blob = null, count = 0;
     try{
-      const metas = await Store.list();
-      for(const m of metas) sessions.push(await Store.get(m.id));
+      count = (await Store.list()).length;
+      if(count) blob = await Store.exportAllBlob();
     }catch(err){
       notice('Export failed', ((err && err.name)||'The store could not be read') + '. Try exporting one recording at a time.', 6000);
       return;
     }
-    if(!sessions.length){ notice('Nothing to export','There are no recordings on this phone yet.',5000); return; }
+    if(!count || !blob){ notice('Nothing to export','There are no recordings on this phone yet.',5000); return; }
     const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
-    // one file, because a phone browser will not accept a burst of downloads
-    this.save('breathe-sessions-'+stamp+'.json', JSON.stringify({
-      format:'breathe-sessions/1', exportedAt:new Date().toISOString(), sessions:sessions
-    }));
-  },
-
-  filename(session){
-    const t = (session.startedAt||'').replace(/[-:]/g,'').slice(0,15) || 'session';
-    return 'breathe-' + t + '.json';
+    this.saveBlob('breathe-sessions-'+stamp+'.json', blob);
   },
 
   /** Blob -> share sheet if the phone takes files, otherwise a download anchor.
       Nothing leaves the device either way: no fetch, no upload, no URL beyond blob:. */
-  save(name, text){
-    let blob;
-    try{ blob = new Blob([text], {type:'application/json'}); }
-    catch(err){ notice('Export failed','This browser would not build the file. Try a different browser.',6000); return; }
+  saveBlob(name, blob){
+    if(!blob){ notice('Export failed','This browser would not build the file. Try a different browser.',6000); return; }
 
     if(window.File && navigator.canShare && navigator.share){
       try{

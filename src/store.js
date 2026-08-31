@@ -410,8 +410,8 @@ export const Store = {
     const d = colsOf(session.derived, 9);
     const data = {
       id: session.id,
-      mT: m.t, mX: m.v[0], mY: m.v[1], mZ: m.v[2],
-      dT: d.t, dV: d.v
+      mT: trim(m.t, m.n), mX: trim(m.v[0], m.n), mY: trim(m.v[1], m.n), mZ: trim(m.v[2], m.n),
+      dT: trim(d.t, d.n), dV: d.v.map(function(a){ return trim(a, d.n); })
     };
     const meta = {
       id: session.id,
@@ -515,10 +515,16 @@ export const Store = {
       return new Blob(self.exportParts(s), {type:'application/json'});
     };
     if(typeof idOrSession !== 'string') return Promise.resolve(one(idOrSession));
-    return this.get(idOrSession).then(function(s){ return s ? one(s) : null; });
+    // {cols:true} hands back the stored typed arrays. exportParts reads those
+    // directly, so a 34 000-sample session never becomes 34 000 four-element
+    // JS arrays on the way to a file it is about to be turned back into text.
+    return this.get(idOrSession, {cols:true}).then(function(s){ return s ? one(s) : null; });
   },
 
-  /** Every recording in one file. Can be tens of MB — warn before offering it. */
+  /** Every recording in one file. Can be tens of MB, which is exactly why this
+      exists: the sessions are fetched one at a time and appended as string
+      pieces to a Blob, so the phone never has to hold the whole thing as one
+      contiguous JavaScript string. */
   exportAllBlob(){
     const self = this;
     return this.list().then(function(metas){
@@ -526,7 +532,7 @@ export const Store = {
       let chain = Promise.resolve();
       metas.forEach(function(meta, i){
         chain = chain.then(function(){
-          return self.get(meta.id).then(function(s){
+          return self.get(meta.id, {cols:true}).then(function(s){
             if(!s) return;
             if(i) parts.push(',\n');
             const sub = self.exportParts(s);
@@ -582,6 +588,20 @@ function num(v, dp){
 }
 
 /** Accept either the columnar shape or export rows, and give back columns. */
+/** Cut a capture buffer down to what is actually in it.
+    Recorder starts each channel at two minutes and doubles when it fills, so a
+    session that ends just after a doubling is sitting in a buffer up to twice
+    the size of its contents. That padding used to be written to IndexedDB
+    verbatim and counted against the 48 MB budget — so at the worst point in the
+    growth curve a recording took twice the space it needed and evicted an older
+    session twice as soon.
+
+    `slice` copies rather than viewing, deliberately: structured clone stores the
+    whole underlying ArrayBuffer, so a subarray would save nothing at all. */
+function trim(arr, n){
+  return (n >= arr.length) ? arr : arr.slice(0, n);
+}
+
 function colsOf(chan, width){
   const vcount = width - 1;
   if(chan && chan.cols && chan.cols.t) return {t:chan.cols.t, v:chan.cols.v, n:chan.cols.n};
@@ -651,7 +671,7 @@ export const Recorder = {
   maxSamples:0,
 
   /**
-   * @param meta.app  {voice, invert, demo}
+   * @param meta.app  {invert, demo, sensitivity, pulse, build, buildDate}
    * @param t         session zero, in the same clock sample() will use.
    *                  Defaults to now; pass it explicitly when replaying a
    *                  recorded clock. Every tSec in the file is relative to it,

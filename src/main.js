@@ -15,6 +15,10 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.10', date:'2026-08-31', notes:[
+    'Recordings take about a third less space on the phone. They were being stored padded out to the size of the buffer they were captured in, which also meant the oldest recording was deleted sooner than it needed to be.',
+    'Export builds the file a piece at a time instead of all at once. Export all could ask the phone for tens of megabytes in one go, which is more than it will hand over.'
+  ]},
   {v:'0.9.9', date:'2026-08-31', notes:[
     'A new Try section in Adjust holds three things that are not sure of themselves yet. All three are off until you turn them on, and stay on once you have.',
     'Show what it hears shades the trace where the app thinks you are holding, and ticks each breath it counted — so you can check it against your own body instead of taking the sound\u2019s word for it.',

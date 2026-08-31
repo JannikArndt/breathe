@@ -273,6 +273,18 @@ if(metas.length){
         m.app && typeof m.app.sensitivity === 'number', String(m.app && m.app.sensitivity));
 
   const full = await Store.get(m.id, {motion:true, derived:true});
+  const cols = await Store.get(m.id, {cols:true});
+  check('the columns can be read without building row objects',
+        !!cols && cols.motion.cols && cols.motion.cols.n > 1000 && cols.motion.rows.length === 0,
+        cols && cols.motion.cols ? cols.motion.cols.n + ' packed' : 'none');
+  // The capture buffer doubles as it fills, so the stored arrays have to be cut
+  // down to what is in them or a session pays for up to twice its own size.
+  check('nothing is stored but the samples themselves',
+        !!cols && cols.motion.cols.t.length === cols.motion.cols.n,
+        cols ? `${cols.motion.cols.t.length} slots for ${cols.motion.cols.n} samples` : 'none');
+  check('and the size the budget sees is the size on disk',
+        Math.abs(m.bytes - (cols.motion.cols.n*16 + cols.derived.cols.n*36 + (m.metaBytes||0))) < 64,
+        `${m.bytes} B claimed`);
   check('the raw motion channel survived the round trip',
         !!full && full.motion.rows.length > 1000,
         full ? full.motion.rows.length + ' samples' : 'none');
@@ -283,7 +295,10 @@ if(metas.length){
         !!full && full.motion.rows[10].length === 4 && full.motion.rows[10].every(Number.isFinite),
         full ? JSON.stringify(full.motion.rows[10]) : '');
 
-  const json = Store.exportJson(full);
+  const blob = await Store.exportBlob(m.id);
+  check('the export comes back as a Blob the phone can hand to the share sheet',
+        !!blob && blob.size > 100000, blob ? (blob.size/1048576).toFixed(2) + ' MB' : 'none');
+  const json = await blob.text();
   let parsed = null;
   try{ parsed = JSON.parse(json); }catch(e){ /* reported by the check below */ }
   check('the export is valid JSON in the documented format',
@@ -295,6 +310,48 @@ if(metas.length){
 
 $('revBack').click();
 check('Back from the summary lands on the home screen', !$('intro').classList.contains('hidden'));
+
+/* ---------------------------------------------------------------- browsing */
+$('recBtn').click();
+await settle(10);
+check('Recordings opens from the home screen', !$('revList').classList.contains('hidden'));
+const rows = $('revRows').querySelectorAll('.rec-open');
+check('the session is listed', rows.length === 1, rows.length + ' rows');
+
+if(rows.length){
+  rows[0].click();
+  await settle(10);
+  check('tapping a row opens the detail', !$('revDetail').classList.contains('hidden'));
+  check('the detail knows how long it is', /\d+:\d\d/.test($('revVAt').textContent),
+        JSON.stringify($('revVAt').textContent));
+
+  $('revNote').value = 'a note from the smoke test';
+  $('revAdd').click();
+  await settle(14);
+  const withLabel = await Store.list();
+  check('a label is written to the recording',
+        withLabel[0].labels && withLabel[0].labels.length === 1,
+        JSON.stringify(withLabel[0].labels));
+  check('and the note survives with it',
+        withLabel[0].labels[0].note === 'a note from the smoke test',
+        JSON.stringify(withLabel[0].labels[0]));
+  check('the labels list shows it', $('revLabels').children.length === 1,
+        $('revLabels').children.length + ' shown');
+
+  $('revBack').click();
+  await settle();
+  check('Back from a detail opened by the list returns to the list',
+        !$('revList').classList.contains('hidden'));
+
+  rows[0].click(); await settle(10);
+  $('revDetDelete').click();                     // arms
+  $('revDetDelete').click();                     // confirms
+  await settle(16);
+  check('Delete removes the recording', (await Store.list()).length === 0);
+  check('and lands back on the list', !$('revList').classList.contains('hidden'));
+}
+$('revBack').click();
+await settle();
 check('Recordings is reachable again', !$('recBtn').classList.contains('hidden'));
 check('the build line is back', !$('buildLine').classList.contains('hidden'));
 

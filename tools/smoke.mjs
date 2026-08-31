@@ -108,6 +108,17 @@ const rootBlock = cssText.slice(cssText.indexOf(':root{'), cssText.indexOf('}', 
 const strayHex = [...cssText.replace(rootBlock, '').matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map(m => m[0]);
 check('no rule carries its own colour', strayHex.length === 0, strayHex.join(' '));
 
+// The `transition` shorthand resets every transition property, so a rule that
+// carries one and out-specifies a component's own rule silently deletes what
+// that component declared for itself. Dimming did exactly this to the Adjust
+// sheet and the notice, via `body > :not(.dim-catch)`. Keep the shorthand
+// inside the block that owns the element; use transition-duration / -property
+// to adjust one from outside.
+const broadTransition = cssText.split('\n').filter(l =>
+  /^\s*(body\s*>|\*|html\s|:root\s)[^{]*\{[^}]*\btransition\s*:/.test(l));
+check('no broad selector resets transitions with the shorthand',
+      broadTransition.length === 0, broadTransition.join(' | '));
+
 // An id in the markup that nothing reads is either dead or a bug where
 // something meant to read it does not.
 const idsInMarkup = [...readFileSync(resolve(root, 'index.html'), 'utf8')
@@ -288,6 +299,50 @@ const second = swUpdate();
 check('a version arriving mid-session waits its turn', Updater.pending === true);
 check('and says nothing while you are breathing', $('noticeTitle').textContent === notice0,
       JSON.stringify($('noticeTitle').textContent));
+
+/* ---------------------------------------------------------------- direction */
+// The central claim this engine makes is that you can hear which way you are
+// going. It was once false — frame() took only |velocity|, so inhaling and
+// exhaling at the same belly position produced identical parameters, and no
+// amount of mix tuning could have fixed it. This is that claim, as a check.
+{
+  const { Audio } = await import(resolve(root, 'src/audio.js'));
+  const snapshot = () => ctx.params().map(p => p.value);
+  const base = {level:0.5, speed:0.5, rich:0.5, bpm:6, dt:1/60};
+
+  // Same belly position, same speed, opposite directions. Held for two seconds
+  // because the direction gate is smoothed at tau = 0.30 s and would otherwise
+  // still be halfway between the two.
+  for(let i=0;i<120;i++){ ctx.advance(1/60); Audio.frame({...base, vel: 0.24, inhaling:true}); }
+  const inward = snapshot();
+  for(let i=0;i<120;i++){ ctx.advance(1/60); Audio.frame({...base, vel:-0.24, inhaling:false}); }
+  const outward = snapshot();
+
+  let moved = 0, biggest = 0;
+  for(let i=0;i<inward.length;i++){
+    const a = inward[i], b = outward[i];
+    if(!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    const rel = Math.abs(a-b) / Math.max(Math.abs(a), Math.abs(b), 1e-6);
+    if(rel > 0.05) moved++;
+    if(rel > biggest) biggest = rel;
+  }
+  check('inhaling and exhaling do not sound the same', moved >= 4,
+        `${moved} parameters differ, the largest by ${(biggest*100).toFixed(0)}%`);
+
+  // And the level channel still does its own separate work, or the sound would
+  // only ever say "in" or "out" and never "how far in".
+  for(let i=0;i<120;i++){ ctx.advance(1/60); Audio.frame({...base, level:0.05, vel:0.24, inhaling:true}); }
+  const low = snapshot();
+  for(let i=0;i<120;i++){ ctx.advance(1/60); Audio.frame({...base, level:0.95, vel:0.24, inhaling:true}); }
+  const high = snapshot();
+  let byLevel = 0;
+  for(let i=0;i<low.length;i++){
+    const rel = Math.abs(low[i]-high[i]) / Math.max(Math.abs(low[i]), Math.abs(high[i]), 1e-6);
+    if(Number.isFinite(rel) && rel > 0.05) byLevel++;
+  }
+  check('and the top of a breath does not sound like the bottom', byLevel >= 4,
+        `${byLevel} parameters differ`);
+}
 
 /* ---------------------------------------------------------------- end */
 // End must never leave the summary behind a dimmed screen. The tap that ends a

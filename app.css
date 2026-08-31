@@ -286,6 +286,13 @@ body.dimmed .dim-catch{
 
 @media (prefers-reduced-motion:reduce){
   *{transition-duration:.01ms !important}
+
+  /* The one exemption. This rule exists to stop things sliding and swooping,
+     and a scrim does neither — it changes brightness. Snapping it to instant
+     turns waking the screen into a flash, which is the opposite of what
+     someone asking for less motion wants in a dark room. */
+  .dim-catch{transition-duration:.35s !important}
+  body.dimmed .dim-catch{transition-duration:2.4s !important}
 }
 
 .panel .row label{min-width:0}

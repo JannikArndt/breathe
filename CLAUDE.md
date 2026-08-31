@@ -342,7 +342,11 @@ heartbeat.** Say so wherever the number is discussed.
 
 ## 5. Audio invariants
 
-- **`Audio.frame(f)` takes an object, and it carries direction.** The old positional
+- **`Audio.frame(f)` takes an object, and it carries direction.** `tools/smoke.mjs` holds
+  this as a check rather than a hope: it drives `frame()` at the same belly position and
+  the same speed in both directions and asserts that the parameters differ. With `vel`
+  replaced by `|vel|` that check reports 0 parameters differing, which is what the bug
+  below actually looked like. The old positional
   `frame(level, speed, rich, …)` passed only the *magnitude* of belly movement,
   so inhaling and exhaling at the same belly position produced identical parameters —
   no amount of mix tuning could make the two halves distinguishable. `f` now carries
@@ -612,7 +616,17 @@ how. The changes screen and the build line hide during a session, like Recording
 - CSS: custom properties in `:root` for every colour and font stack. No new hex literals in
   rules. Watch selector specificity between `.bar` and `.panel .bar` — margins there have
   collided before.
-- Respect `prefers-reduced-motion` (already handled globally) and keep focus outlines.
+- Respect `prefers-reduced-motion` (handled globally by `*{transition-duration:.01ms}`)
+  and keep focus outlines. The dim scrim is the one deliberate exemption: that rule is
+  there to stop things sliding, and snapping a brightness change to instant turns waking
+  the screen into a flash — the opposite of what someone asking for less motion wants.
+- **Never put the `transition` shorthand on a broad selector** (`body > …`, `*`, `:root`).
+  It resets every transition property, so out-specifying a component's own rule silently
+  deletes what that component declared for itself. Dimming did exactly this to the Adjust
+  sheet and the notice. Adjust one from outside with `transition-duration` or
+  `transition-property`; `tools/smoke.mjs` checks for the shorthand.
+- No hex literal outside the `:root` block, and none at all in a `.js` file. `palette()`
+  reads the tokens for canvas. Checked in `tools/smoke.mjs`.
 
 ---
 

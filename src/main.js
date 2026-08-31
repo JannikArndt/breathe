@@ -15,6 +15,9 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.15', date:'2026-08-31', notes:[
+    'Waking a dimmed screen fades rather than flashing, for anyone whose phone is set to reduce motion.'
+  ]},
   {v:'0.9.14', date:'2026-08-31', notes:[
     'Dimming the screen no longer stops the Adjust sheet sliding up or the messages sliding in.'
   ]},

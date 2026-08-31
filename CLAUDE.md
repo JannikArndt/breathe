@@ -21,6 +21,7 @@ CLAUDE.md               this file
 tools/dsp-harness.mjs   headless Node test for the signal chain
 tools/replay.mjs        replays an exported session through the real tracker
 tools/analyze.mjs       describes a recorded session: timing, depth, stillness
+tools/onset.mjs         measures how early the sound starts, against the raw tilt
 ```
 
 ---
@@ -90,7 +91,7 @@ re-running the harness is how this regresses.
 ```
 raw (accelerationIncludingGravity, m/s²)
   → smooth   = lp(raw,    τ = 0.35 s)   # kills pulse, tremor, sensor noise
-  → baseline = lp(smooth, τ = 12.0 s)   # tracks posture and slow settling
+  → baseline = lp(smooth, τ = 3 × period, 12–60 s)   # tracks posture and settling
   → d = smooth − baseline               # the band-passed gravity deviation
   → s = d · u                           # u = breath axis from calibration
 ```
@@ -99,6 +100,15 @@ raw (accelerationIncludingGravity, m/s²)
   tilt; the gravity-removed vector is near zero at these frequencies. `acceleration` is only
   a fallback when the gravity variant is absent. Both are m/s² on three axes:
   https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent
+- **The baseline spans three breaths, not twelve seconds.** It is a high-pass, and a
+  high-pass turns a hold into a ramp: across a 10 s hold a τ = 12 s baseline has already
+  climbed 57 % of the way back to the signal, so the app hears an inhale starting while
+  the belly is flat. A recorded session at 3 breaths/min holds the bottom for 5–10 s, and
+  against the raw tilt the sound was swelling a median 1.9 s early and up to 9.8 s early.
+  `τ = clamp(3 × period, 12, 60)`. The floor is the old value, so nothing moves for
+  ordinary rates; the ceiling keeps a standing postural offset (τ × drift rate) smaller
+  than a breath. Do not put it back to a constant — the constant is what breaks slow
+  breathing, and slow breathing is the point of the app.
 - **All filters take measured `dt`.** `devicemotion` fires at a regular but
   device-dependent interval (https://developer.mozilla.org/en-US/docs/Web/API/Window/devicemotion_event);
   iOS is around 60 Hz. Never hardcode a sample rate — the passband must not move if the
@@ -153,9 +163,18 @@ same recording the count falls to 23 of 57 with the *identical* 57 peaks and tro
 the same 11.28 s median period, so the sensitivity costs nothing in rate tracking.
 
 **Rest.** Slow breathing has real holds in it. `detectRest()` compares `|ṡ|` against this
-user's own stroke velocity (`slopeEnv` = mean `|ṡ|` at τ = 8 s; peak ≈ mean · 1.57), enters
-"still" under a ratio of 0.22 and leaves it over 0.50 — a dead band, so a wobble on the
-threshold cannot chatter. `resting` needs 0.5 s of holding, and `restGate` fades in over
+user's own **peak** stroke velocity, followed directly: `slopePeak` attacks at τ = 0.5 s and
+releases at τ = 30 s, so a stroke sets it within half a second and it holds across a long
+pause. It enters "still" under a ratio of 0.22 and leaves it over 0.50 — a dead band, so a
+wobble on the threshold cannot chatter.
+
+That peak used to be *inferred* from the mean as `mean · 1.57`, which is the ratio for a
+sinusoid and only for a sinusoid. A 3 s inhale inside a 20 s cycle sits several times
+further above its mean, so the inferred peak came out far too low, every hold measured as
+movement against it, and the gate stayed open through exactly what it exists to catch —
+12 % of a hold-heavy session read as rest where 43 % does now. **Do not re-derive the peak
+from the mean.** The thresholds are unchanged because they were always expressed against a
+peak; only the estimate of it moved. `resting` needs 0.5 s of holding, and `restGate` fades in over
 0.30 s and out over 0.60 s. **`vel()` and `speed()` are both multiplied by `restGate`.**
 This exists because velocity is normalised against breathing rate in `Audio.frame()`: at
 5.4 /min the reference peak is 0.216, so a belly tremor of 0.05 divides out to a
@@ -229,6 +248,12 @@ finds nothing far more often than it finds something.
   its period. Without this the estimate alternates between a rate and half of it, and any
   smoothing then parks on an average the heart never had — 96/min was reported as 48.
 - A jump over 20 % replaces the estimate rather than blending into it, for the same reason.
+- **`MAX_MOTION` is 0.25 m/s², and it must stay above the noise floor of a still body.**
+  It was 0.05, which is *below* it: 9.5 minutes of someone lying quietly with the phone on
+  the belly measures 0.084 median and 0.117 at the 95th percentile, so `reading()` returned
+  0 for the whole of every session and the readout could never show anything at all. 0.25
+  clears a still body twice over and sits five times under a phone being carried (1.28 on
+  the bogus recording). Any tightening of this number needs a still-body measurement first.
 - `reading()` returns 0 whenever confidence is under `MIN_CONF` or `Breath.motionRms`
   exceeds `MAX_MOTION`, and the UI shows a dash. **Never hold the last number on screen
   after the evidence has gone** — that makes it look far more reliable than it is.
@@ -236,8 +261,11 @@ finds nothing far more often than it finds something.
 
 Measured on synthetic data: correct within 4/min across 42–135 bpm (39 of 39 runs), zero
 false positives on noise over 10 runs, and a lock threshold around 2 milli-g of beat
-amplitude. **None of this has been checked against a real heartbeat** — the one real
-recording predates the export fix and carries no motion rows.
+amplitude. On the one real belly recording that carries motion rows it holds 73–83 /min
+across 9.5 minutes (p50 78.5) at confidence 0.46–0.98, reporting on 55 of 55 samples, while
+the bogus recording gives 4 scattered readings out of 14. That is plausible and remarkably
+steady, but **steady is not correct: it has still never been checked against a real
+heartbeat.** Say so wherever the number is discussed.
 
 ## 5. Audio invariants
 
@@ -305,7 +333,7 @@ node tools/dsp-harness.mjs                    # defaults to ./index.html
 node tools/dsp-harness.mjs path/to/other.html
 ```
 
-24 checks: axis recovery with no calibration step, rate tracking at 12 and 6/min, inhale/exhale split, sign
+26 checks: axis recovery with no calibration step, rate tracking at 12 and 6/min, inhale/exhale split, sign
 correction with the phone inverted, tolerance to 0.6 m/s² per minute of postural drift, the
 quality meter, the phase convention, that the signal moves during calibration without
 detecting cycles, the learned stroke amplitude, and rest detection —
@@ -313,8 +341,9 @@ that a hold reads as rest and closes the gate while an ordinary stroke does neit
 that confidence separates breathing from a still phone. One check replays the real bogus
 recording from `recordings/` and asserts peak confidence stays under 0.35 (it is 0.135);
 it skips rather than fails when `recordings/` is not checked out.
-Three more cover the pulse estimator: it recovers a synthetic 62 bpm heartbeat, it
-reports nothing on noise alone, and it refuses to read while the body is moving.
+Four more cover the pulse estimator: it recovers a synthetic 62 bpm heartbeat, it reports
+nothing on noise alone, it reads through the 0.12 m/s² a still body produces, and it
+refuses at the 0.8 m/s² of a phone being carried.
 Exit code 0 on success.
 
 The harness synthesises tilt at 0.09 m/s² peak-to-peak, which is roughly what a relaxed
@@ -342,6 +371,24 @@ calibration bug and the empty-summary bug during integration.
 
 **Run the harness after any change to sections 0–3.** It will not catch anything in
 sections 4–7, the audio graph, or the canvas.
+
+`tools/onset.mjs` answers the one question the harness structurally cannot: how early does
+the sound start, measured against the body rather than against the app's own signal?
+
+```bash
+node tools/onset.mjs recordings/some-session.json
+```
+
+Ground truth is the accelerometer smoothed at τ = 0.35 s and nothing else — no high-pass,
+no AGC — projected on the axis the tracker settled on, with cycles segmented from *that*.
+It reports the median and worst lead in seconds, how much of the session read as held, and
+the gate at the steepest point of each real stroke, which is the check that a fix for "too
+early" has not simply bought silence. It needs raw motion rows, so it skips sessions
+exported before that fix.
+
+The harness cannot see this: it feeds a sinusoid, and a sinusoid has no holds in it, which
+is precisely the case that was broken. **Run it on a real recording after any change to the
+baseline, the AGC, or rest detection.**
 
 `tools/analyze.mjs` describes a recording rather than re-running the tracker over it:
 cycle timing, stroke depth, how much of the session was spent held still, and how often

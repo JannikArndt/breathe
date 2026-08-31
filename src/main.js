@@ -15,6 +15,11 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.11.0', date:'2026-08-31', notes:[
+    'The sound keeps opening up below six breaths a minute, all the way to one. It used to reach its fullest at six and stop — on a seven-minute session that went from 6.2 down to 2.5 a minute, it stopped responding ninety seconds in and stayed put for the rest.',
+    'Getting there is rewarded a little less than before if you settle around six a minute, and a lot more if you keep going. That trade is deliberate.',
+    'Breaths up to seventy seconds long are counted. The whole chain follows you down rather than needing you to start slow: the filters, the sensitivity to depth and the pause detection all re-scale as your rate changes.'
+  ]},
   {v:'0.10.1', date:'2026-08-31', notes:[
     'Labelling a recording no longer erases its raw signal. Adding a label rewrote the whole recording from what was on screen, and the screen only ever holds the summary — so the one action you take to make a recording more useful was the action that threw most of it away. Recordings labelled before this update have already lost it, and it cannot be recovered.'
   ]},
@@ -495,6 +500,36 @@ function reportSaveTrouble(){
   }
 }
 
+/**
+ * How much of the reward a rate has earned, 0..1.
+ *
+ * This was one straight line from 14 breaths a minute to 6, and it saturated
+ * there. On the owner's own session — the trace descends from 6.2/min to
+ * 2.5/min over seven minutes, which is exactly what they described doing — it
+ * reached 1.0 ninety seconds in and sat there for the remaining six minutes,
+ * through the entire part of the session that the app is for. The one channel
+ * the instrument has for responding to how someone is breathing stopped
+ * responding before they had properly started.
+ *
+ * Two segments, because they are not the same job. Most of the reward is still
+ * earned getting from 14 to 6 — that is the range the evidence in the README is
+ * about, and a regular breather must not be robbed to pay for this. The rest is
+ * a gentler slope from 6 down to 1, which is where slow-breathing practice
+ * actually goes and where there used to be nothing at all.
+ *
+ *   14/min  0.00      6/min  0.75      3/min  0.90      1/min  1.00
+ *
+ * The cost is real and small: a 6/min breather sees rich 0.82 rather than 1.00,
+ * which moves the reverb send from 0.60 to 0.55 and the break's tail from 3.5 s
+ * to 3.2 s. Exported for tools/smoke.mjs, which checks the shape rather than
+ * inferring it from a filter corner.
+ */
+export function reward(bpm){
+  const fast = clamp((14 - bpm)/8, 0, 1);   // 14 -> 6
+  const slow = clamp(( 6 - bpm)/5, 0, 1);   //  6 -> 1
+  return clamp(0.75*fast + 0.25*slow, 0, 1);
+}
+
 /* ---------- main loop ---------- */
 /* Demo mode simulates the sensor. It used to be a sine wave, which is not how
    anyone breathes and is precisely the case the tracker finds easy: a sinusoid
@@ -556,10 +591,9 @@ function loop(now){
   const speed = Breath.speed()*f;
 
   // reward: slower breathing opens the sound up. bpmSmooth is 0 until the
-  // second breath is timed, and (14-14)/8 = 0 holds rich at its floor until
+  // second breath is timed, and reward(14) = 0 holds rich at its floor until
   // there is a rate to reward.
-  const slow = clamp((14 - (Breath.bpmSmooth||14))/8, 0, 1);
-  UI.rich = lp(UI.rich, clamp(0.28 + 0.72*slow, 0, 1), dt, 3.0);
+  UI.rich = lp(UI.rich, clamp(0.28 + 0.72*reward(Breath.bpmSmooth||14), 0, 1), dt, 3.0);
 
   Audio.frame({
     level, vel:Breath.vel()*f, speed, inhaling:Breath.rising, resting:Breath.resting,

@@ -91,9 +91,15 @@ export const Breath = {
     // sound started swelling a median 1.9 s early and as much as 9.8 s early.
     // Three periods of headroom leaves under a tenth of that droop. The 12 s
     // floor is what fast breathing already used, so nothing moves for anyone
-    // breathing at an ordinary rate, and the 60 s ceiling keeps a standing
-    // postural offset (tau x drift rate) smaller than a breath.
-    const tauBase = clamp(3.0*(this.period || 4), 12, 60);
+    // breathing at an ordinary rate. The ceiling was 60 s, which is three
+    // periods only down to 20 s a breath — and a 60 s breath is the rate this
+    // app is now asked to reach. It is 150 s: measured against the harness,
+    // raising it changes nothing at all about the drift check (6.00/min at
+    // both), the phone-on-a-table check, or the bogus recording, because a
+    // *steady* standing offset is taken out by the covariance-about-the-mean
+    // and by the AGC. The ceiling is there to bound a runaway, not to shape
+    // the passband.
+    const tauBase = clamp(3.0*(this.period || 4), 12, 150);
 
     const v=[x,y,z];
     for(let i=0;i<3;i++){
@@ -130,7 +136,8 @@ export const Breath = {
 
     // ---- instantaneous phase from the signal and its derivative
     // s = sin(wt) => -ds/w = -cos(wt); atan2 gives 0 at the top of the inhale
-    const w = clamp(this.omega, 0.16, 2.2);
+    // 0.087 rad/s is a 72 s breath, just past the detector's own ceiling.
+    const w = clamp(this.omega, 0.087, 2.2);
     this.phase = Math.atan2(-this.dsLp/w, sN);
   },
 
@@ -154,7 +161,12 @@ export const Breath = {
     // inside a 20 s cycle has a peak several times further above its mean —
     // so the inferred peak came out far too low, every hold measured as motion
     // against it, and the gate stayed open through pauses it existed to catch.
-    this.slopePeak = lp(this.slopePeak, v, dt, v > this.slopePeak ? 0.5 : 30.0);
+    // Release has to outlast a hold or the reference decays during the pause it
+    // is measuring, the ratio climbs, and the gate re-opens on nothing. A 30 s
+    // release is two hold-lengths at 6 a minute and half of one at 1 a minute,
+    // so it follows the rate: two periods, floored at the old value.
+    const release = clamp(2.0*(this.period || 15), 30, 150);
+    this.slopePeak = lp(this.slopePeak, v, dt, v > this.slopePeak ? 0.5 : release);
     const peak = Math.max(this.slopePeak, 0.05);
     const r = v/peak;
     // Asymmetric thresholds: fall under 0.22 to start counting as still, clear
@@ -197,13 +209,13 @@ export const Breath = {
         if(this.lastPeakT) this.exhaleDur = this.lastTroughT - this.lastPeakT;
         if(prevTrough){
           const p = this.lastTroughT - prevTrough;
-          // 3 s is the fast end and rejects the bogus recording's 1.2 s
-          // "breaths". The slow end was 30 s, which dropped a real cycle in
-          // the owner's session: 6 of its 28 periods run past 25 s and its
-          // longest is 30.1. 36 s is 1.7 breaths a minute — slower than
-          // anything measured, and still nothing a phone being carried
-          // produces twice in a row.
-          if(p>3 && p<36){
+          // 3 s is the fast end and it is the load-bearing one: it rejects
+          // the bogus recording's 1.2 s "breaths". The slow end never rejected
+          // anything — a phone being carried does not produce one 60 s cycle,
+          // let alone three alike — and it has twice been the thing that
+          // discarded a real breath. 70 s is 0.86 a minute, past the 1/min the
+          // app is asked to support.
+          if(p>3 && p<70){
             this.periods.push(p);
             if(this.periods.length > 6) this.periods.shift();
             this.period = this.period ? lerp(this.period, p, 0.45) : p;

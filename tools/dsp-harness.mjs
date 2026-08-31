@@ -147,6 +147,45 @@ console.log('source: ' + srcDir + '\n');
         `${Breath.bpmSmooth.toFixed(2)}/min, true 2.03`);
   check('and keeps the long ones rather than half the breaths',
         Breath.periods.length >= 5, `${Breath.periods.length} of 6 kept`);
+
+  // 1/min is the rate the app is asked to support. Synthetic, and labelled as
+  // such: no one has recorded a 60 s breath for this repository.
+  Breath.begin(0);
+  const st1 = { t: 0, u: 0 };
+  feed(st1, { bpm: 1, secs: 600 });
+  check('tracks a synthetic 1/min', Math.abs(Breath.bpmSmooth - 1) < 0.12,
+        `${Breath.bpmSmooth.toFixed(2)}/min from ${Breath.periods.length} periods`);
+  check('and still calls it breathing', Breath.conf > 0.5, `conf ${Breath.conf.toFixed(2)}`);
+
+}
+
+// 2c. working the rate down mid-session.
+//
+// The owner's 0831 session descends from 6.2 to 2.5 breaths a minute over seven
+// minutes — they slow down as they settle rather than starting slow. Nothing in
+// the chain may need re-starting for that: the baseline spans three of the
+// *current* periods, the hysteresis follows the learned stroke, the AGC
+// re-normalises and the rest reference releases over two periods. This is that
+// descent, synthesised, with the tracker never reset.
+{
+  const state = { t: 0, u: 0 };
+  Breath.begin(0);
+  const seen = [];
+  // Eight breaths at each rate. The reported rate is an EMA over periods, so a
+  // fixed number of *seconds* would be four breaths at the bottom and thirty at
+  // the top, and the check would be measuring the EMA's lag rather than whether
+  // the chain follows.
+  for(const bpm of [8, 6, 5, 4, 3, 2.5, 2]){
+    feed(state, { bpm, secs: 8*60/bpm });
+    seen.push({ bpm, got: Breath.bpmSmooth, conf: Breath.conf });
+  }
+  const worst = seen.reduce((a, s) => Math.max(a, Math.abs(s.got - s.bpm)/s.bpm), 0);
+  check('follows a rate worked down from 8/min to 2/min without a reset',
+        worst < 0.10, `worst ${(worst*100).toFixed(0)}% off at ` +
+        seen.map(s => `${s.bpm}->${s.got.toFixed(2)}`).join(' '));
+  check('and stays confident the whole way down',
+        seen.every(s => s.conf > 0.5),
+        seen.map(s => s.conf.toFixed(2)).join(' '));
 }
 
 // 3. inhale/exhale split, true 2 s in / 5 s out

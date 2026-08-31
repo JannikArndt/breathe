@@ -42,10 +42,10 @@ import { clamp, lp, fin } from './util.js';
  * this reference 32% too large across a whole session, so every velocity-fed
  * layer ran about a quarter under-scaled — for exactly the breathing the app
  * exists to encourage. The floor here is a guard against a nonsense rate
- * rather than something a real session ever meets: 0.040 x 2 = 0.08.
+ * rather than something a real session ever meets: 0.040 x 0.8 = 0.032.
  */
 export function velRef(bpm){
-  return clamp(0.040*bpm, 0.07, 0.90);
+  return clamp(0.040*bpm, 0.03, 0.90);
 }
 
 export const Audio = {
@@ -364,7 +364,7 @@ export const Audio = {
     const vel  = clamp(fin(f.vel, 0), -1, 1);
     const rich = clamp(fin(f.rich, 0), 0, 1);
     const bpmR = fin(f.bpm, 0);
-    const bpm  = clamp(bpmR > 0 ? bpmR : 10, 2, 22);
+    const bpm  = clamp(bpmR > 0 ? bpmR : 10, 0.8, 22);
     const inh  = !!f.inhaling;
 
     const vRef = velRef(bpm);

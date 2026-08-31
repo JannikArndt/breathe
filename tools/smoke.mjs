@@ -146,6 +146,20 @@ check('velocity is scaled right at an ordinary rate', Math.abs(off(12) - 1) < 0.
       off(12).toFixed(2) + 'x');
 check('and still right at the owner\'s 2.9/min', Math.abs(off(2.9) - 1) < 0.01,
       off(2.9).toFixed(2) + 'x');
+check('and all the way down to one a minute', Math.abs(off(1) - 1) < 0.01,
+      off(1).toFixed(2) + 'x');
+
+// The reward curve. A regular breather must keep most of it, and it must still
+// be moving below six a minute — on the owner's own 0831 trace the old curve
+// reached its ceiling ninety seconds in and never moved again while they went
+// on halving their rate.
+const { reward } = mod;
+check('the reward is still mostly earned between 14 and 6 a minute',
+      Math.abs(reward(6) - 0.75) < 0.01, reward(6).toFixed(2) + ' at 6/min');
+check('and keeps rising all the way to one a minute',
+      reward(3) > reward(6) && reward(1.5) > reward(3) && Math.abs(reward(1) - 1) < 0.01,
+      [6, 4, 3, 2, 1].map(b => `${b}:${reward(b).toFixed(2)}`).join(' '));
+check('and is flat above fourteen', reward(14) === 0 && reward(20) === 0);
 
 /* ---------------------------------------------------------------- worker */
 // There is no build step to keep these in step, so they are asserted instead.

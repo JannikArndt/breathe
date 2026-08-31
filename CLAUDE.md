@@ -275,6 +275,21 @@ sample; the sensitivity control exists so the user can settle it on their own bo
 
 ## 4b. The slow end
 
+**The target range is 14 down to 1 breath a minute, and the owner works their way down
+inside a session.** Their 0831 trace descends 6.2 → 2.5/min over seven minutes. Nothing in
+the chain may need restarting for that, and nothing does: the baseline spans three of the
+*current* periods, the hysteresis follows the learned stroke depth, the AGC re-normalises,
+`velRef` follows the rate, and the rest reference releases over two periods. What the app
+had instead of a range problem was a set of **hard stops** set for a narrower range. Those
+are the numbers below. The harness has a check that walks 8 → 2/min without a reset.
+
+`reward(bpm)` in `src/main.js` is two segments, not one line: 0.75 of the range is earned
+between 14 and 6/min, the remaining 0.25 between 6 and 1. One straight line to 6 reached
+its ceiling ninety seconds into that session and never moved again through the six minutes
+that followed. Weight the first segment down and you rob an ordinary breather to pay a very
+slow one; the split is the trade, and it is meant to be argued with rather than tuned
+quietly.
+
 The owner breathes at a median **2.9 breaths a minute**, with a period distribution of
 p25 17.8 s, median 20.4 s, p75 24.3 s and a longest of 30.1 s. Two constants were set for
 someone breathing three or four times faster than that, and both were measured against
@@ -282,8 +297,19 @@ that recording rather than guessed:
 
 - **The detector's period ceiling was 30 s**, so the longest breath in that session was
   discarded outright, and 6 of its 28 periods sat within 20% of being discarded. It is
-  **36 s** now, which is 1.7 breaths a minute. The fast end did not move: that one is
-  load-bearing against the bogus recording and §4a explains why.
+  **70 s** now — 0.86 a minute. The fast end has not moved and must not: that one is
+  load-bearing against the bogus recording and §4a explains why. The slow end never
+  rejected anything, and has twice been the thing that discarded a real breath.
+- **The baseline ceiling was 60 s**, which is three periods only down to a 20 s breath.
+  **150 s** now. Raising it was measured rather than assumed: the drift check reads 6.00/min
+  at both 60 and 200, the phone-on-a-table check is unchanged, and the bogus recording still
+  peaks at 0.135 — because a *steady* standing offset is taken out by the
+  covariance-about-the-mean and by the AGC. The ceiling bounds a runaway; it does not shape
+  the passband.
+- **The rest reference released at a fixed τ = 30 s.** That is two hold-lengths at 6 a
+  minute and half of one at 1, so during a long hold the reference decayed, the ratio
+  climbed, and the gate re-opened on nothing. It follows the rate now: `clamp(2 × period,
+  30, 150)`.
 - **`Audio.frame()` clamped `bpm` to a floor of 4/min** before computing the velocity
   reference. At a real 2.9/min that made the reference **32% too large for the whole
   session**, so every velocity-fed layer — the swell's inhale gain and resonance, the
@@ -291,10 +317,13 @@ that recording rather than guessed:
   reference is `velRef(bpm)`, exported so the smoke test can check it directly rather
   than inferring it from a filter somewhere.
 
-`omega` is clamped to **0.16**–2.2 rad/s rather than 0.25, because 0.25 rad/s is a 25 s
-breath and the recorded `phase` channel was being bent for anything slower.
+`omega` is clamped to **0.087**–2.2 rad/s — a 72 s breath, just past the detector's own
+ceiling — because the recorded `phase` channel was being bent for anything slower than the
+old floor.
 
-The DSP harness tracks 12, 6, 3 and ~2/min. The 2/min case deliberately alternates 27 s
+The DSP harness tracks 12, 6, 3, ~2 and 1/min, and walks a rate down from 8 to 2 without
+a reset. **The 1/min case is synthetic and says so** — nobody has recorded a 60 s breath
+for this repository, and the harness's tilt is a test signal, never evidence about a body. The 2/min case deliberately alternates 27 s
 and 32 s breaths, because real slow breathing is not metronomic and a clean 30.0 s
 sinusoid slips under a 30 s ceiling: with the old ceiling that check reports 2.18/min from
 3 of 6 periods instead of 2.02 from 6 of 6.

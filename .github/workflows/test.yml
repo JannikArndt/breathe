@@ -1,0 +1,41 @@
+# Runs the two test suites on every push and pull request.
+#
+# This is NOT a build step and must not become one: GitHub Pages publishes the
+# repository root exactly as it is committed, with nothing generated. See §8 of
+# CLAUDE.md. The only thing here is `node tools/*.mjs`, which is what a
+# contributor runs locally anyway — the point is that a push that breaks the
+# wiring says so, rather than waiting to be found on a phone.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No install step: the app and its tools have no dependencies, which is
+      # the constraint this job exists partly to keep honest.
+      - name: no dependencies crept in
+        run: |
+          if [ -f package.json ] || [ -f package-lock.json ] || [ -d node_modules ]; then
+            echo "This project has no dependencies and no build step (CLAUDE.md §2)."
+            exit 1
+          fi
+
+      - name: the signal chain
+        run: node tools/dsp-harness.mjs
+
+      - name: the whole app
+        run: node tools/smoke.mjs
+
+      - name: onset against a real recording
+        run: node tools/onset.mjs recordings/breathe-20260830T223632.json

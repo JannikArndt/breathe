@@ -611,8 +611,13 @@ how. The changes screen and the build line hide during a session, like Recording
 ## 8. Deployment
 
 The app is a directory of static files with nothing to compile, so branch publishing is
-the simplest correct option — no Actions workflow is needed and none should be added
-unless a build step appears.
+the simplest correct option — **no Actions workflow deploys this app, and none should**
+unless a build step appears. What GitHub Pages serves is what is committed.
+
+`.github/workflows/test.yml` is not a deploy workflow. It runs `node tools/dsp-harness.mjs`
+and `node tools/smoke.mjs` on a push, plus `tools/onset.mjs` over a real recording, and it
+fails the build if a `package.json`, a lockfile or a `node_modules` appears — the one
+constraint a CI job can usefully hold that a human reviewer forgets.
 
 1. Settings → Pages → Source: **Deploy from a branch** → pick the branch and the root
    folder. Everything the app needs is at the repository root.

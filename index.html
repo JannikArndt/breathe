@@ -645,6 +645,14 @@
     <button class="back" id="closeLog">Back</button>
     <h2>Changes</h2>
   </header>
+
+  <div class="row">
+    <label>Get the latest version
+      <span class="hint">fetches the page again, past the cache</span>
+    </label>
+    <button class="ghost rowbtn" id="reloadBtn">Reload</button>
+  </div>
+
   <div id="logList"></div>
 </div>
 
@@ -3849,6 +3857,9 @@ const Review = {
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.5', date:'2026-08-31', notes:[
+    'Changes has a Reload button. Added to the Home Screen the app runs without an address bar, so there was no way to pick up a new version short of deleting the icon.'
+  ]},
   {v:'0.9.4', date:'2026-08-31', notes:[
     'The version and date sit at the bottom of the home screen, so you can tell a reload from a page that has not changed. Tap it for this list.'
   ]},
@@ -4358,6 +4369,14 @@ $('recBtn').addEventListener('click', ()=>Review.showList());
 $('buildBtn').textContent = `${BUILD.v} · ${relDate(BUILD.date)}`;
 $('buildBtn').addEventListener('click', ()=>Log.open());
 $('closeLog').addEventListener('click', ()=>Log.close());
+$('reloadBtn').addEventListener('click', ()=>{
+  // Added to the Home Screen the app runs standalone: no address bar, no
+  // reload gesture, and iOS will go on serving the copy it already has. A
+  // plain location.reload() can be answered from that same cache. A URL the
+  // phone has never seen cannot be, so give it one. location.replace keeps
+  // the stale copy from sitting in history behind the fresh one.
+  location.replace(location.pathname + '?r=' + Date.now());
+});
 $('closePanel').addEventListener('click', ()=>el.panel.classList.remove('open'));
 $('recalBtn').addEventListener('click', ()=>{
   el.panel.classList.remove('open');

@@ -454,6 +454,16 @@ Adjust stays reachable while breathing — it holds volume, sensitivity and the 
 controls. Recordings does
 not, because opening the browser over a running session is not something to do by accident.
 
+**Added to the Home Screen there is no way to reload.** `apple-mobile-web-app-capable`
+makes the app standalone, which is right for lying down with your eyes shut and wrong for
+picking up a new version: no address bar, no pull-to-refresh, and iOS goes on serving the
+copy it has. `location.reload()` can be answered from that same cache, so the Reload row in
+Changes navigates to `location.pathname + '?r=' + Date.now()` instead — a URL the phone has
+never seen is a cache entry it cannot have. Do not replace this with a plain reload, and do
+not add a `Cache-Control` meta tag in its place: browsers ignore those for HTTP caching, so
+it would look like a fix and do nothing. A service worker would solve it properly and costs
+a second file, which §2's first constraint does not allow.
+
 **The version stamp is the release, and `RELEASES` is where it comes from.** There is no
 build step, so the top entry of that array stamps the home screen and every recording's
 `app.build`. Nothing else in the app changes shape between releases, so without it a fixed

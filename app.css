@@ -164,13 +164,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .notice b{font-family:var(--display);letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:var(--sand);display:block;margin-bottom:5px;font-weight:500}
 
 /* ---------- intro ---------- */
-/* The intro is absolutely positioned inside .stage, so anything taller than
-   the stage spills off the bottom of a fixed, unscrollable #app with no way to
-   reach it. Everything here is sized to fit a small phone: four lines, one
-   control, three lines of fineprint — over the waves. */
+/* The intro is absolutely positioned inside .stage, inside a fixed and
+   unscrollable #app, so anything taller than the stage used to spill off the
+   bottom with no way to reach it. It is sized to fit a small phone — four
+   lines, one control, three lines of fineprint — but a translation is not
+   under our control, and German runs to six lines where English runs to four.
+   So it scrolls rather than clips, and `contain` keeps that scroll from
+   becoming the page's. */
 .intro{
   position:absolute;inset:0;display:flex;flex-direction:column;
-  justify-content:center;gap:clamp(16px,4vh,30px);padding:0 4px;overflow:hidden;
+  justify-content:center;gap:clamp(16px,4vh,30px);padding:0 4px;
+  overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
 }
 
 /* The waves roll in from the top of the phone, which is where the sea is when

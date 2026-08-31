@@ -28,8 +28,8 @@ const STRINGS = {
   de: {
     /* ---- home */
     'step.back':      'Leg dich auf den Rücken.',
-    'step.phone':     'Handy mit dem Display nach oben auf den Bauch, auf Höhe des Nabels.',
-    'step.sound':     'Ton an, Mitteilungen aus. Am besten mit Kopfhörern.',
+    'step.phone':     'Handy mit dem Display nach oben auf den Bauch, am Nabel.',
+    'step.sound':     'Ton an, Mitteilungen aus, am besten Kopfhörer.',
     'step.breathe':   'Atme und hör den Wellen zu.',
     'home.hear':      'Wellen hören',
     'home.hear.stop': 'Anhalten',

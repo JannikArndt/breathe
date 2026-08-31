@@ -121,6 +121,22 @@ check('the language picker offers what the table holds',
   const missing = [...used].filter(k => !i18nText.includes(`'${k}':`)).sort();
   check('every key the app uses has a German string', missing.length === 0,
         missing.join(' '));
+
+  // The home screen is sized to fit a small phone and a translation is not
+  // under our control: German ran to six wrapped lines where English runs to
+  // four before these were shortened. The intro scrolls rather than clips now,
+  // but a first screen that needs scrolling is still a bad first screen.
+  // 40 characters is about one line at the app's size on a narrow phone.
+  const rows = txt => Math.ceil(txt.length/40);
+  let enRows = 0, deRows = 0, worst = [];
+  for(const key of ['step.back','step.phone','step.sound','step.breathe']){
+    const en = htmlText.match(new RegExp(`data-t="${key}">([^<]*)<`))[1].trim();
+    const de = i18nText.match(new RegExp(`'${key}':\\s*'([^']*)'`))[1];
+    enRows += rows(en); deRows += rows(de);
+    if(rows(de) > rows(en)) worst.push(key);
+  }
+  check('the German setup text does not outgrow the screen', deRows <= enRows + 1,
+        `${deRows} wrapped lines against ${enRows}` + (worst.length ? ' — ' + worst.join(' ') : ''));
 }
 
 // Switching language must change what is on the screen and change it back.

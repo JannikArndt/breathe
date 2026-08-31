@@ -132,6 +132,13 @@ raises — notices, labels that change with state — call `t(key, vals, english
 argument is the fallback, and it is not optional in practice. `tools/smoke.mjs` asserts
 that every key used anywhere has a German string, and drives every screen in German.
 
+**The home screen has to survive a translation.** It is sized for a small phone and
+German runs longer than English — six wrapped lines against four, before those lines were
+shortened. The intro scrolls rather than clips now, which removes an old trap (anything
+taller than the stage used to be unreachable), and `tools/smoke.mjs` compares the wrapped
+line count of each setup line against its English. A first screen that needs scrolling is
+still a bad first screen.
+
 **`RELEASES` is deliberately not translated.** It grows by a paragraph whenever anything
 changes, and a translation of it would be stale within a day of being written.
 

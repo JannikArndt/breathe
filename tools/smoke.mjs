@@ -100,6 +100,16 @@ check('Changes lists the releases', $('logList').children.length >= 3,
 $('closeLog').click();
 check('Changes closes from Back', !$('log').classList.contains('open'));
 
+/* ---------------------------------------------------------------- velocity */
+// The reference every velocity-fed layer divides by. It has to follow the rate
+// all the way down, or slowing your breathing quietly turns those layers down.
+const { velRef } = await import(resolve(root, 'src/audio.js'));
+const off = bpm => velRef(bpm) / (0.040*bpm);
+check('velocity is scaled right at an ordinary rate', Math.abs(off(12) - 1) < 0.01,
+      off(12).toFixed(2) + 'x');
+check('and still right at the owner\'s 2.9/min', Math.abs(off(2.9) - 1) < 0.01,
+      off(2.9).toFixed(2) + 'x');
+
 /* ---------------------------------------------------------------- worker */
 // There is no build step to keep these in step, so they are asserted instead.
 const swText = readFileSync(resolve(root, 'sw.js'), 'utf8');

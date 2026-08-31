@@ -120,6 +120,35 @@ console.log('source: ' + srcDir + '\n');
   check('tracks 6/min', Math.abs(slow - 6) < 0.6, `${slow.toFixed(2)}/min`);
 }
 
+// 2b. the slow end of the range.
+//
+// The owner's own sessions run at a median 2.9 breaths a minute, with periods
+// up to 30 s. The detector's ceiling was 30 s, which dropped one of those
+// outright; 3/min is a 20 s breath, and this is the check that the whole chain
+// — the three-period baseline, the AGC, the hysteresis — still follows one.
+{
+  const state = { t: 0, u: 0 };
+  Breath.begin(0);
+  feed(state, { bpm: 3, secs: 300 });
+  const verySlow = Breath.bpmSmooth;
+  check('tracks 3/min', Math.abs(verySlow - 3) < 0.4, `${verySlow.toFixed(2)}/min`);
+  check('and is confident about it', Breath.conf > 0.5, `conf ${Breath.conf.toFixed(2)}`);
+
+  // Real slow breathing is not metronomic. Alternating 27 s and 32 s breaths
+  // is what the owner's session looks like at its slowest, and the longer of
+  // the two lands past the detector's old 30 s ceiling: with that ceiling back,
+  // half the periods are discarded and the reported rate settles on the short
+  // one instead of the average.
+  Breath.begin(0);
+  const st2 = { t: 0, u: 0 };
+  for(let i = 0; i < 9; i++) feed(st2, { bpm: i % 2 ? 60/32 : 60/27, secs: i % 2 ? 32 : 27 });
+  check('follows breaths that alternate 27 s and 32 s',
+        Math.abs(Breath.bpmSmooth - 60/29.5) < 0.10,
+        `${Breath.bpmSmooth.toFixed(2)}/min, true 2.03`);
+  check('and keeps the long ones rather than half the breaths',
+        Breath.periods.length >= 5, `${Breath.periods.length} of 6 kept`);
+}
+
 // 3. inhale/exhale split, true 2 s in / 5 s out
 //
 // Expect a systematic skew, not the true values. The tau = 0.35 s smoothing

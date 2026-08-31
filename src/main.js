@@ -15,6 +15,10 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.8', date:'2026-08-31', notes:[
+    'Very slow breathing is followed properly. Below four breaths a minute the sound was reading your movement as about a quarter weaker than it was, so the layers that follow the stroke faded exactly as you slowed down.',
+    'Breaths longer than thirty seconds are counted instead of discarded.'
+  ]},
   {v:'0.9.7', date:'2026-08-31', notes:[
     'The app works with no connection. It is kept on the phone whole, so nothing has to be fetched to start a session.',
     'When a new version exists the app says so, and Changes offers to install it. No more deleting the icon and adding it again.',

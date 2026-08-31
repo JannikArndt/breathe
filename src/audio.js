@@ -27,6 +27,27 @@ import { clamp, lp, fin } from './util.js';
    convolution room, one limiter.
    ============================================================ */
 
+/**
+ * The peak |vel| a breath at `bpm` actually produces, which is what every
+ * velocity-fed layer is normalised against.
+ *
+ * |vel| scales with breathing rate: at 6/min a clean sinusoid produces only
+ * about 40% of the velocity it does at 14/min, so a raw velocity channel would
+ * fade every layer it feeds exactly when the user does the one thing the app is
+ * asking for. |v|max = wA/2.4 with w = 2*pi*bpm/60 and A ~ 0.91 after the AGC,
+ * so roughly 0.040*bpm.
+ *
+ * The clamp on bpm in frame() used to floor at 4/min, which is not slow. The
+ * owner's own sessions run at a median 2.9/min: clamping those up to 4 made
+ * this reference 32% too large across a whole session, so every velocity-fed
+ * layer ran about a quarter under-scaled — for exactly the breathing the app
+ * exists to encourage. The floor here is a guard against a nonsense rate
+ * rather than something a real session ever meets: 0.040 x 2 = 0.08.
+ */
+export function velRef(bpm){
+  return clamp(0.040*bpm, 0.07, 0.90);
+}
+
 export const Audio = {
   ctx:null, ready:false, vol:0.55,
 
@@ -343,16 +364,10 @@ export const Audio = {
     const vel  = clamp(fin(f.vel, 0), -1, 1);
     const rich = clamp(fin(f.rich, 0), 0, 1);
     const bpmR = fin(f.bpm, 0);
-    const bpm  = clamp(bpmR > 0 ? bpmR : 10, 4, 22);
+    const bpm  = clamp(bpmR > 0 ? bpmR : 10, 2, 22);
     const inh  = !!f.inhaling;
 
-    // |vel| scales with breathing rate: at 6/min a clean sinusoid produces only
-    // about 40% of the velocity it does at 14/min, so a raw velocity channel
-    // would fade every layer it feeds exactly when the user does the one thing
-    // the app is asking for. Divide out the peak the rate implies —
-    // |v|max = wA/2.4 with w = 2*pi*bpm/60 and A ~ 0.91 after the AGC, so
-    // roughly 0.040*bpm.
-    const vRef = clamp(0.040*bpm, 0.10, 0.90);
+    const vRef = velRef(bpm);
     const up   = clamp( vel/vRef, 0, 1.25);
     const dn   = clamp(-vel/vRef, 0, 1.25);
 

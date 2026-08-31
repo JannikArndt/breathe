@@ -177,8 +177,8 @@ audio engine needs direction; `speed()` only ever carried magnitude.
 
 **Cycle detection.** Peak/trough with hysteresis scaled to the depth the user actually
 breathes at: `H = clamp(strokeAmp · 0.30, 0.30, 0.80)`, where `strokeAmp` is an EMA
-(α = 0.25) of measured peak-to-trough excursions, seeded at 1.7. Periods outside 2–25 s
-are discarded. Period EMA α = 0.45, bpm EMA α = 0.4. Lowering the coefficient makes it
+(α = 0.25) of measured peak-to-trough excursions, seeded at 1.7. Periods outside 3–36 s
+are discarded — see §4a for the fast end and §4b for the slow one. Period EMA α = 0.45, bpm EMA α = 0.4. Lowering the coefficient makes it
 double-count on noisy signals; raising it drops shallow breaths.
 
 `H` was a fixed 0.34 until the first real recording measured a median stroke of 1.75
@@ -244,8 +244,9 @@ Three terms, each set against measurement rather than taste:
   above 0.45, and confidence without rhythm evidence cannot reach it.
 - **calm** — `motionRms`, which rejects a phone being carried.
 
-The plausible period band is **3–30 s**. It was 2–25 s, which admitted the bogus
-recording's 1.2 s "breaths"; nobody using this app breathes faster than 20/min.
+The plausible period band is **3–36 s**. The fast end was 2 s, which admitted the bogus
+recording's 1.2 s "breaths"; nobody using this app breathes faster than 20/min. For the
+slow end see §4b.
 
 **Sensitivity** (a user control, 0–1) moves both the size floor and the rhythm tolerance.
 Where the line falls between a shallow breather and a still phone depends on the body and
@@ -253,6 +254,35 @@ where the phone sits, and is not something two recordings can settle.
 
 **Do not re-tune these against the recordings in `recordings/`.** Two sessions is not a
 sample; the sensitivity control exists so the user can settle it on their own body.
+
+## 4b. The slow end
+
+The owner breathes at a median **2.9 breaths a minute**, with a period distribution of
+p25 17.8 s, median 20.4 s, p75 24.3 s and a longest of 30.1 s. Two constants were set for
+someone breathing three or four times faster than that, and both were measured against
+that recording rather than guessed:
+
+- **The detector's period ceiling was 30 s**, so the longest breath in that session was
+  discarded outright, and 6 of its 28 periods sat within 20% of being discarded. It is
+  **36 s** now, which is 1.7 breaths a minute. The fast end did not move: that one is
+  load-bearing against the bogus recording and §4a explains why.
+- **`Audio.frame()` clamped `bpm` to a floor of 4/min** before computing the velocity
+  reference. At a real 2.9/min that made the reference **32% too large for the whole
+  session**, so every velocity-fed layer — the swell's inhale gain and resonance, the
+  foam, the spray — ran about a quarter under-scaled. The floor is 2/min now, and the
+  reference is `velRef(bpm)`, exported so the smoke test can check it directly rather
+  than inferring it from a filter somewhere.
+
+`omega` is clamped to **0.16**–2.2 rad/s rather than 0.25, because 0.25 rad/s is a 25 s
+breath and the recorded `phase` channel was being bent for anything slower.
+
+The DSP harness tracks 12, 6, 3 and ~2/min. The 2/min case deliberately alternates 27 s
+and 32 s breaths, because real slow breathing is not metronomic and a clean 30.0 s
+sinusoid slips under a 30 s ceiling: with the old ceiling that check reports 2.18/min from
+3 of 6 periods instead of 2.02 from 6 of 6.
+
+**Do not re-tighten either constant to "reject noise".** Neither one is what rejects the
+bogus recording — size, rhythm and stillness are, and they are unchanged.
 
 ## 4a2. Pulse (experimental)
 

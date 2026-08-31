@@ -130,7 +130,7 @@ export const Breath = {
 
     // ---- instantaneous phase from the signal and its derivative
     // s = sin(wt) => -ds/w = -cos(wt); atan2 gives 0 at the top of the inhale
-    const w = clamp(this.omega, 0.25, 2.2);
+    const w = clamp(this.omega, 0.16, 2.2);
     this.phase = Math.atan2(-this.dsLp/w, sN);
   },
 
@@ -197,7 +197,13 @@ export const Breath = {
         if(this.lastPeakT) this.exhaleDur = this.lastTroughT - this.lastPeakT;
         if(prevTrough){
           const p = this.lastTroughT - prevTrough;
-          if(p>3 && p<30){
+          // 3 s is the fast end and rejects the bogus recording's 1.2 s
+          // "breaths". The slow end was 30 s, which dropped a real cycle in
+          // the owner's session: 6 of its 28 periods run past 25 s and its
+          // longest is 30.1. 36 s is 1.7 breaths a minute — slower than
+          // anything measured, and still nothing a phone being carried
+          // produces twice in a row.
+          if(p>3 && p<36){
             this.periods.push(p);
             if(this.periods.length > 6) this.periods.shift();
             this.period = this.period ? lerp(this.period, p, 0.45) : p;

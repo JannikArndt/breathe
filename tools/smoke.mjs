@@ -100,6 +100,25 @@ check('Changes lists the releases', $('logList').children.length >= 3,
 $('closeLog').click();
 check('Changes closes from Back', !$('log').classList.contains('open'));
 
+/* ---------------------------------------------------------------- style */
+// Rules that carry their own colour are how a palette drifts apart. Every
+// colour is defined once, in the :root block, and referenced with var().
+const cssText = readFileSync(resolve(root, 'app.css'), 'utf8');
+const rootBlock = cssText.slice(cssText.indexOf(':root{'), cssText.indexOf('}', cssText.indexOf(':root{')));
+const strayHex = [...cssText.replace(rootBlock, '').matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map(m => m[0]);
+check('no rule carries its own colour', strayHex.length === 0, strayHex.join(' '));
+
+// An id in the markup that nothing reads is either dead or a bug where
+// something meant to read it does not.
+const idsInMarkup = [...readFileSync(resolve(root, 'index.html'), 'utf8')
+  .matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map(m => m[1]);
+const jsText = readdirSync(resolve(root, 'src')).map(f =>
+  readFileSync(resolve(root, 'src', f), 'utf8')).join('\n');
+const orphans = idsInMarkup.filter(id =>
+  !new RegExp(`['\"\`]${id}['\"\`]`).test(jsText) &&
+  !new RegExp(`#${id}\\b`).test(cssText));
+check('every id in the markup is read by something', orphans.length === 0, orphans.join(' '));
+
 /* ---------------------------------------------------------------- velocity */
 // The reference every velocity-fed layer divides by. It has to follow the rate
 // all the way down, or slowing your breathing quietly turns those layers down.
@@ -240,11 +259,11 @@ $('tglDim').click();
 check('dimming arms itself when switched on mid-session', Dim.timer !== null);
 Dim.sleep();
 check('the screen dims', document.body.classList.contains('dimmed'));
-check('and a catcher takes the tap that wakes it',
-      !$('dimCatch').classList.contains('hidden'));
+check('and a scrim is there to take the tap that wakes it',
+      !!document.querySelector('.dim-catch'));
 document.dispatch('pointerdown', {});
 check('a touch brings it back', !document.body.classList.contains('dimmed') && !Dim.on);
-check('and the catcher steps aside', $('dimCatch').classList.contains('hidden'));
+check('and the catcher steps aside', !document.body.classList.contains('dimmed'));
 
 $('tglDim').click();
 check('switching dimming off leaves the screen up', Flags.dim === false && Dim.on === false);

@@ -14,6 +14,11 @@
   /* Body copy that sits below the foam without going as grey as --mute. */
   --haze:          #C7D8D4;
 
+  /* Text on a glass fill. Darker than --abyss on purpose: at the background's
+     own value it reads as the page showing through the button rather than as
+     ink printed on it. */
+  --ink:           #062028;
+
   /* Hairlines and washes, named so no rule below carries a raw colour.
      --lane is the same ground the live trace paints. */
   --rule:          rgba(124,154,161,.16);
@@ -109,7 +114,7 @@ button{
 }
 button:active{background:rgba(227,237,233,.10)}
 button:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
-button.primary{background:var(--glass);border-color:var(--glass);color:#062028}
+button.primary{background:var(--glass);border-color:var(--glass);color:var(--ink)}
 button.ghost{flex:0 0 auto;padding:15px 16px;letter-spacing:.18em;font-size:12px;color:var(--mute);border-color:rgba(124,154,161,.3)}
 button[disabled]{opacity:.35;pointer-events:none}
 
@@ -253,18 +258,31 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 }
 
 /* ---------- dimming ----------
-   The page fades rather than the backlight, because a web page cannot touch
-   the backlight. 0.10 is dark enough to stop lighting a room and bright enough
-   that the End button is still findable without a tap.
+   The page darkens rather than the backlight, because a web page cannot touch
+   the backlight. A scrim over everything, rather than an opacity on each of
+   #app's siblings: a notice is a sibling too, so dimming the app alone would
+   leave the toast as the brightest thing in a dark room — and putting a
+   `transition` shorthand on `body > *` beat `.panel` and `.notice` on
+   specificity and quietly destroyed the transitions they declare for
+   themselves. One element, and nothing else is touched.
 
-   Everything but the catcher goes down together: a notice left on screen is a
-   sibling of #app, so dimming only the app would leave the toast as the
-   brightest thing in a dark room. Down slowly, back quickly. */
-body > :not(.dim-catch){transition:opacity .35s ease}
-body.dimmed > :not(.dim-catch){opacity:.10;transition:opacity 2.4s ease}
+   0.90 leaves about a tenth of the page showing: dark enough to stop lighting
+   a room, bright enough that the End button is still findable. Down slowly,
+   back quickly.
 
-/* Swallows the tap that wakes the screen, so waking cannot also press End. */
-.dim-catch{position:fixed;inset:0;z-index:40;background:transparent}
+   It also swallows the tap that wakes the screen, so waking cannot press End
+   on the way — hence pointer-events rather than display, which would give the
+   fade nothing to animate from. */
+.dim-catch{
+  position:fixed;inset:0;z-index:40;
+  background:var(--abyss);
+  opacity:0;pointer-events:none;
+  transition:opacity .35s ease;
+}
+body.dimmed .dim-catch{
+  opacity:.90;pointer-events:auto;
+  transition:opacity 2.4s ease;
+}
 
 @media (prefers-reduced-motion:reduce){
   *{transition-duration:.01ms !important}

@@ -15,6 +15,9 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.9.14', date:'2026-08-31', notes:[
+    'Dimming the screen no longer stops the Adjust sheet sliding up or the messages sliding in.'
+  ]},
   {v:'0.9.13', date:'2026-08-31', notes:[
     'The app no longer reloads itself a second after you open it for the first time.',
     'A new version stays quiet until your session is over, rather than putting a message on screen while you are breathing.'
@@ -859,14 +862,12 @@ export const Dim = {
     if(!Flags.dim || UI.state !== 'running') return;
     this.on = true;
     document.body.classList.add('dimmed');
-    $('dimCatch').classList.remove('hidden');
   },
   wake(){
     clearTimeout(this.timer);
     if(this.on){
       this.on = false;
       document.body.classList.remove('dimmed');
-      $('dimCatch').classList.add('hidden');
     }
     this.arm();
   }

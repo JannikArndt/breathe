@@ -16,6 +16,13 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.15.0', date:'2026-08-31', notes:[
+    'The home screen is one wave now: it washes up the sand, throws spray ahead of itself, hangs, and drains back. It has its own space above the text rather than passing behind it.',
+    'The sound comes on by itself, faded in, and it is the wave you are watching — the same signal draws the water and drives the surf.',
+    'Gone from the home screen: the standby label, the fine print, and the button that used to start the sound.',
+    'Gone from the breathing screen: the \u201cYou\u201d legend and the live sensor numbers.',
+    'Dimming the screen keeps the words readable. It was washing them out towards the background instead of turning the brightness down.'
+  ]},
   {v:'0.14.0', date:'2026-08-31', notes:[
     'The app speaks German. It picks your phone\u2019s language on the first run, and there is a switch at the top of Adjust.',
     'These release notes stay in English: they grow every time something changes, and a translation of them would be out of date within a day.'
@@ -270,7 +277,7 @@ export const UI = {
   // trace is the signal; held and marks are what "Show what it hears" draws
   // over it. They share the trace's index, so they shift together.
   trace:[], held:[], marks:[], traceAcc:0, axisAcc:29,
-  sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0, nerdAcc:0
+  sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
 };
 
 const el = {
@@ -280,8 +287,8 @@ const el = {
   traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
   vRate:$('vRate'), vRatio:$('vRatio'), vHr:$('vHr'), vHrUnit:$('vHrUnit'),
   cellHr:$('cellHr'),
-  statusTag:$('statusTag'), qualityTxt:$('qualityTxt'), nerd:$('nerd'),
-  waves:$('waves'), hear:$('hearBtn')
+  statusTag:$('statusTag'), qualityTxt:$('qualityTxt'),
+  waves:$('waves')
 };
 
 /* ---------- iOS: keep audio out of the "ringer" bucket ----------
@@ -311,7 +318,9 @@ async function requestWakeLock(){
   }catch(e){ /* not supported or denied — the session still runs */ }
 }
 document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState !== 'visible' && UI.state === 'idle') Shore.stop();
   if(document.visibilityState==='visible'){
+    if(UI.state === 'idle') Shore.start();
     if(UI.state!=='idle' && !UI.wakeLock) requestWakeLock();
     if(Audio.ctx && Audio.ctx.state==='suspended') Audio.ctx.resume();
   }
@@ -418,7 +427,6 @@ async function begin(sensorP, audioP){
   Review.hide();
   el.intro.classList.add('hidden');
   [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.remove('hidden'));
-  el.nerd.classList.toggle('hidden', !Flags.nerd);
   el.main.textContent = t('btn.end', null, 'End'); el.main.classList.remove('primary'); el.main.disabled = false;
 
   UI.state = 'running';
@@ -426,6 +434,7 @@ async function begin(sensorP, audioP){
   Dim.arm();
   Breath.invert = $('tglInvert').getAttribute('aria-checked')==='true';
   Breath.begin(performance.now()/1000);
+  el.statusTag.classList.remove('hidden');
   el.statusTag.textContent = t('tag.listening', null, 'listening');
   el.cue.textContent = t('cue.breathe', null, 'Breathe');
   el.sub.textContent = '';
@@ -471,9 +480,12 @@ async function end(){
   await Audio.stop(2.2);
   if(UI.silentEl){ try{ UI.silentEl.pause(); }catch(e){} UI.silentEl=null; }
   if(UI.wakeLock){ try{ UI.wakeLock.release(); }catch(e){} UI.wakeLock=null; }
-  [el.dial, el.centerRead, el.traceWrap, el.readout, el.nerd].forEach(n=>n.classList.add('hidden'));
+  [el.dial, el.centerRead, el.traceWrap, el.readout].forEach(n=>n.classList.add('hidden'));
   el.main.textContent = t('btn.start', null, 'Start'); el.main.classList.add('primary');
-  el.statusTag.textContent = t('tag.standby', null, 'standby');
+  // Nothing to say on the home screen: "standby" was a label for a state you
+  // can already see.
+  el.statusTag.classList.add('hidden');
+  el.statusTag.textContent = '';
   UI.sensorSeen=false;
 
   let session = null;
@@ -496,10 +508,10 @@ async function end(){
     reachable mid-session, so closing those must return you to the session. */
 function toIntro(){
   el.intro.classList.remove('hidden');
-  Waves.start();
+  Shore.start();
   el.recBtn.classList.remove('hidden');
   el.buildLine.classList.remove('hidden');
-  el.statusTag.textContent = t('tag.standby', null, 'standby');
+  el.statusTag.classList.add('hidden');
 }
 
 /** Recording must never disturb a session, so trouble is reported once, after it. */
@@ -668,22 +680,6 @@ function updateReadout(){
   el.vRate.textContent = b ? nfmt(b, 1) : '—';
   const i=Breath.inhaleDur, o=Breath.exhaleDur;
   el.vRatio.textContent = (sure && i>0.4 && o>0.4) ? (nfmt(i,1)+' / '+nfmt(o,1)) : '—';
-  // What the sensor is actually giving it. Four times a second rather than
-  // sixty: these are for reading, and a digit that changes every frame is not
-  // readable. Every number here is one a bug report would need.
-  if(Flags.nerd){
-    UI.nerdAcc = (UI.nerdAcc || 0) + 1;
-    if(UI.nerdAcc >= 15){
-      UI.nerdAcc = 0;
-      el.nerd.textContent =
-        'amp ' + Breath.axisAmp.toFixed(3) + ' m/s\u00b2' +
-        ' \u00b7 conf ' + Breath.conf.toFixed(2) +
-        ' \u00b7 follow ' + Breath.follow.toFixed(2) +
-        ' \u00b7 noise ' + Breath.motionRms.toFixed(3) +
-        ' \u00b7 gate ' + Breath.restGate.toFixed(2) +
-        ' \u00b7 stroke ' + Breath.strokeAmp.toFixed(2);
-    }
-  }
   if(Pulse.enabled){
     const hr = Pulse.reading(Breath.motionRms);
     // A dash is the honest reading most of the time. Holding the last number on
@@ -727,16 +723,25 @@ function signalHint(){
 }
 
 /* ---------- the home screen ----------
-   Waves rolling in from the top of the phone, which is where the sea is when
-   you are lying down with this on your belly. It is the first thing the app
-   says, before any text: this is going to be about waves.
+   One wave, washing up the sand and draining back, with the sound of it. The
+   two are the same signal: `reach` below is the demo breath, and the audio
+   engine is driven from the same number on the same frame — so the surf you
+   hear is the water you are watching, by construction rather than by tuning.
 
-   Four crests, one arriving every three and a half seconds. Slow enough to
-   read over and to breathe with, and it stops the moment a session starts —
-   there is nothing to look at once your eyes are shut, and the render loop has
-   a job to do. */
-export const Waves = {
-  on:false, t0:0, reduced:false,
+   It advances over the inhale, hangs at the top, drains over the exhale and
+   rests. That is a beach wash and it is also a breath, which is the whole
+   idea: the home screen is the app, at rest.
+
+   It stops the moment a session starts — there is nothing to look at with your
+   eyes shut — and after a few minutes untouched, because a phone left on this
+   screen should not play surf all afternoon. */
+export const Shore = {
+  on:false, audio:false, armed:false, reduced:false,
+  phase:0, prev:null, wet:0.14, spray:[], last:0, until:0,
+
+  BAND: 0.14,                  // the waterline when fully drained, as a fraction
+  RUN:  0.70,                  // how much further it washes at full reach
+  IDLE: 180,                   // seconds before it lets the screen go quiet
 
   start(){
     if(this.on) return;
@@ -745,117 +750,183 @@ export const Waves = {
         window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     }catch(e){ this.reduced = false; }
     this.on = true;
-    this.t0 = performance.now();
-    requestAnimationFrame(t => this.frame(t));
-  },
-  stop(){ this.on = false; },
-
-  frame(now){
-    if(!this.on || UI.state !== 'idle') { this.on = false; return; }
-    // A still sea for anyone who has asked for less motion: the crests are
-    // drawn once, where they happen to be, and the loop stops.
-    this.draw(this.reduced ? 3200 : now - this.t0);
-    if(!this.reduced) requestAnimationFrame(t => this.frame(t));
-  },
-
-  CRESTS: 4,
-  PERIOD: 14,                    // seconds for one crest to cross the screen
-  BODY: 46,                      // px of water hanging under each crest
-
-  draw(ms){
-    const c = el.waves;
-    if(!c || !c.getBoundingClientRect) return;
-    const {ctx, w, h} = fitCanvas(c);
-    ctx.clearRect(0, 0, w, h);
-    const P = palette(), t = ms/1000;
-
-    for(let i = 0; i < this.CRESTS; i++){
-      const p = ((t/this.PERIOD) + i/this.CRESTS) % 1;
-      // Overshoot both edges so a crest is never born or killed on screen.
-      const y0 = p*(h + 120) - 60;
-      // Fade in at the top and out at the bottom.
-      const a = Math.sin(Math.PI*p);
-
-      // Two sines rather than one, and about two cycles across the screen: one
-      // sine at half that reads as a ribbon, which is what this looked like
-      // before it was drawn out and looked at.
-      const yAt = k => y0 + Math.sin(k*7.4 + t*0.33 + i*1.7)*11
-                          + Math.sin(k*3.1 - t*0.21 + i*2.9)*16;
-
-      const path = new Path2D();
-      path.moveTo(0, yAt(0));
-      for(let x = 6; x <= w; x += 6) path.lineTo(x, yAt(x/w));
-
-      // The water hanging under the crest. Without it the crests read as
-      // horizontal rules on a dark page rather than as swells.
-      const body = new Path2D(path);
-      body.lineTo(w, yAt(1) + this.BODY);
-      for(let x = w - 6; x >= 0; x -= 6) body.lineTo(x, yAt(x/w) + this.BODY);
-      body.closePath();
-      const g = ctx.createLinearGradient(0, y0, 0, y0 + this.BODY);
-      g.addColorStop(0, alpha(P.glass, 0.075*a));
-      g.addColorStop(1, alpha(P.glass, 0));
-      ctx.fillStyle = g;
-      ctx.fill(body);
-
-      ctx.strokeStyle = alpha(P.glass, 0.42*a);
-      ctx.lineWidth = 1.1;
-      ctx.lineJoin = 'round';
-      ctx.stroke(path);
-    }
-  }
-};
-
-/* ---------- hearing it before you lie down ----------
-   The volume that suits a phone on a belly is not the volume that suits one in
-   your hand, and finding that out with your eyes shut means sitting up again.
-   This runs the instrument off the demo breath, on the home screen, so the
-   sound and the volume slider can both be checked standing up. */
-export const Preview = {
-  on:false, phase:0, until:0, last:0,
-
-  toggle(){
-    if(this.on){ this.stop(); return; }
-    // Same rule as Start: the context is constructed inside the tap, with no
-    // await above it. Audio.start() returns early if one is already running.
-    Audio.start().then(()=>{
-      Audio.setVolume(parseInt($('vol').value, 10)/100);
-    }, ()=>{
-      notice(t('n.nosound', null, 'No sound'), t('n.nosound.b', null, 'This browser blocked audio. Reload the page and try again.'), 6000);
-      this.stop();
-    });
-    this.on = true;
-    this.phase = 0.62;                 // start near the bottom, so it swells at you
+    this.phase = 0.55;         // drained and about to come in
+    this.prev = null;
+    this.wet = this.BAND;
+    this.spray.length = 0;
     this.last = performance.now();
-    this.until = this.last + 45000;    // it stops itself; nobody should have to
-      el.hear.textContent = t('home.hear.stop', null, 'Stop');
+    this.until = this.last + this.IDLE*1000;
+    this.wantAudio();
     requestAnimationFrame(t => this.frame(t));
+  },
+
+  /** The sound cannot start itself: a browser will not build an AudioContext
+      without a gesture, and there is no way around that. So try, and if the
+      context comes up suspended, take the first touch the page gets — which on
+      a phone is moments away and needs no button. */
+  wantAudio(){
+    if(this.audio) return;
+    Audio.start().then(()=>{
+      const live = Audio.ctx && Audio.ctx.state === 'running';
+      if(live){
+        this.audio = true;
+        Audio.setVolume(parseInt($('vol').value, 10)/100);
+        Audio.fade(Audio.vol, 5.0);          // in over five seconds, from nothing
+      }else{
+        this.armGesture();
+      }
+    }, ()=>this.armGesture());
+  },
+
+  armGesture(){
+    if(this.armed) return;
+    this.armed = true;
+    const go = ()=>{
+      document.removeEventListener('pointerdown', go, true);
+      document.removeEventListener('keydown', go, true);
+      this.armed = false;
+      if(this.on) this.wantAudio();
+    };
+    document.addEventListener('pointerdown', go, true);
+    document.addEventListener('keydown', go, true);
   },
 
   stop(keepAudio){
     if(!this.on) return;
     this.on = false;
-    el.hear.textContent = t('home.hear', null, 'Hear the waves');
-    if(!keepAudio) Audio.stop(1.2);
+    this.audio = false;
+    if(!keepAudio) Audio.stop(1.6);
+  },
+
+  /** A touch anywhere wakes it again after it has let the screen go quiet. */
+  poke(){
+    if(UI.state !== 'idle') return;
+    if(this.on){ this.until = performance.now() + this.IDLE*1000; return; }
+    this.start();
   },
 
   frame(now){
     if(!this.on || UI.state !== 'idle'){ this.stop(); return; }
-    if(now > this.until){ this.stop(); return; }
+    if(now > this.until){ this.stop(); this.draw(0, 0); return; }
+
     const dt = clamp((now - this.last)/1000, 0.001, 0.1);
     this.last = now;
 
     const s = demoBreath(dt, this);
-    const inhaling = s > this.lastS;
-    this.lastS = s;
-    // The demo shape is -1..1; the engine wants a level and a velocity.
-    Audio.frame({
-      level: (s+1)/2, vel: clamp((s - (this.prevS ?? s))/dt/2.4, -1, 1),
-      speed: Math.abs(s - (this.prevS ?? s))/dt/2.4,
-      inhaling, resting:false, rich:0.8, bpm:6, dt
-    });
-    this.prevS = s;
-    requestAnimationFrame(t => this.frame(t));
+    const reach = this.BAND + this.RUN*(s+1)/2;
+    const vel = this.prev === null ? 0 : (reach - this.prev)/dt;
+    const rising = vel > 0;
+    this.prev = reach;
+
+    // The sand stays wet where the water got to, and dries slowly.
+    this.wet = Math.max(reach, this.wet - dt*0.045);
+
+    if(this.audio){
+      // The same numbers a session sends, from the same breath: level is the
+      // waterline, and velocity is how fast it is moving. The advance runs
+      // 0.70 of the strip over 1.8 s and smootherstep peaks at 1.875x the
+      // mean, so 0.73/s is one full stroke — divide by that and the loudest
+      // the sound gets is the moment the water is running fastest up the sand.
+      const v = clamp(vel/0.73, -1, 1);
+      Audio.frame({
+        level: (s+1)/2, vel: v, speed: Math.abs(v),
+        inhaling: rising, resting: Math.abs(vel) < 0.02,
+        rich: 0.8, bpm: 6, dt
+      });
+      // The crest, at the moment the water stops advancing — the same instant
+      // the spray is thrown, because they are the same event.
+      if(this.wasRising && !rising) Audio.bell(0.7);
+    }
+    this.wasRising = rising;
+
+    this.step(dt, reach, vel);
+    this.draw(reach, now/1000);
+    if(!this.reduced) requestAnimationFrame(t => this.frame(t));
+  },
+
+  /** Spray: flung ahead of the edge while the water is running up the sand.
+      Thrown forward and slowed by drag, not arced by gravity — the view is
+      straight down at a shoreline, and there is no gravity in that plane.
+      Capped, because this runs on a phone. */
+  step(dt, reach, vel){
+    const c = el.waves;
+    const h = (c && c.getBoundingClientRect) ? (c.getBoundingClientRect().height || 160) : 160;
+    const w = (c && c.getBoundingClientRect) ? (c.getBoundingClientRect().width  || 360) : 360;
+    if(vel > 0.10 && this.spray.length < 120){
+      const n = Math.min(3, Math.round(vel*10));
+      for(let i=0;i<n;i++)
+        // Launched at one and a half to three times the speed of the water
+        // that threw them, or the edge simply outruns its own spray and the
+        // drops trail behind on the wet side, which is not what spray is.
+        this.spray.push({
+          x: Math.random()*w, y: reach*h,
+          vx: (Math.random()-0.5)*0.10*w,
+          vy: vel*h*(1.5 + Math.random()*1.5),
+          a: 1
+        });
+    }
+    const drag = Math.exp(-dt/0.32);
+    for(const p of this.spray){
+      p.x += p.vx*dt; p.y += p.vy*dt;
+      p.vx *= drag; p.vy *= drag;
+      p.a -= dt*0.85;
+    }
+    // Filter in place rather than allocating a new array sixty times a second.
+    let k = 0;
+    for(const p of this.spray) if(p.a > 0) this.spray[k++] = p;
+    this.spray.length = k;
+  },
+
+  draw(reach, t){
+    const c = el.waves;
+    if(!c || !c.getBoundingClientRect) return;
+    const {ctx, w, h} = fitCanvas(c);
+    ctx.clearRect(0, 0, w, h);
+    if(!this.on) return;
+    const P = palette();
+
+    // Two sines, two and four cycles across the width. One at half that reads
+    // as a ribbon — which is what the first version of this looked like.
+    const edgeAt = (r, k, tt) =>
+      r*h + Math.sin(k*11.0 + tt*0.9)*0.025*h + Math.sin(k*4.4 - tt*0.55)*0.045*h;
+
+    const line = (r, tt) => {
+      const path = new Path2D();
+      for(let x = 0; x <= w; x += 5){
+        const y = edgeAt(r, x/w, tt);
+        x ? path.lineTo(x, y) : path.moveTo(x, y);
+      }
+      return path;
+    };
+
+    // The sea, as a gradient hanging above the waterline rather than a slab:
+    // the edge is the thing worth looking at.
+    const band = 0.35*h;
+    const sea = new Path2D(line(reach, t));
+    sea.lineTo(w, 0); sea.lineTo(0, 0); sea.closePath();
+    const g = ctx.createLinearGradient(0, reach*h - band, 0, reach*h);
+    g.addColorStop(0, alpha(P.deep, 0));
+    g.addColorStop(0.72, alpha(P.deep, 0.45));
+    g.addColorStop(1, alpha(P.glass, 0.24));
+    ctx.fillStyle = g;
+    ctx.fill(sea);
+
+    // The wash before this one, still draining off the sand.
+    if(this.wet > reach + 0.01){
+      ctx.strokeStyle = alpha(P.foam, 0.13);
+      ctx.lineWidth = 1;
+      ctx.stroke(line(this.wet, t - 0.8));
+    }
+
+    ctx.strokeStyle = alpha(P.foam, 0.62);
+    ctx.lineWidth = 1.4;
+    ctx.lineJoin = 'round';
+    ctx.stroke(line(reach, t));
+
+    for(const p of this.spray){
+      ctx.fillStyle = alpha(P.foam, clamp(p.a, 0, 1)*0.75);
+      ctx.fillRect(p.x, p.y, 1.4, 1.4);
+    }
   }
 };
 
@@ -925,14 +996,11 @@ function drawTrace(){
 }
 
 /* ---------- wiring ---------- */
-$('hearBtn').addEventListener('click', ()=>Preview.toggle());
-
 el.main.addEventListener('click', ()=>{
   if(UI.state !== 'idle'){ end(); return; }
   // Hand the running context to the session rather than tearing it down and
   // building another one inside the same tap.
-  Preview.stop(true);
-  Waves.stop();
+  Shore.stop(true);   // hand the running audio to the session
   // ---- everything gated on user activation happens synchronously, right here.
   // Do not await anything above these three lines. See requestSensor().
   primeSilentChannel();
@@ -996,7 +1064,7 @@ const SLIDERS = [
    costs a tap and keeping it costs nothing. They are grouped under "Try" in
    Adjust rather than mixed in with the settled controls, because a control the
    app is not sure of should say so. */
-export const Flags = { heard:false, dim:false, nerd:false, depthBreak:false };
+export const Flags = { heard:false, dim:false, depthBreak:false };
 
 /* Pick-one controls. Neither a slider nor a switch, so a third table rather
    than a hand-wired exception — the point of the tables is that a control
@@ -1021,10 +1089,6 @@ const TOGGLES = [
   ['tglInvert', 'invert', on => { Breath.invert = on; }],
 
   ['tglHeard',  'heard',  on => { Flags.heard = on; }],
-  ['tglNerd',   'nerd',   on => {
-    Flags.nerd = on;
-    el.nerd.classList.toggle('hidden', !(on && UI.state === 'running'));
-  }],
   ['tglDim',    'dim',    on => {
     Flags.dim = on;
     if(!on) Dim.wake();
@@ -1063,7 +1127,7 @@ export const Dim = {
 };
 // pointerdown rather than click: the screen should come back as the finger
 // lands, not when it lifts.
-document.addEventListener('pointerdown', ()=>Dim.wake(), true);
+document.addEventListener('pointerdown', ()=>{ Dim.wake(); Shore.poke(); }, true);
 
 /** Read every control and hand back the object that goes to the store. */
 function collectSettings(){
@@ -1107,9 +1171,6 @@ function paintChoice(id){
 function repaintLabels(){
   el.main.textContent = t(UI.state === 'idle' ? 'btn.start' : 'btn.end',
                           null, UI.state === 'idle' ? 'Start' : 'End');
-  el.hear.textContent = t(Preview.on ? 'home.hear.stop' : 'home.hear',
-                          null, Preview.on ? 'Stop' : 'Hear the waves');
-  if(UI.state === 'idle') el.statusTag.textContent = t('tag.standby', null, 'standby');
   Updater.paint();
   Review.repaint();
   Log.built = false;
@@ -1237,7 +1298,7 @@ Store.open()
   .then(()=>Store.readPrefs())
   .then(p=>{ applySettings(p); Review.refreshCount(); refreshStorageRow(); });
 
-Waves.start();
+Shore.start();
 Updater.start();
 
 // secure-context check up front — requestPermission simply will not fire otherwise

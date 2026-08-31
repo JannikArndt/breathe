@@ -163,30 +163,32 @@ check('and switching back restores the English',
       JSON.stringify($('reloadBtn').textContent));
 
 /* ---------------------------------------------------------------- home */
+/* One wave, washing up the sand and draining back, with the sound of it. The
+   drawing and the audio are driven from the same number on the same frame, so
+   the check is that both move and that they move together. */
 const wavesCtx = $('waves').getContext('2d');
-tick(16);                                      // one frame of the wave loop
-check('the waves are drawn on the home screen', (wavesCtx.calls.stroke || 0) >= 4,
-      `${wavesCtx.calls.stroke || 0} crests`);
-run(3, 60);
-check('and keep rolling', (wavesCtx.calls.stroke || 0) > 100,
-      `${wavesCtx.calls.stroke} crests over three seconds`);
+tick(16);
+check('the shore is drawn on the home screen', (wavesCtx.calls.stroke || 0) >= 1,
+      `${wavesCtx.calls.stroke || 0} strokes`);
 
-// Hearing the sound before lying down. The volume that suits a phone on a
-// belly is not the volume that suits one in your hand.
-$('hearBtn').click();
-await settle();
-check('the preview starts the instrument', mod.Preview.on && !!FakeAudioContext.last,
-      $('hearBtn').textContent);
+run(6, 60);
+check('and keeps washing', (wavesCtx.calls.stroke || 0) > 200,
+      `${wavesCtx.calls.stroke} strokes over six seconds`);
+check('spray is thrown as the water runs up', mod.Shore.spray.length > 0,
+      `${mod.Shore.spray.length} drops`);
+check('the sand it reached stays wet behind it', mod.Shore.wet >= mod.Shore.BAND,
+      mod.Shore.wet.toFixed(2));
+
+// The audio starts itself. A browser will not build a context without a
+// gesture, so the app tries and then takes the first touch the page gets.
+check('the sound starts with the waves', mod.Shore.audio === true && !!FakeAudioContext.last);
 {
-  const before = FakeAudioContext.last.params()
-    .reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
-  run(6, 60);
-  const after = FakeAudioContext.last.params()
-    .reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
-  check('and drives it from a demo breath', after > before, `${after - before} writes`);
+  const ctxNow = FakeAudioContext.last;
+  const before = ctxNow.params().reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
+  run(4, 60);
+  const after = ctxNow.params().reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
+  check('and is driven by the same wave that is drawn', after > before, `${after - before} writes`);
 }
-$('hearBtn').click();
-check('tapping again stops it', !mod.Preview.on && $('hearBtn').textContent === 'Hear the waves');
 
 /* ---------------------------------------------------------------- panels */
 $('panelBtn').click();
@@ -349,7 +351,7 @@ $('mainBtn').click();                       // Start
 await Promise.resolve(); await new Promise(r => setTimeout(r, 0));
 await new Promise(r => setTimeout(r, 0));   // begin() awaits two promises
 
-check('the waves stop once a session starts', mod.Waves.on === false);
+check('the shore stops once a session starts', mod.Shore.on === false);
 check('Start switches the button to End', $('mainBtn').textContent === 'End',
       JSON.stringify($('mainBtn').textContent));
 check('the intro is hidden while breathing', $('intro').classList.contains('hidden'));
@@ -391,13 +393,6 @@ check('showing what it hears paints the held stretches',
 $('tglDepth').click();
 check('the crest can be told to follow depth', Flags.depthBreak === true);
 
-$('tglNerd').click();
-run(3, 60);
-check('the numbers appear under the trace', !$('nerd').classList.contains('hidden'));
-check('and say what the sensor is giving it', /amp [\d.]+ m\/s².*conf [\d.]+.*gate [\d.]+/.test($('nerd').textContent),
-      JSON.stringify($('nerd').textContent));
-$('tglNerd').click();
-check('and go away again', $('nerd').classList.contains('hidden'));
 
 $('tglDim').click();
 check('dimming arms itself when switched on mid-session', Dim.timer !== null);

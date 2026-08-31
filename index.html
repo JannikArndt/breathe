@@ -17,7 +17,7 @@
 <div id="app">
   <header>
     <h1 class="wordmark">breathe</h1>
-    <span class="depth" id="statusTag" data-t="tag.standby">standby</span>
+    <span class="depth hidden" id="statusTag"></span>
   </header>
 
   <div class="stage">
@@ -32,15 +32,6 @@
         <li data-t="step.breathe">Breathe, and listen to the waves.</li>
       </ul>
 
-      <div class="hear">
-        <button type="button" class="link" id="hearBtn" data-t="home.hear">Hear the waves</button>
-      </div>
-
-      <p class="fineprint">
-        <span data-t="home.fine">The sound follows your belly, and runs until you end it.</span><br>
-        <span data-t="home.fine2">Motion never leaves the phone. Sessions are kept here and go
-        nowhere unless you export them. A relaxation tool, not a medical device.</span>
-      </p>
     </div>
 
     <!-- live dial -->
@@ -54,12 +45,9 @@
   <div class="trace-wrap hidden" id="traceWrap">
     <canvas id="trace"></canvas>
     <div class="trace-key">
-      <span><i class="key-dot" style="background:var(--glass)"></i>You</span>
-      <span style="margin-left:auto" id="qualityTxt"></span>
+      <span id="qualityTxt"></span>
     </div>
   </div>
-
-  <div class="nerd hidden" id="nerd" aria-live="off"></div>
 
   <div class="readout hidden" id="readout">
     <div class="cell"><div class="k" data-t="read.rate">Your rate</div><div class="v"><span id="vRate">—</span><small>/min</small></div></div>
@@ -197,13 +185,6 @@
   </div>
 
   <div class="row">
-    <label><span data-t="adj.nerd">Show the numbers</span>
-      <span class="hint" data-t="adj.nerd.hint">what the sensor is giving it, live, under the trace</span>
-    </label>
-    <button class="toggle" id="tglNerd" role="switch" aria-checked="false" aria-label="Show the numbers"></button>
-  </div>
-
-  <div class="row">
     <label><span data-t="adj.depth">Crest follows depth</span>
       <span class="hint" data-t="adj.depth.hint">the wave breaks harder after a deeper breath, not a longer one</span>
     </label>
@@ -247,6 +228,10 @@
     </label>
     <button class="ghost rowbtn danger" id="clearRecBtn" data-t="adj.clear.btn">Delete all</button>
   </div>
+
+  <p class="panel-foot" data-t="adj.about">Motion never leaves this phone. Sessions are
+  kept here and go nowhere unless you export them. A relaxation tool, not a medical
+  device.</p>
 
   <div class="bar hidden" id="recalBar">
     <button id="recalBtn" data-t="adj.refind">Find my breathing again</button>

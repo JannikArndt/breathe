@@ -19,6 +19,15 @@
      ink printed on it. */
   --ink:           #062028;
 
+  /* The dim scrim, and it has to be black rather than the page colour. Blending
+     toward --abyss moves the text almost all the way to the background and
+     leaves the background where it was: foam 227 -> 30 against a ground still
+     at 8, so the contrast collapses from 28:1 to 3.7:1 and the words go grey.
+     Black scales every channel by the same factor instead — foam 227 -> 41,
+     ground 8 -> 1 — which is what turning a screen down actually does, and the
+     ratio comes out where it started rather than four-fold worse. */
+  --dim:           #000000;
+
   /* Hairlines and washes, named so no rule below carries a raw colour.
      --lane is the same ground the live trace paints. */
   --rule:          rgba(124,154,161,.16);
@@ -164,27 +173,22 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .notice b{font-family:var(--display);letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:var(--sand);display:block;margin-bottom:5px;font-weight:500}
 
 /* ---------- intro ---------- */
-/* The intro is absolutely positioned inside .stage, inside a fixed and
-   unscrollable #app, so anything taller than the stage used to spill off the
-   bottom with no way to reach it. It is sized to fit a small phone — four
-   lines, one control, three lines of fineprint — but a translation is not
-   under our control, and German runs to six lines where English runs to four.
-   So it scrolls rather than clips, and `contain` keeps that scroll from
-   becoming the page's. */
+/* The waves get a band of their own above the text rather than sitting behind
+   it. Behind, they were legible enough to read over — but a wave crossing a
+   sentence is a wave crossing a sentence, and the first screen should not ask
+   anyone to ignore something. */
 .intro{
   position:absolute;inset:0;display:flex;flex-direction:column;
-  justify-content:center;gap:clamp(16px,4vh,30px);padding:0 4px;
+  justify-content:center;gap:clamp(18px,4.5vh,34px);padding:0 4px;
   overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
 }
 
-/* The waves roll in from the top of the phone, which is where the sea is when
-   you are lying down with this on your belly. Behind the text, and quiet
-   enough that reading over them is no effort. */
 #waves{
-  position:absolute;inset:0;width:100%;height:100%;
-  z-index:0;pointer-events:none;
+  flex:0 0 auto;
+  display:block;width:100%;
+  height:clamp(120px,28vh,240px);
+  pointer-events:none;
 }
-.intro > :not(#waves){position:relative;z-index:1}
 
 .steps{
   margin:0;padding:0;list-style:none;
@@ -197,10 +201,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 /* The last line is the instruction the other three lead up to. */
 .steps li:last-child{color:var(--glass)}
 
-.hear{display:flex}
-/* Not a primary action — Start is. This offers to let you check the volume
-   before your eyes are shut, and should read as an aside. */
-#hearBtn{font-size:11px}
 
 .sub-note{
   display:block;margin-top:5px;
@@ -212,7 +212,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
   letter-spacing:.22em;text-transform:uppercase;color:var(--sand);
 }
 
-.fineprint{font-family:var(--data);font-size:10.5px;letter-spacing:.05em;color:var(--mute);line-height:1.7;margin:0}
 
 /* Navigation: Back is top-left on every screen that has one, and the bottom
    bar holds only actions. Buttons that merely returned ("Done", "Close") are
@@ -264,14 +263,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 
 .hidden{display:none !important}
 
-/* The live sensor numbers, behind a switch in Try. Monospace and dim: this is
-   for reading deliberately, not for glancing at while breathing. */
-.nerd{
-  margin-top:7px;
-  font-family:var(--data);font-size:10px;letter-spacing:.05em;
-  color:var(--mute);text-align:center;
-  font-variant-numeric:tabular-nums;
-}
 
 /* ---------- dimming ----------
    The page darkens rather than the backlight, because a web page cannot touch
@@ -282,21 +273,22 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
    specificity and quietly destroyed the transitions they declare for
    themselves. One element, and nothing else is touched.
 
-   0.90 leaves about a tenth of the page showing: dark enough to stop lighting
-   a room, bright enough that the End button is still findable. Down slowly,
-   back quickly.
+   0.82 leaves the page at about a fifth of its brightness: dark enough to stop
+   lighting a room, bright enough that the End button is still findable — and
+   because the scrim is black rather than the page colour, the words keep their
+   contrast instead of turning grey. Down slowly, back quickly.
 
    It also swallows the tap that wakes the screen, so waking cannot press End
    on the way — hence pointer-events rather than display, which would give the
    fade nothing to animate from. */
 .dim-catch{
   position:fixed;inset:0;z-index:40;
-  background:var(--abyss);
+  background:var(--dim);
   opacity:0;pointer-events:none;
   transition:opacity .35s ease;
 }
 body.dimmed .dim-catch{
-  opacity:.90;pointer-events:auto;
+  opacity:.82;pointer-events:auto;
   transition:opacity 2.4s ease;
 }
 
@@ -563,4 +555,13 @@ body.dimmed .dim-catch{
 .rev-danger{
   margin-top:34px;padding-top:16px;
   border-top:1px solid var(--rule);
+}
+
+/* The privacy line and the disclaimer. They were on the home screen, which is
+   the wrong place for a paragraph nobody reads twice; they belong beside
+   Storage, which is what they are about. They still have to exist somewhere. */
+.panel-foot{
+  margin:26px 0 0;
+  font-family:var(--data);font-size:10.5px;letter-spacing:.05em;
+  color:var(--mute);line-height:1.7;
 }

@@ -109,6 +109,24 @@ than live there forever.
 drives the app the way a finger does and needs to see state a finger cannot — a timer that
 is armed, a flag that is set. Nothing in `src/` may import them; see §3.
 
+**The home screen is one wave and the sound of it, from one signal.** `Shore` in
+`src/main.js` owns both: `reach` is the demo breath, the drawing and `Audio.frame()` are
+fed from the same number on the same frame, and the crest fires where the spray is thrown.
+They match by construction, not by tuning — do not give either one its own clock.
+
+The wave washes up the sand and drains back, which is a beach and is also a breath: it
+advances over the inhale, hangs, drains over the exhale, rests. The spray is launched at
+one and a half to three times the speed of the water that threw it, because at the water's
+own speed the edge outruns it and the drops trail behind on the wet side.
+
+**The waves have their own band above the text and must not sit behind it.** They were
+behind it and legible enough to read over, which is not the same as not being in the way.
+
+**The sound starts itself, which a browser will not let it do.** `Shore.wantAudio()` tries,
+and if the context comes up suspended it takes the first `pointerdown` or `keydown` the
+page gets. There is no way around the gesture requirement; there is a way around making
+someone press a button for it.
+
 **Demo mode is not a sine wave.** It is the shape the owner described from their own
 trace — a long flat bottom, a quick rise, a pause at the top, a slower fall — at 6/min,
 with smootherstep on the two strokes so the turnarounds have no corner for the τ = 0.35 s
@@ -724,6 +742,11 @@ are the history; `RELEASES` is a message to a person. The changes screen and the
 - CSS: custom properties in `:root` for every colour and font stack. No new hex literals in
   rules. Watch selector specificity between `.bar` and `.panel .bar` — margins there have
   collided before.
+- **The dim scrim is black, not `--abyss`.** Blending toward the page colour moves the
+  text almost all the way to the background and leaves the background where it was — foam
+  227 → 30 over a ground still at 8, so the words go grey. Black scales every channel by
+  the same factor, which is what turning a screen down actually does: foam 227 → 41,
+  ground 8 → 1, and the ratio comes out where it started.
 - Respect `prefers-reduced-motion` (handled globally by `*{transition-duration:.01ms}`)
   and keep focus outlines. The dim scrim is the one deliberate exemption: that rule is
   there to stop things sliding, and snapping a brightness change to instant turns waking

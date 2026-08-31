@@ -185,11 +185,10 @@ const HZ = 10;                                    // same snapshot rate the app 
 const track = [];                                 // {t,s,level,phase,bpm,quality,rich,restGate}
 const cycles = [];                                // {tSec, kind, periodSec, bpm}
 let prevPeak = Breath.lastPeakT, prevTrough = Breath.lastTroughT;
-// Snapshots start where the tracker starts producing output: during
-// calibration Breath.push() returns before it sets s, so there is nothing
-// to sample and the plot is honestly blank there.
-let rich = 0.4, lastT = rows[i] ? rows[i][0] : calEnd;
-let nextSnap = rows[i] ? rows[i][0] : calEnd;
+// Snapshots start with the first row: the tracker produces output from its
+// first sample, there being no calibration phase to wait out.
+let rich = 0.4, lastT = rows[i] ? rows[i][0] : 0;
+let nextSnap = rows[i] ? rows[i][0] : 0;
 
 for (; i < rows.length; i++) {
   const t = rows[i][0];
@@ -250,19 +249,29 @@ const stats = block => {
 const replayed = stats(win);
 const asRecorded = recorded.length ? stats(recorded) : null;
 
-/* ---------------------------------------------------------------- labels */
-const marks = labels.filter(l => l.tSec >= from - t0 && l.tSec <= to - t0);
-const stretches = labels.map((l, k) => {
-  const a2 = l.tSec;
-  const b2 = k + 1 < labels.length ? labels[k + 1].tSec : (to - t0);
-  const seg = track.filter(v => v.t >= a2 && v.t < b2);
+/* ---------------------------------------------------------------- marks
+   A recording now carries one interval — where the usable part starts and
+   stops — rather than a list of label kinds. Older files carry the list; the
+   two kinds that meant the same thing are read back as an interval so a
+   pre-0.12 recording still reports something. */
+const boundary = S.trim ? [S.trim] : (() => {
+  let f = 0, t = 0;
+  for (const l of labels) {
+    if ((l.kind === 'settled' || l.kind === 'lay-down') && !f) f = l.tSec;
+    if (l.kind === 'sat-up') t = l.tSec;
+  }
+  return (f || t) ? [{ fromSec: f, toSec: t > f ? t : (to - t0) }] : [];
+})();
+
+const stretches = boundary.map(b => {
+  const seg = track.filter(v => v.t >= b.fromSec && v.t < b.toSec);
   const st = seg.length ? stats(seg) : { n: 0, meanBpm: 0, minBpm: 0, maxBpm: 0, meanQuality: 0 };
   return {
-    kind: l.kind, note: l.note || '', fromSec: r2(a2), toSec: r2(b2), sec: r2(b2 - a2),
-    breaths: cycles.filter(c => c.kind === 'trough' && c.tSec >= a2 && c.tSec < b2).length,
+    kind: 'usable', fromSec: r2(b.fromSec), toSec: r2(b.toSec), sec: r2(b.toSec - b.fromSec),
+    breaths: cycles.filter(c => c.kind === 'trough' && c.tSec >= b.fromSec && c.tSec < b.toSec).length,
     ...st
   };
-}).filter(s => s.toSec > s.fromSec && s.toSec > from - t0 && s.fromSec < to - t0);
+});
 
 const out = {
   file: opt.file, app: srcDir,
@@ -273,7 +282,7 @@ const out = {
   replayed, asRecorded,
   recordedSummary: S.summary || null,
   cycles: winCycles,
-  labels: stretches,
+  usable: stretches,
   gaps: gaps.slice(0, 20)
 };
 
@@ -332,14 +341,12 @@ else {
   if (show) say(`    ... ${winCycles.length - opt.cycles} more (--cycles 0 for all)`);
 }
 
-head('labels');
-if (!labels.length) say('  none. Label a session in the app and the stretches show up here.');
-if (stretches.length < labels.length)
-  say(`  (${labels.length - stretches.length} label(s) fall outside ${out.window.fromSec}s..${out.window.toSec}s and are not listed)`);
+head('the usable stretch');
+if (!stretches.length)
+  say('  not marked. Open the recording in the app and say where the good part starts and stops.');
 for (const s of stretches) {
-  say(`  ${pad(s.kind, 14)} ${pad(s.fromSec + 's', 9)}-> ${pad(s.toSec + 's', 10)} ${pad(fmtDur(s.sec), 7)}` +
-      `  ${pad(s.meanBpm + '/min', 10)} ${pad(s.breaths + ' breaths', 12)} quality ${s.meanQuality}` +
-      (s.note ? `\n                 "${s.note}"` : ''));
+  say(`  ${pad(s.fromSec + 's', 9)}-> ${pad(s.toSec + 's', 10)} ${pad(fmtDur(s.sec), 7)}` +
+      `  ${pad(s.meanBpm + '/min', 10)} ${pad(s.breaths + ' breaths', 12)} quality ${s.meanQuality}`);
 }
 hr();
 process.exit(0);
@@ -421,18 +428,18 @@ function plot() {
     console.log(pad('peak ^', GUT) + mk.join(''));
   }
 
-  // calibration window, which produces no tracker output
-  const cs = calStart - t0, ce = calEnd - t0;
-  if (ce > lo && cs < lo + span) {
-    const cb = new Array(PW).fill(' ');
-    for (let c = colOf(Math.max(cs, lo)); c <= colOf(Math.min(ce, lo + span)); c++) cb[c] = '=';
-    console.log(pad('cal =', GUT) + cb.join(''));
-  }
-
-  if (marks.length) {
-    const lm = new Array(PW).fill(' ');
-    marks.forEach((l, k) => { lm[colOf(l.tSec)] = String((k + 1) % 10); });
-    console.log(pad('label', GUT) + lm.join(''));
+  // The stretch the owner marked as usable, when the recording carries one.
+  // This band used to draw the calibration window; there has been no
+  // calibration phase for some time, and `calStart` was never defined, so this
+  // line threw every time the plot ran. It only ever ran at the bottom of a
+  // long plot, which is how it survived.
+  if (S.trim) {
+    const us = S.trim.fromSec - t0, ue = S.trim.toSec - t0;
+    if (ue > lo && us < lo + span) {
+      const ub = new Array(PW).fill(' ');
+      for (let c = colOf(Math.max(us, lo)); c <= colOf(Math.min(ue, lo + span)); c++) ub[c] = '=';
+      console.log(pad('usable =', GUT) + ub.join(''));
+    }
   }
 
   const ax = new Array(PW).fill(' ');
@@ -446,9 +453,9 @@ function plot() {
   console.log(pad('time', GUT) + ax.join(''));
 
   say('  ' + (waveform
-      ? '# your breath   . rest gate (low = held still)   ^ peak   v trough   = calibrating (no output)'
-      : '# your rate   = calibrating (no output)') +
-    (marks.length ? '   ' + marks.map((l, k) => `${k + 1}=${l.kind}`).join(' ') : ''));
+      ? '# your breath   . rest gate (low = held still)   ^ peak   v trough'
+      : '# your rate') +
+    (S.trim ? '   = the stretch marked usable' : ''));
 }
 
 function rateStrip() {

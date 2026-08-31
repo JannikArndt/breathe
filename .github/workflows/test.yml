@@ -39,3 +39,11 @@ jobs:
 
       - name: onset against a real recording
         run: node tools/onset.mjs recordings/breathe-20260830T223632.json
+
+      # The plot, not just the header. replay.mjs threw on its last line for
+      # weeks because reading the top of its output looks like it working.
+      - name: replay a real recording, all the way to the bottom
+        run: |
+          node tools/replay.mjs recordings/breathe-20260830T223632.json
+          node tools/analyze.mjs recordings/breathe-20260831-0853.json
+          node tools/analyze.mjs recordings/breathe-20260829T115717-bogus.json

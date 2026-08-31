@@ -228,6 +228,14 @@ export function installDom(htmlPath){
   });
   window.getComputedStyle = globalThis.getComputedStyle;
 
+  // Path2D: the wave drawing builds its crest once and fills and strokes it.
+  // The stub only has to record that the calls happened.
+  globalThis.Path2D = class Path2D {
+    constructor(){ this.ops = 0; }
+    moveTo(){ this.ops++; } lineTo(){ this.ops++; } closePath(){ this.ops++; }
+    arc(){ this.ops++; } rect(){ this.ops++; }
+  };
+
   globalThis.document = document;
   globalThis.window = window;
   globalThis.location = window.location;

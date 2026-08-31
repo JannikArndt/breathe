@@ -15,6 +15,11 @@ import { Review } from './review.js';
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.13.0', date:'2026-08-31', notes:[
+    'The home screen has waves rolling in from the top of the phone, which is where the sea is when you are lying down with this on your belly.',
+    'Hear the waves plays the sound before you lie down, so you can set the volume with your eyes open.',
+    'The setup text says four things instead of six, and the ringer diagram is gone.'
+  ]},
   {v:'0.12.0', date:'2026-08-31', notes:[
     'Opening a recording is now about one thing: marking where the usable part starts and stops. Two buttons, and everything outside the marks is veiled on both graphs.',
     'Gone from that screen: the nine categories, the note field, the list of labels, the row of numbers under the graph and the row of zoom buttons.',
@@ -253,7 +258,7 @@ const Log = {
 
 export const UI = {
   state:'idle',                       // idle | running
-  demo:false, demoPhase:0,
+  demo:false, phase:0,
   wakeLock:null, silentEl:null,
   rich:0.4, lastFrame:0, sensorSeen:false, toldSaveTrouble:false,
   badSince:0,
@@ -270,7 +275,8 @@ const el = {
   traceWrap:$('traceWrap'), trace:$('trace'), readout:$('readout'),
   vRate:$('vRate'), vRatio:$('vRatio'), vHr:$('vHr'), vHrUnit:$('vHrUnit'),
   cellHr:$('cellHr'),
-  statusTag:$('statusTag'), qualityTxt:$('qualityTxt'), nerd:$('nerd')
+  statusTag:$('statusTag'), qualityTxt:$('qualityTxt'), nerd:$('nerd'),
+  waves:$('waves'), hear:$('hearBtn')
 };
 
 /* ---------- iOS: keep audio out of the "ringer" bucket ----------
@@ -485,6 +491,7 @@ async function end(){
     reachable mid-session, so closing those must return you to the session. */
 function toIntro(){
   el.intro.classList.remove('hidden');
+  Waves.start();
   el.recBtn.classList.remove('hidden');
   el.buildLine.classList.remove('hidden');
   el.statusTag.textContent = 'standby';
@@ -551,8 +558,8 @@ export function reward(bpm){
    for the tau = 0.35 s filter to ring on. Returns -1..1. */
 const PHASES = [[0.18, 1], [0.38, 0], [0.68, -1], [1.00, 0]];
 function demoBreath(dt, state){
-  state.demoPhase = (state.demoPhase + dt/10) % 1;
-  const u = state.demoPhase;
+  state.phase = ((state.phase || 0) + dt/10) % 1;
+  const u = state.phase;
   let from = 0, base = -1;
   for(const [to, dir] of PHASES){
     if(u < to){
@@ -715,6 +722,139 @@ function signalHint(){
   el.qualityTxt.style.color = 'var(--sand)';
 }
 
+/* ---------- the home screen ----------
+   Waves rolling in from the top of the phone, which is where the sea is when
+   you are lying down with this on your belly. It is the first thing the app
+   says, before any text: this is going to be about waves.
+
+   Four crests, one arriving every three and a half seconds. Slow enough to
+   read over and to breathe with, and it stops the moment a session starts —
+   there is nothing to look at once your eyes are shut, and the render loop has
+   a job to do. */
+export const Waves = {
+  on:false, t0:0, reduced:false,
+
+  start(){
+    if(this.on) return;
+    try{
+      this.reduced = !!(window.matchMedia &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }catch(e){ this.reduced = false; }
+    this.on = true;
+    this.t0 = performance.now();
+    requestAnimationFrame(t => this.frame(t));
+  },
+  stop(){ this.on = false; },
+
+  frame(now){
+    if(!this.on || UI.state !== 'idle') { this.on = false; return; }
+    // A still sea for anyone who has asked for less motion: the crests are
+    // drawn once, where they happen to be, and the loop stops.
+    this.draw(this.reduced ? 3200 : now - this.t0);
+    if(!this.reduced) requestAnimationFrame(t => this.frame(t));
+  },
+
+  CRESTS: 4,
+  PERIOD: 14,                    // seconds for one crest to cross the screen
+  BODY: 46,                      // px of water hanging under each crest
+
+  draw(ms){
+    const c = el.waves;
+    if(!c || !c.getBoundingClientRect) return;
+    const {ctx, w, h} = fitCanvas(c);
+    ctx.clearRect(0, 0, w, h);
+    const P = palette(), t = ms/1000;
+
+    for(let i = 0; i < this.CRESTS; i++){
+      const p = ((t/this.PERIOD) + i/this.CRESTS) % 1;
+      // Overshoot both edges so a crest is never born or killed on screen.
+      const y0 = p*(h + 120) - 60;
+      // Fade in at the top and out at the bottom.
+      const a = Math.sin(Math.PI*p);
+
+      // Two sines rather than one, and about two cycles across the screen: one
+      // sine at half that reads as a ribbon, which is what this looked like
+      // before it was drawn out and looked at.
+      const yAt = k => y0 + Math.sin(k*7.4 + t*0.33 + i*1.7)*11
+                          + Math.sin(k*3.1 - t*0.21 + i*2.9)*16;
+
+      const path = new Path2D();
+      path.moveTo(0, yAt(0));
+      for(let x = 6; x <= w; x += 6) path.lineTo(x, yAt(x/w));
+
+      // The water hanging under the crest. Without it the crests read as
+      // horizontal rules on a dark page rather than as swells.
+      const body = new Path2D(path);
+      body.lineTo(w, yAt(1) + this.BODY);
+      for(let x = w - 6; x >= 0; x -= 6) body.lineTo(x, yAt(x/w) + this.BODY);
+      body.closePath();
+      const g = ctx.createLinearGradient(0, y0, 0, y0 + this.BODY);
+      g.addColorStop(0, alpha(P.glass, 0.075*a));
+      g.addColorStop(1, alpha(P.glass, 0));
+      ctx.fillStyle = g;
+      ctx.fill(body);
+
+      ctx.strokeStyle = alpha(P.glass, 0.42*a);
+      ctx.lineWidth = 1.1;
+      ctx.lineJoin = 'round';
+      ctx.stroke(path);
+    }
+  }
+};
+
+/* ---------- hearing it before you lie down ----------
+   The volume that suits a phone on a belly is not the volume that suits one in
+   your hand, and finding that out with your eyes shut means sitting up again.
+   This runs the instrument off the demo breath, on the home screen, so the
+   sound and the volume slider can both be checked standing up. */
+export const Preview = {
+  on:false, phase:0, until:0, last:0,
+
+  toggle(){
+    if(this.on){ this.stop(); return; }
+    // Same rule as Start: the context is constructed inside the tap, with no
+    // await above it. Audio.start() returns early if one is already running.
+    Audio.start().then(()=>{
+      Audio.setVolume(parseInt($('vol').value, 10)/100);
+    }, ()=>{
+      notice('No sound', 'This browser blocked audio. Reload the page and try again.', 6000);
+      this.stop();
+    });
+    this.on = true;
+    this.phase = 0.62;                 // start near the bottom, so it swells at you
+    this.last = performance.now();
+    this.until = this.last + 45000;    // it stops itself; nobody should have to
+    el.hear.textContent = 'Stop';
+    requestAnimationFrame(t => this.frame(t));
+  },
+
+  stop(keepAudio){
+    if(!this.on) return;
+    this.on = false;
+    el.hear.textContent = 'Hear the waves';
+    if(!keepAudio) Audio.stop(1.2);
+  },
+
+  frame(now){
+    if(!this.on || UI.state !== 'idle'){ this.stop(); return; }
+    if(now > this.until){ this.stop(); return; }
+    const dt = clamp((now - this.last)/1000, 0.001, 0.1);
+    this.last = now;
+
+    const s = demoBreath(dt, this);
+    const inhaling = s > this.lastS;
+    this.lastS = s;
+    // The demo shape is -1..1; the engine wants a level and a velocity.
+    Audio.frame({
+      level: (s+1)/2, vel: clamp((s - (this.prevS ?? s))/dt/2.4, -1, 1),
+      speed: Math.abs(s - (this.prevS ?? s))/dt/2.4,
+      inhaling, resting:false, rich:0.8, bpm:6, dt
+    });
+    this.prevS = s;
+    requestAnimationFrame(t => this.frame(t));
+  }
+};
+
 /* ---------- drawing ---------- */
 function drawDial(level){
   const {ctx,w,h}=fitCanvas(el.dial);
@@ -781,8 +921,14 @@ function drawTrace(){
 }
 
 /* ---------- wiring ---------- */
+$('hearBtn').addEventListener('click', ()=>Preview.toggle());
+
 el.main.addEventListener('click', ()=>{
   if(UI.state !== 'idle'){ end(); return; }
+  // Hand the running context to the session rather than tearing it down and
+  // building another one inside the same tap.
+  Preview.stop(true);
+  Waves.stop();
   // ---- everything gated on user activation happens synchronously, right here.
   // Do not await anything above these three lines. See requestSensor().
   primeSilentChannel();
@@ -1027,6 +1173,7 @@ Store.open()
   .then(()=>Store.readPrefs())
   .then(p=>{ applySettings(p); Review.refreshCount(); refreshStorageRow(); });
 
+Waves.start();
 Updater.start();
 
 // secure-context check up front — requestPermission simply will not fire otherwise

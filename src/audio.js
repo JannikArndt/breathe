@@ -63,6 +63,15 @@ export const Audio = {
   lastTop:0, lastBottom:0,
 
   async start(){
+    // Already running: the sound preview on the home screen may have built the
+    // graph a moment ago, and tapping Start must not leave two contexts alive.
+    // Nothing is constructed on this path, so the rule about constructing
+    // inside the tap is not in play.
+    if(this.ready && this.ctx){
+      if(this.ctx.state === 'suspended') await this.ctx.resume();
+      this.fade(this.vol, 0.8);
+      return;
+    }
     const AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) throw new Error('no-webaudio');
     // Constructed before the first await, deliberately: iOS only lets the

@@ -100,6 +100,32 @@ check('the store opens', Store.available, Store.lastError || '');
 check('the settings row exists after the v2 upgrade',
       Store._db && Store._db.objectStoreNames.contains('prefs'));
 
+/* ---------------------------------------------------------------- home */
+const wavesCtx = $('waves').getContext('2d');
+tick(16);                                      // one frame of the wave loop
+check('the waves are drawn on the home screen', (wavesCtx.calls.stroke || 0) >= 4,
+      `${wavesCtx.calls.stroke || 0} crests`);
+run(3, 60);
+check('and keep rolling', (wavesCtx.calls.stroke || 0) > 100,
+      `${wavesCtx.calls.stroke} crests over three seconds`);
+
+// Hearing the sound before lying down. The volume that suits a phone on a
+// belly is not the volume that suits one in your hand.
+$('hearBtn').click();
+await settle();
+check('the preview starts the instrument', mod.Preview.on && !!FakeAudioContext.last,
+      $('hearBtn').textContent);
+{
+  const before = FakeAudioContext.last.params()
+    .reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
+  run(6, 60);
+  const after = FakeAudioContext.last.params()
+    .reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
+  check('and drives it from a demo breath', after > before, `${after - before} writes`);
+}
+$('hearBtn').click();
+check('tapping again stops it', !mod.Preview.on && $('hearBtn').textContent === 'Hear the waves');
+
 /* ---------------------------------------------------------------- panels */
 $('panelBtn').click();
 check('Adjust opens', $('panel').classList.contains('open'));
@@ -261,6 +287,7 @@ $('mainBtn').click();                       // Start
 await Promise.resolve(); await new Promise(r => setTimeout(r, 0));
 await new Promise(r => setTimeout(r, 0));   // begin() awaits two promises
 
+check('the waves stop once a session starts', mod.Waves.on === false);
 check('Start switches the button to End', $('mainBtn').textContent === 'End',
       JSON.stringify($('mainBtn').textContent));
 check('the intro is hidden while breathing', $('intro').classList.contains('hidden'));

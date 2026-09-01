@@ -797,13 +797,17 @@ export const Recorder = {
    * Sparse timeline event. `t` is optional and defaults to the wall clock;
    * pass it when replaying a recorded clock.
    *
-   * Known types, all optional except the first two:
-   *   axis               {axis:[x,y,z], amplitude, conf}  every 30 s
-   *   breath             {inhaleSec, exhaleSec}
-   *   breath             {inhaleSec, exhaleSec}
-   *   recalibrate        {}
-   *   signal-lost / signal-back  {quality}
-   *   recording-truncated {afterSec}
+   * The types actually emitted, and who emits them:
+   *   axis               {axis:[x,y,z], ok, amplitude, conf, flipped}  every 30 s
+   *   breath             {inhaleSec, exhaleSec}      one per detected cycle
+   *   lead               {waves, follow, sinceBegin} once, at the handover
+   *   recording-truncated {afterSec}                 only past the 45-minute cap
+   *
+   * This list said `recalibrate` and `signal-lost`/`signal-back` for a year and
+   * nothing has ever emitted any of the three, so anyone reading an export went
+   * looking for events that were never written. `breath` was also listed twice.
+   * If a new type is added, add it here — a comment nobody maintains is worse
+   * than no comment, because it reads as a promise about the data.
    */
   event(type, data, t){
     if(!this.events) return;

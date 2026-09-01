@@ -733,10 +733,21 @@ export const Review = {
     if(hi - lo < 15){ const mid = (hi+lo)/2; lo = Math.round(mid-7.5); hi = lo+15; }
 
     const yOf = v => (h-pad) - (v-lo)/(hi-lo)*(h-pad*2);
+
+    // Only the points in view, plus one either side so the line runs off the
+    // edges rather than stopping at them. Zoomed into two minutes of a
+    // thirteen-minute session this is 120 points instead of 795, and the path
+    // spans the lane instead of x -721..1798 — it is clipped either way, but a
+    // path built out of mostly off-screen points is rebuilt on every pan.
+    const margin = HR.STEP * 1.5;
+    let i0 = 0, i1 = H.n - 1;
+    while(i0 < i1 && H.t[i0+1] < t0 - margin) i0++;
+    while(i1 > i0 && H.t[i1-1] > t1 + margin) i1--;
+
     ctx.strokeStyle = K.beat; ctx.lineWidth = 1.5; ctx.globalAlpha = .85;
     ctx.beginPath();
     let down = true;
-    for(let i=0;i<H.n;i++){
+    for(let i=i0;i<=i1;i++){
       const ok = H.bpm[i] > 0 && H.conf[i] >= HR.MIN_CONF;
       if(!ok){ down = true; continue; }
       const x = (H.t[i]-t0)/(t1-t0)*w, y = yOf(H.bpm[i]);

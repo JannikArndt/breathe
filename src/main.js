@@ -36,6 +36,10 @@ function touched(){
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.18.1', date:'2026-09-01', notes:[
+    'The first breaths of a session are no longer silent. To tell a hold from a stroke the app measures how fast your belly moves at its fastest, and it was taking that measurement from the moment the phone finished settling — which is the one moment in a session when the trace moves faster than any breath ever does. Every real breath then looked slow by comparison, so the app read the opening minute as holding still and kept the sound shut. On the recording that turned this up the first three breaths made no sound at all, and the fourth was half there.',
+    'The same measurement was what made the sound stutter at the start — a swell that arrived, dropped out and came back about half a second later, for the first few breaths.'
+  ]},
   {v:'0.18.0', date:'2026-09-01', notes:[
     'A switch in the top right turns the sound on and off. The sound is supposed to start itself on the first touch of the screen; where it does not, that is the touch.',
     'Settling is quicker: about three seconds for a phone that is already lying still, down from six. A phone still being put down waits as long as it needs to.',

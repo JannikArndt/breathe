@@ -48,6 +48,7 @@ export const Breath = {
   TILT_STILL:1.5,     // degrees between them. Measured below.
   SETTLE_WARM:1.0,    // s before the hold may start counting
   SETTLE_HOLD:2.0,    // s under that before the tracker starts listening
+  REST_WARM:28,       // s after settling before a stroke may set the reference
   SETTLE_CAP:45,      // s. It is a clean start, not a lock-out: past this the
                       // tracker listens anyway and the confidence gates decide.
   axisAmp:0,            // RMS of the projection, in m/s^2 — a physical quantity
@@ -78,7 +79,7 @@ export const Breath = {
   strokeAmp:1.7, peakS:null, troughS:null,
   // rest detection: slopeEnv is mean |velocity|, stillFor counts seconds held
   // still, restGate fades the velocity channels out while the user holds.
-  slopeEnv:0.35, slopePeak:0.55, stillFor:0, resting:false, restGate:1,
+  slopeEnv:0.35, slopePeak:0.55, stillFor:0, resting:false, restGate:1, sinceSettled:0,
 
   reset(){
     this.smooth=[NaN,NaN,NaN]; this.base=[NaN,NaN,NaN];
@@ -88,7 +89,7 @@ export const Breath = {
     this.omega=TAU/5;
     this.strokeAmp=1.7; this.peakS=null; this.troughS=null;
     this.slopeEnv=0.35; this.slopePeak=0.55; this.stillFor=0; this.resting=false;
-    this.restGate=1;
+    this.restGate=1; this.sinceSettled=0;
   },
 
   begin(now){
@@ -284,7 +285,24 @@ export const Breath = {
     // release is two hold-lengths at 6 a minute and half of one at 1 a minute,
     // so it follows the rate: two periods, floored at the old value.
     const release = clamp(2.0*(this.period || 15), 30, 150);
-    this.slopePeak = lp(this.slopePeak, v, dt, v > this.slopePeak ? 0.5 : release);
+    if(this.settled) this.sinceSettled += dt;
+    // The reference is in normalised units, and normalised units are not
+    // trustworthy until the gain is. The AGC opens from rms = 0.02, a scale of
+    // 0.219 -- right for a modest breath and three times too small for a deep
+    // one -- and converges over tau = 14 s. On the 2055 recording the phone
+    // settled at 45 s and the projection swung from +0.6 to the -1.8 clamp in
+    // 1.3 s, five times faster than any real stroke there, purely because the
+    // gain had not caught up. |dsLp| hit 2.27 against a true stroke peak of
+    // 0.37, slopePeak latched to 1.90, and since the reference releases over
+    // two periods -- 52 s at that rate -- the ratio stayed under the 0.50
+    // leave-threshold for the next minute: the gate sat at 0.00 through the
+    // first three real inhales and the session opened silent.
+    // So a stroke may not SET the reference until the gain has had two time
+    // constants to converge. It still decays throughout, so the seed cannot
+    // latch either, and nothing else in the chain waits.
+    const mayAttack = this.sinceSettled > this.REST_WARM;
+    if(mayAttack || v <= this.slopePeak)
+      this.slopePeak = lp(this.slopePeak, v, dt, v > this.slopePeak ? 0.5 : release);
     const peak = Math.max(this.slopePeak, 0.05);
     const r = v/peak;
     // Asymmetric thresholds: fall under 0.22 to start counting as still, clear

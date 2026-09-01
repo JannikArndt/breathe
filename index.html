@@ -268,25 +268,11 @@
 
   <div class="rev-scroll">
 
-    <!-- ---------- 1. summary: where End lands ---------- -->
-    <section class="rev-screen hidden" id="revSummary">
-      <canvas class="spark" id="revSpark"></canvas>
-      <p class="rev-cap" data-t="rev.cap">The line is your breathing rate. The shading behind it is
-         how deep each breath was.</p>
-      <p class="rev-flag hidden" id="revSumFlag"></p>
-      <div class="readout rev-grid" id="revSumGrid"></div>
-    </section>
-
-    <!-- ---------- 2. recordings ---------- -->
-    <section class="rev-screen hidden" id="revList">
-      <div class="rev-empty hidden" id="revListEmpty"></div>
-      <div class="recs" id="revRows"></div>
-      <p class="rev-foot-note" id="revListFoot"></p>
-    </section>
-
-    <!-- ---------- 3. detail: scrub and label ---------- -->
-    <!-- ---------- 3. detail: mark the usable stretch ---------- -->
-    <section class="rev-screen hidden" id="revDetail">
+    <!-- ---------- 1. session: the graph, what it measured, and what you can
+         do with it. The summary End lands on and the view a recording opens
+         into are the same screen; they were two, and the second one existed
+         mostly to carry a labelling step that is gone. ---------- -->
+    <section class="rev-screen hidden" id="revInfo">
 
       <div class="scrub">
         <canvas class="lane lane-over" id="revOver"></canvas>
@@ -296,36 +282,35 @@
                 aria-valuemin="0" aria-valuenow="0" aria-valuetext="0:00"></canvas>
       </div>
 
-      <div class="trimrow">
-        <button type="button" class="trim-btn" id="revTrimFrom" data-t="rev.trim.from">Starts here</button>
-        <button type="button" class="trim-btn" id="revTrimTo" data-t="rev.trim.to">Ends here</button>
-      </div>
+      <p class="rev-cap" id="revCap" data-t="rev.cap">The upper strip is the whole session: how
+         deep each breath was, and the line through it is your rate. Pinch the lane below to
+         zoom into it.</p>
 
-      <p class="trim-state" id="revTrimState"></p>
+      <p class="rev-flag hidden" id="revFlag"></p>
 
-      <div class="trim-clear">
-        <button type="button" class="ghost rowbtn" id="revTrimClear" data-t="rev.trim.clear">Use all of it</button>
-      </div>
+      <div class="readout rev-grid" id="revGrid"></div>
 
-      <div class="rev-danger">
-        <button type="button" class="ghost rowbtn danger" id="revDetDelete" data-armed="0" data-t="rev.delete">Delete this recording</button>
+      <div class="rev-acts">
+        <button type="button" class="ghost rowbtn" id="revExport" data-t="rev.export">Export</button>
+        <button type="button" class="ghost rowbtn danger" id="revDelete" data-armed="0" data-t="rev.delete">Delete this recording</button>
       </div>
+    </section>
+
+    <!-- ---------- 2. recordings ---------- -->
+    <section class="rev-screen hidden" id="revList">
+      <div class="rev-empty hidden" id="revListEmpty"></div>
+      <div class="recs" id="revRows"></div>
+      <p class="rev-foot-note" id="revListFoot"></p>
     </section>
 
   </div>
 
   <div class="rev-foot">
-    <div class="bar hidden" id="revSumBar">
-      <button id="revLabelBtn" data-t="rev.label">Label</button>
-      <button id="revSumExport" data-t="rev.export">Export</button>
-      <!-- Only for a session too short to have anything in it. See Review.renderSummary. -->
-      <button class="danger hidden" id="revSumDiscard" data-armed="0" data-t="rev.discard">Discard</button>
-    </div>
+    <!-- Only the list has a bottom bar now. The session screen's two actions
+         are deliberately quiet and sit under the numbers: it is somewhere to
+         look, not somewhere to press. -->
     <div class="bar hidden" id="revListBar">
       <button id="revExportAll" data-t="rev.exportall">Export all</button>
-    </div>
-    <div class="bar hidden" id="revDetBar">
-      <button id="revDetExport" data-t="rev.export">Export</button>
     </div>
   </div>
 

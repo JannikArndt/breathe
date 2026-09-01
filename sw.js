@@ -21,7 +21,7 @@
    keep them in step, so tools/smoke.mjs asserts it, along with the precache
    list covering everything in src/. */
 
-const VERSION = '0.18.1';
+const VERSION = '0.19.0';
 const CACHE = 'breathe-' + VERSION;
 
 /* The whole app, precached as one set. Cache-first inside a version-named
@@ -40,6 +40,7 @@ const SHELL = [
   './src/audio.js',
   './src/breath.js',
   './src/pulse.js',
+  './src/hr.js',
   './src/store.js',
   './src/review.js',
 ];

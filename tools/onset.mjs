@@ -65,7 +65,8 @@ let t = 0;
 for (let i = 0; i < rows.length; i++) {
   t += dtAt(i);
   Breath.push(rows[i][1], rows[i][2], rows[i][3], t);
-  tr.push({ t, vel: Breath.vel(), gate: Breath.restGate });
+  tr.push({ t, vel: Breath.vel(), gate: Breath.restGate,
+            settled: Breath.settled, conf: Breath.conf });
 }
 const u = Breath.u.slice(), inv = Breath.invert ? -1 : 1;
 
@@ -79,28 +80,46 @@ for (let i = 0; i < rows.length; i++) {
   raw.push(inv * (sm[0] * u[0] + sm[1] * u[1] + sm[2] * u[2]));
 }
 
-/* Only the stretch the owner marked as usable, when there is one: the handling
-   at each end of a session is exactly the kind of movement this tool would
-   otherwise report as a breath with a wild onset. */
-const trim = S.trim || null;
-const inTrim = i => !trim || (tr[i].t >= trim.fromSec && tr[i].t <= trim.toSec);
+/* The usable stretch, found rather than marked.
+
+   The handling at each end of a session is exactly the kind of movement this
+   tool would otherwise report as a breath with a wild onset, and it used to be
+   excluded by a trim the owner set by hand on the detail screen. That screen
+   is gone: the tracker's own two judgements are better than a hand-marked
+   interval and they cost nothing, because both are already computed here.
+
+   `settled` is the start. It is the tracker deciding the phone has been put
+   down and is lying still (CLAUDE.md 4c), which is the same event the trim was
+   drawn around: on the 2055 recording it lands at 45.0 s against a hand mark
+   of 52.8. `conf` over 0.45 is the end, and everywhere else — it is the gate
+   the app itself uses before it will report a rate at all (4a), so a stretch
+   this tool counts is a stretch the app was willing to call breathing. */
+const CONF_OK = 0.45;
+let usable0 = 0;
+for (let i = 0; i < tr.length; i++) { if (tr[i].settled) { usable0 = tr[i].t; break; } }
+const usable = i => tr[i].t >= usable0 && tr[i].conf > CONF_OK;
 
 /* ---- segment ground truth ---- */
-/* The range has to be measured inside the trim. This signal is smoothed and
-   nothing else — no high-pass — so picking the phone up at either end of the
-   session swings it by the better part of 2 g, while a breath moves it by
-   fractions of one. On the 2055 recording the whole file spans 19.6 m/s^2 and
-   the breathing inside the trim spans 0.375, so a threshold taken from the
-   whole file came out 11x larger than a breath and the tool found no cycles at
-   all. Falling back to the whole file when there is no trim keeps the old
-   behaviour for untrimmed recordings. */
-let lo = Infinity, hi = -Infinity;
-for (let i = 0; i < raw.length; i++) {
-  if (!inTrim(i)) continue;
-  if (raw[i] < lo) lo = raw[i];
-  if (raw[i] > hi) hi = raw[i];
-}
-if (!(hi > lo)) { lo = Infinity; hi = -Infinity; for (const v of raw) { if (v < lo) lo = v; if (v > hi) hi = v; } }
+/* The range has to be measured over that stretch and not the whole file. This
+   signal is smoothed and nothing else — no high-pass — so picking the phone up
+   at either end swings it by the better part of 2 g, while a breath moves it
+   by fractions of one. On the 2055 recording the whole file spans 19.6 m/s^2
+   and the breathing inside it spans 0.375, so a threshold taken from the whole
+   file came out eleven times larger than a breath and the tool found no cycles
+   at all and said so. */
+/* Percentiles, not min and max. Confidence lags by design — it is an average
+   over several cycles — so it is still high for a few seconds after the phone
+   is picked up at the end of a session, and one such sample is enough to set a
+   min or a max. On the 2055 recording that put the range at -7.08..10.03 when
+   the breathing in it spans 0.375. A 2nd/98th percentile cannot be moved by
+   the 3% of a session that is handling, and clipping a little off a real peak
+   only makes the threshold below slightly conservative. */
+const pool = [];
+for (let i = 0; i < raw.length; i++) if (usable(i)) pool.push(raw[i]);
+if (pool.length < 60) { console.error('no settled, confident stretch in this recording'); process.exit(1); }
+pool.sort((a, b) => a - b);
+const pct = f => pool[Math.min(pool.length - 1, Math.max(0, Math.round(f * (pool.length - 1))))];
+const lo = pct(0.02), hi = pct(0.98);
 const H = (hi - lo) * 0.22;
 const ext = [];
 let up = true, best = raw[0], bestI = 0;
@@ -113,7 +132,7 @@ for (let i = 1; i < raw.length; i++) {
 const leads = [], strokes = [], gates = [];
 for (let k = 0; k < ext.length - 1; k++) {
   if (ext[k].kind !== 'trough' || ext[k + 1].kind !== 'peak') continue;
-  if (!inTrim(ext[k].i) || !inTrim(ext[k + 1].i)) continue;
+  if (!usable(ext[k].i) || !usable(ext[k + 1].i)) continue;
   const lowP = ext[k], highP = ext[k + 1];
   const thr = lowP.v + (highP.v - lowP.v) * 0.15;
   let iTake = lowP.i; while (iTake < highP.i && raw[iTake] < thr) iTake++;
@@ -155,7 +174,7 @@ if (di.rest != null && dv.rows && dv.rows.length) {
 
 console.log(`${file}`);
 console.log(`  ${leads.length} breaths over ${t.toFixed(0)} s   sensitivity ${Breath.sensitivity}` +
-            (trim ? `   (marked usable ${trim.fromSec.toFixed(0)}-${trim.toSec.toFixed(0)} s)` : ''));
+            `   (settled at ${usable0.toFixed(0)} s, confident stretches only)`);
 console.log(`  inhale, takeoff to peak     median ${med(strokes)} s   range ${Math.min(...strokes)}–${Math.max(...strokes)} s`);
 console.log(`  sound starts before it      median ${med(leads)} s   worst ${Math.max(...leads)} s`);
 console.log(`  held (gate under half)      ${heldPct}% of the session` +

@@ -25,7 +25,8 @@ src/audio.js            1. the audio engine
 src/breath.js           2. the breath tracker
 src/pulse.js            3. experimental heart rate
 src/store.js            4. Recorder and Store (IndexedDB)
-src/review.js           5. summary, session browser, labelling
+src/review.js           5. the session screen and the session browser
+src/hr.js               5b. heart rate recovered from a stored recording
 src/main.js             6. releases, lifecycle, render loop, drawing, wiring
 README.md               reasoning, decisions, evidence, limitations
 CLAUDE.md               this file
@@ -70,16 +71,17 @@ comment in the codebase refers to them.
 | `src/audio.js` | `Audio` — one voice (shore), procedural noise and impulse response, mid/side width, per-frame parameter updates |
 | `src/breath.js` | `Breath` — filtering, continuous axis tracking, projection, AGC, cycle detection, rest, confidence, phase |
 | `src/pulse.js` | `Pulse` — experimental heart rate from the same accelerometer |
+| `src/hr.js` | `HR` — the same estimator run over a stored recording's raw motion, chunked, after the fact |
 | `src/store.js` | `Recorder` (typed-array capture) and `Store` (IndexedDB: recordings, settings, eviction, export) |
-| `src/review.js` | `Review` — the summary End lands on, the session browser, labelling |
+| `src/review.js` | `Review` — one screen per session (End lands on it, so does a row in the browser) and the browser itself |
 | `src/main.js` | `RELEASES`/`Updater`/`Log`, `UI`/`el`, `Pace`, `Shore` and `Lead`, the control table, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
 
-The dependency graph is a DAG and should stay one. Everything imports `util`; `review`
-imports `store`; `main` imports the rest. **Nothing imports `main`** — that is what keeps
+The dependency graph is a DAG and should stay one. Everything imports `util`; `hr` imports
+`pulse`; `review` imports `store` and `hr`; `main` imports the rest. **Nothing imports `main`** — that is what keeps
 the tracker loadable in Node without a DOM, which is what every tool in `tools/` relies
 on. If a helper in `main` is wanted somewhere else, move it to `util`, as `fitCanvas` was.
 
-`audio`, `breath`, `pulse`, `store` and `review` **must be inert at import time**: no
+`audio`, `breath`, `pulse`, `store`, `hr` and `review` **must be inert at import time**: no
 `document.getElementById`, no `indexedDB`, no `new AudioContext`, only inside methods.
 `main` is the exception — it wires the DOM as it loads, which is safe because
 `<script type="module">` is deferred.
@@ -192,7 +194,14 @@ that would replace a non-empty motion channel with an empty one, and says so in
 `Store.put(this.session)` for a year, the session on that screen is deliberately fetched
 without its samples, and so the one action a person takes to make a recording more useful
 silently destroyed the raw signal of three of the four recordings in this repository.
-Metadata edits go through `Store.setTrim` / `Store.setLabels` / `_editMeta`.
+
+There is now no metadata-edit path at all — nothing on the session screen writes anything,
+so `setTrim`, `setLabels` and `_editMeta` are gone (§6a). The store's refusal is what
+actually holds the promise, and it is the part to keep: the edit path was the polite version
+of it. **Both ways into the session screen still fetch with `{motion:false}`**, because the
+graph draws from `derived` at 10 Hz and materialising 48 000 motion rows for that is a pause
+nobody asked for. `Review.startHr()` reads the raw rows separately, once, after the screen
+is already up — and never writes them back.
 
 **Language: the English lives in `index.html`, keyed by `data-t`.** `src/i18n.js` holds a
 table per language and `apply()` swaps the text in. So the page reads correctly before any
@@ -564,6 +573,25 @@ finds nothing far more often than it finds something.
   after the evidence has gone** — that makes it look far more reliable than it is.
 - No medical claims. It is labelled experimental in the settings and says so plainly.
 
+**It is also run after the fact, over a stored recording, by `src/hr.js`** — the same
+estimator, unmodified, fed the same way, so the two can never quietly disagree. This exists
+because Pulse is off by default and therefore `hr`/`hrConf` are empty in effectively every
+recording anyone owns, while the raw 60 Hz motion those channels would have been derived
+from is stored in full. So the session screen shows a heart rate on recordings made long
+before the setting was ever switched on. Two rules there: it uses an isolated instance
+(`Object.create(Pulse)` plus `reset()`, which assigns every stateful field) so it cannot
+leave the live estimator primed with a recording's filter state, and it does **not** run the
+breath tracker to get `motionRms` — that is a τ = 0.35 s smoothing and a τ = 1.5 s average of
+the residual, twenty lines of `Breath.push`, and running five hundred to get them would
+double an already slow pass. The pass is chunked and yields between chunks; 48 000 rows in
+one go is a visible stall on the screen it is drawing into.
+
+On the 2055 recording it reports on 773 of 795 points at a median of 77.3/min, which agrees
+with an independently written band-pass and autocorrelation to within 5.5/min on the five
+stillest stretches. **That is still two implementations of one method agreeing, not
+validation of the method** — the caveat above is unchanged and applies wherever the number
+is shown.
+
 Measured on synthetic data: correct within 4/min across 42–135 bpm (39 of 39 runs), zero
 false positives on noise over 10 runs, and a lock threshold around 2 milli-g of beat
 amplitude. On the one real belly recording that carries motion rows it holds 73–83 /min
@@ -693,14 +721,16 @@ regression.
 
 `tools/smoke.mjs` runs the whole app in Node — `src/main.js` and everything it pulls in —
 against a stub DOM built from `index.html`, a stub Web Audio and an in-memory IndexedDB,
-all in `tools/stub/`. A hundred and sixty checks: it opens each panel, drives the update flow
-(check, nothing new, a version arriving, a failed install, the handover), works the header's
-sound switch both ways, slows the wave with the pace slider and checks it really runs
-slower, turns on Demo mode, taps Start, watches the tracker stay silent until the phone
+all in `tools/stub/`. A hundred and sixty-four checks: it opens each panel, drives the update
+flow (check, nothing new, a version arriving, a failed install, the handover), works the
+header's sound switch both ways, slows the wave with the pace slider and checks it really
+runs slower, turns on Demo mode, taps Start, watches the tracker stay silent until the phone
 settles and then the lead-in hand over to it, breathes for three simulated minutes through
 the real render loop, switches each experiment on and looks at what changed, taps End,
-reads the summary and the pace it learned from the session, then browses, labels, exports
-and deletes the recording — and discards a short one from its own summary.
+reads the session screen and the pace it learned from the session, then browses, opens the
+recording again, waits for the heart rate to be recovered from its stored motion and checks
+it reached the numbers under the graph, cancels a pass in flight, exports and deletes the
+recording — and throws a short one away from the screen End landed on.
 
 This is what covers the wiring: an id that no longer resolves, a symbol that moved to
 another module, a control wired to its effect but not to the thing that saves it, a
@@ -742,7 +772,14 @@ point of recording: an algorithm change can be checked against real breathing in
 synthetic tilt.
 
 `tools/onset.mjs` answers the one question the harness structurally cannot: how early does
-the sound start, measured against the body rather than against the app's own signal?
+the sound start, measured against the body rather than against the app's own signal? It
+finds the usable stretch itself — from `Breath.settled` and confidence over 0.45 — rather
+than being handed one, and takes its hysteresis from a 2nd/98th percentile of that stretch
+rather than its min and max, because confidence lags by several cycles and is still high for
+a few seconds after the phone is picked up at the end of a session. One such sample used to
+be enough to set the range: on the 2055 recording that put it at −7.08..10.03 m/s² when the
+breathing in it spans 0.375, so the threshold came out eleven times larger than a breath and
+the tool reported no cycles at all.
 
 ```bash
 node tools/onset.mjs recordings/some-session.json
@@ -799,8 +836,8 @@ Do these on a real phone over HTTPS before calling a change done:
 
 ## 6a. Views and how you move between them
 
-Eight screens. Two shells: `#app` (home and the live session) and three overlays that sit
-on top of it, `#panel` (settings), `#log` (changes) and `#review` (summary, list, detail).
+Seven screens. Two shells: `#app` (home and the live session) and three overlays that sit
+on top of it, `#panel` (settings), `#log` (changes) and `#review` (session, list).
 
 ```mermaid
 stateDiagram-v2
@@ -811,49 +848,82 @@ stateDiagram-v2
     Home --> Settings: Adjust
     Home --> Changes: version stamp
 
-    Breathing --> Summary: End
+    Breathing --> Session: End
     Breathing --> Settings: Adjust
 
-    Summary --> Home: Back
-    Summary --> Home: Discard (under 30 s)
-    Summary --> Detail: Label
+    Session --> Home: Back (opened by End)
+    Session --> Home: Delete (opened by End)
+    Session --> List: Back (opened from the list)
+    Session --> List: Delete (opened from the list)
     List --> Home: Back
-    List --> Detail: tap a recording
-    Detail --> Summary: Back (opened from the summary)
-    Detail --> List: Back (opened from the list)
-    Detail --> List: Delete
+    List --> Session: tap a recording
 
     Changes --> Home: Back
     Settings --> List: Storage, Open
 ```
 
+**There is one screen per session, and `from` is the only thing that differs.** It was
+two — a summary End landed on, and a detail screen you reached from it by tapping Label —
+showing the same recording twice. The split only existed to give the labelling step
+somewhere to live. Labelling is gone, so they are one: `Review.showInfo(session, from)`,
+where `from` decides the title, whether the date is shown, and where Back and Delete go.
+Do not split them again to give a new feature somewhere to sit.
+
 Two rules hold everywhere, and the previous layout broke both:
 
 **Back is top-left, and it is the only way out.** There are no Done or Close buttons. The
-bottom bar carries actions only — Begin, End, Label, Export, Export all, Delete. Before
-this, Back was at the top and Done at the bottom did the same job, on different screens.
+bottom bar carries actions only — Begin, End, Export all. Before this, Back was at the top
+and Done at the bottom did the same job, on different screens.
 
-**The detail screen marks one interval, not nine kinds of event.** It carried a vocabulary
-of nine label chips, a free-text note and a list of what had been added. Everything anyone
-ever wanted to say about a recording was where the usable part starts and stops: a session
-begins with someone putting a phone down and ends with them picking it up, and those two
-minutes throw an analysis off more than the rest of the session put together. So it is two
-buttons and one line of state, stored as `meta.trim = {fromSec, toSec}`, and
-`tools/replay.mjs` and `tools/onset.mjs` honour it by default (`--all` on replay ignores
-it). Recordings made before it are read back through `trimFromLabels()`, which maps the two
-old kinds that meant the same thing. Do not add a second labelling mechanism beside it.
+**The session screen has no bottom bar at all**, and that is the point. Export and Delete
+are two quiet full-width rows under the numbers, in `.rev-acts`. Export used to be the
+primary action in a bar; a screen you open to look at a recording should not put its most
+irreversible and its most incidental action under your thumb. If something ever needs to be
+the primary action here, it has to justify the bar coming back.
 
-**A session under 30 seconds gets a Discard button on its own summary.** It is a Start
-that should have been an End, or a phone put down and picked straight back up: there is
-nothing in it to look at later and it still costs a row in the list and space on the phone.
-Two taps, like every other delete here, and it lands on Home rather than the list, because
-the session it threw away is the one you were looking at. `Review.DISCARD_UNDER` holds the
-threshold. Longer recordings are still deleted from the detail screen, where you can see
-what you are deleting — do not add a second delete beside that one.
+**There is no labelling, and no trim.** A recording once carried `meta.trim =
+{fromSec, toSec}` — where the usable part starts and stops, set with two buttons — which
+replaced an earlier vocabulary of nine label chips and a free-text note. Both are gone.
+The reason the trim existed was that the tracker could not tell for itself where a session
+became worth reading, and it can: `tools/onset.mjs` derives the same stretch from
+`Breath.settled` and confidence over 0.45, and comes out *better* than the hand-marked
+interval did — on the 2055 recording the worst-case onset error falls from 0.92 s to
+0.07 s, and the table and shaking recordings stop producing phantom breaths altogether.
+`tools/replay.mjs` no longer reads a trim either; `--from`/`--to` are how you narrow it.
+
+Stored recordings keep whatever `trim` and `labels` they already carry — `_pack` and
+`_assemble` still round-trip both, and `Store._cleanTrim` normalises one on the way in — so
+nothing anyone has recorded loses a field. They are simply never edited again, and
+`Store` has no metadata-edit path any more: `setTrim`, `addLabel`, `removeLabel`,
+`setLabels` and `_editMeta` are deleted. **Do not add a labelling mechanism back without a
+measurement showing the tracker cannot find the same thing itself.**
+
+**One delete, and where it lands is the whole difference.** There were two — a Discard on
+the summary for a session under 30 seconds, and a Delete on the detail screen — because
+there were two screens. One screen wants one button: two taps, because it cannot be undone,
+and it goes Home when End opened the screen and back to the list when the list did. Do not
+add a second delete beside it, and do not bring back a separate Discard: `DISCARD_UNDER`
+and the short-session special case are gone with it.
 
 **The fine lane zooms by pinch**, not by a row of width buttons, and `+`/`-` do the same
 from a keyboard. The readout row that used to sit under it — "At 3:20 / You 0.42 / Your
 rate 3.1" — is gone: the lane has a time axis and a signal on it, and the row restated both.
+
+**Two lanes, two stories.** The overview strip is the whole session — breath depth as an
+envelope, the held stretches shaded, and the rate line, which it absorbed from the summary's
+own canvas when the two screens merged. The rate is the one thing a waveform cannot show at
+that zoom: a session that opens at six a minute and ends at two looks the same at either
+end. The fine lane is the window you pinch into, and it carries the waveform and the heart
+rate. Do not give the fine lane the rate line as well; two scales on one lane was tried on
+paper and is a chart, not a picture of a breath.
+
+**The heart rate is drawn on the fine lane, on its own scale, with no gutter reserved for
+it.** The lane's full width is the time axis and `bindLane`/`timeAtX` map a finger straight
+onto it, so narrowing the plot to make room for a scale would put every pinch and drag a few
+pixels out. The two bounds are written at the right edge over the plot instead. **The line
+breaks wherever the estimator declined** — under `MIN_CONF`, or the body moving too much to
+read through — and drawing it straight through such a gap is the one thing §4a2 says not to
+do, because it makes the number look far steadier than it is.
 
 **The home screen carries two controls, and they are the only two outside Adjust.** The
 sound switch sits in the header where the status tag goes during a session, and the pace

@@ -463,15 +463,33 @@ body.dimmed .dim-catch{
 }
 .rev-foot-note{margin-top:16px}
 
-/* ---------- 1. summary ---------- */
-.spark{
-  display:block;width:100%;height:184px;border-radius:2px;background:var(--lane);
-}
+/* ---------- 1. one session ---------- */
+/* Three columns of small numbers rather than two of large ones. There are nine
+   of them now and they are context for the graph above, not the point of the
+   screen: you should be able to take them in without reading them one at a
+   time. Two columns at 19px filled most of a phone screen on their own. */
+.readout.rev-grid{grid-template-columns:repeat(3,1fr);margin-top:18px}
+.readout.rev-grid .cell{padding:11px 6px}
+.readout.rev-grid .k{font-size:9px}
+.readout.rev-grid .v{font-size:15px}
+.readout.rev-grid .v small{font-size:9px}
 
-/* two columns, not the live screen's three: the keys here are longer */
-.readout.rev-grid{grid-template-columns:repeat(2,1fr);margin-top:16px}
-.readout.rev-grid .cell{padding:14px 10px}
-.readout.rev-grid .v{font-size:19px}
+/* Export and delete. Quiet, full-width, and below the numbers: this screen is
+   somewhere to look, not somewhere to press, so neither of them is the button
+   your thumb finds first. Export used to be the primary action in a bottom bar
+   and this screen has no bottom bar at all now. */
+.rev-acts{
+  margin-top:30px;padding-top:16px;
+  border-top:1px solid var(--rule);
+  display:flex;flex-direction:column;gap:10px;
+}
+/* button.ghost is flex:0 0 auto for a bottom bar, where it sits beside a
+   primary. Here there is no primary and no bar, so it takes the full width. */
+.rev-acts .rowbtn{
+  flex:1 1 auto;width:100%;
+  padding:13px 14px;font-size:11.5px;letter-spacing:.18em;
+}
+.rev-acts .rowbtn.danger[data-armed="1"]{background:var(--ember-tint)}
 
 /* ---------- 2. recordings ---------- */
 .recs{display:flex;flex-direction:column}
@@ -554,38 +572,6 @@ body.dimmed .dim-catch{
 /* The re-find button is the only .bar inside a panel, so it needs the gap the
    panel's own rows get. Written here rather than inline on the element. */
 .panel .bar#recalBar{margin-top:18px}
-
-/* ---------- the trim ----------
-   Two buttons and a line of state, in place of nine label chips, a note field
-   and a list. The buttons are the same weight as each other because neither is
-   the primary one: you set whichever end you are looking at. */
-.trimrow{
-  display:flex;gap:10px;margin-top:14px;
-}
-.trim-btn{
-  flex:1 1 0;min-width:0;min-height:46px;
-  border:1px solid rgba(127,191,174,.45);border-radius:2px;
-  background:transparent;color:var(--glass);
-  font-family:var(--display);font-size:11.5px;letter-spacing:.16em;
-  text-transform:uppercase;cursor:pointer;
-}
-.trim-btn:active{background:var(--tint)}
-
-.trim-state{
-  margin:12px 0 0;
-  font-family:var(--data);font-size:11px;letter-spacing:.05em;
-  color:var(--mute);font-variant-numeric:tabular-nums;
-}
-
-.trim-clear{margin-top:10px}
-
-/* Delete sits well away from Export, which is in the footer bar. They used to
-   be neighbours, which is a poor arrangement for two buttons where one is
-   irreversible. */
-.rev-danger{
-  margin-top:34px;padding-top:16px;
-  border-top:1px solid var(--rule);
-}
 
 /* The privacy line and the disclaimer. They were on the home screen, which is
    the wrong place for a paragraph nobody reads twice; they belong beside

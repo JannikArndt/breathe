@@ -72,7 +72,7 @@ comment in the codebase refers to them.
 | `src/pulse.js` | `Pulse` — experimental heart rate from the same accelerometer |
 | `src/store.js` | `Recorder` (typed-array capture) and `Store` (IndexedDB: recordings, settings, eviction, export) |
 | `src/review.js` | `Review` — the summary End lands on, the session browser, labelling |
-| `src/main.js` | `RELEASES`/`Updater`/`Log`, `UI`/`el`, `Shore` and `Lead`, the control table, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
+| `src/main.js` | `RELEASES`/`Updater`/`Log`, `UI`/`el`, `Pace`, `Shore` and `Lead`, the control table, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
 
 The dependency graph is a DAG and should stay one. Everything imports `util`; `review`
 imports `store`; `main` imports the rest. **Nothing imports `main`** — that is what keeps
@@ -132,6 +132,35 @@ than live there forever.
 drives the app the way a finger does and needs to see state a finger cannot — a timer that
 is armed, a flag that is set. Nothing in `src/` may import them; see §3.
 
+**`Pace` is the rate of the wave, and there is only one of it.** The home screen's wave,
+the lead-in, and the velocity reference both are normalised against all read `Pace.bpm` —
+2 to 12 a minute, set by the slider on the home screen and saved like every other control. `Pace.vRef` is the
+steepest the wave ever moves at that rate, derived from `PHASES` rather than written down,
+because a fixed divisor would fade the wave out exactly as the user slowed it down. That
+is the same rule `Audio.frame()` applies to real breathing and it is there for the same
+reason; §5 says so about breathing, and this is the wave's half of it. The two used to
+divide by a hardcoded 0.73, correct for the shore's 0.70 stroke and 1.43× hot for the
+lead's stroke of 1 — so the lead clamped and the handover changed loudness. Both go
+through `Pace.vRef` now.
+
+**Demo mode's simulated body does not follow `Pace`.** It runs at a fixed `DEMO_PERIOD`,
+six a minute. The pace control sets the rate of the *wave*; if the fake body followed it
+too, the two could never disagree, and a wave at one rate handing over to a body at
+another is the case worth being able to hear.
+
+**A session with ten breaths in it moves the pace.** `learnPace()` sets it halfway between
+that session's average and its fastest breath — not the average, because the wave is where
+you *start* and the owner works their way down inside a session (6.2 → 2.5 a minute over
+seven minutes in one recording here), so opening at the average would ask them to speed up
+to meet it. It says so on the summary through `Review.note`, not in a toast: a toast at
+the end of a session queues behind the update announcement and loses. It is a default, not
+a target — nothing scores anyone against it, and the slider still wins.
+
+**The sound switch in the header is not a saved setting.** `Shore.mute` lives for the
+visit. The volume slider is the setting; this is a way out of silence, and back into it,
+for a phone where the sound did not start itself. It calls `wantAudio(true)` — the tap
+*is* the gesture, so it must not go and ask whether the page has been touched.
+
 **The home screen is one wave and the sound of it, from one signal.** `Shore` in
 `src/main.js` owns both: `reach` is the demo breath, the drawing and `Audio.frame()` are
 fed from the same number on the same frame, and the crest fires where the spray is thrown.
@@ -183,11 +212,16 @@ still a bad first screen.
 **`RELEASES` is deliberately not translated.** It grows by a paragraph whenever anything
 changes, and a translation of it would be stale within a day of being written.
 
-**Every control in Adjust belongs in `SLIDERS`, `TOGGLES` or `CHOICES` in `src/main.js`.** Each row
+**Every saved control belongs in `SLIDERS`, `TOGGLES` or `CHOICES` in `src/main.js`.** Each row
 of those tables says what the control drives, what its default is, and what key it saves
 under; the wiring, the restore, the save and the reset are all generated from them. A
-control wired by hand gets three of the four and looks fine until someone reloads. Demo
-mode is the one deliberate exception and says why in a comment.
+control wired by hand gets three of the four and looks fine until someone reloads. The
+tables do not care which screen the element is on — the pace slider is a `SLIDERS` row and
+sits on the home screen. Two controls are deliberately outside them and each says why in a
+comment: demo mode, which is not saved on purpose, and the header's sound switch, which is
+a button whose label says what the next tap does rather than a switch with a state to keep.
+`resetMixBtn` puts the sound controls back; volume, sensitivity and pace are the user's and
+are left alone.
 
 ---
 
@@ -440,11 +474,11 @@ Two things, both in `src/breath.js`:
   settling to (0, 0, −9.85) one sample later, and every filter here is seeded from the first
   sample it sees. At 60 Hz waiting one event costs 17 ms.
 - **`trackSettle()` compares two smoothed copies of the gravity vector**, τ = 4 s and
-  τ = 12 s, and settles when the angle between them has been under 1.5° for 2 s. Both are
-  far slower than a breath, so an oscillation moves them together and a *step* pulls them
-  apart. Until it settles, `base` is pinned to `smooth`, so `d` is exactly zero: nothing
-  reaches the axis tracker, the gain, the cycle detector or `Breath.lead()`, `s` reads 0
-  and `follow`/`conf` stay 0.
+  τ = 12 s, and settles when the angle between them has been under 1.5° for 2 s, after a
+  1 s warm-up. Both are far slower than a breath, so an oscillation moves them together
+  and a *step* pulls them apart. Until it settles, `base` is pinned to `smooth`, so `d` is
+  exactly zero: nothing reaches the axis tracker, the gain, the cycle detector or
+  `Breath.lead()`, `s` reads 0 and `follow`/`conf` stay 0.
 
 **A rate test was tried first and must not be put back.** It measured how fast the tilt was
 turning and separated every recording in this repository cleanly — but only because they are
@@ -452,16 +486,19 @@ all slow breathing. Against a synthetic 12 and 20 a minute at the same depth it 
 settled at all, because at those rates a breath alone turns the tilt faster than any usable
 threshold. The two-filter test settles 3, 6, 12 and 20 a minute alike.
 
-**The warm-up is load-bearing.** Both filters are seeded from the same sample, so they start
-identical and drift apart over a time constant. Without `sinceBegin > TAU_FAST` the hold is
-satisfied by the seeding alone and every session settles two seconds in, put down or not.
-That puts a 6 s floor under the settle time, which is what a phone already lying still gets.
+**The warm-up is load-bearing, and one second is the size of it.** Both filters are seeded
+from the same sample, so they start identical and drift apart over a time constant; without
+`sinceBegin > SETTLE_WARM` the hold can be satisfied by the seeding alone. It was
+`TAU_FAST`, four seconds, which put a 6 s floor under a phone that was already lying still —
+too slow to open a session on. Removing it entirely is a second too far: the bogus
+recording's peak confidence goes 0.14 → **0.38**, past the 0.45 gate's neighbourhood and
+past the 0.35 the harness asserts. One second keeps every rejection and halves the wait.
 
-Measured over every recording here: table 6.0 s, the sessions that opened already on the
-belly 6.0 s, the session the owner called great 8.2 s, the session started with the phone in
-the hand 45 s (its own test says 53 s; the cap ends it sooner), three minutes of deliberate
-shaking **never**. Against the same recordings the table session's peak `follow` falls from
-0.88 to 0.30 and its projection from 1.80 to 0.03.
+Measured over every recording here: everything already lying still settles at the 3 s floor
+— table, both belly-start sessions, and the session the owner called great; the session
+started with the phone in the hand runs to the 45 s cap (its own test says 53 s); three
+minutes of deliberate shaking **never**. Against the same recordings the table session's
+peak `follow` falls from 0.88 to 0.30 and its projection from 1.80 to 0.03.
 
 `SETTLE_CAP` is 45 s and is a bound, not a lock-out: past it the tracker listens anyway and
 the confidence gates of §4a decide. **There is no way back into phase one.** Once a session
@@ -630,14 +667,14 @@ regression.
 
 `tools/smoke.mjs` runs the whole app in Node — `src/main.js` and everything it pulls in —
 against a stub DOM built from `index.html`, a stub Web Audio and an in-memory IndexedDB,
-all in `tools/stub/`. A hundred and fifty checks: it opens each panel, drives the update flow
-(check, nothing new, a version arriving, a failed install, the handover), waits for the
-sound to take the page's first touch, turns on Demo mode, taps Start, watches the tracker
-stay silent until the phone settles and then the lead-in hand over to it, breathes for
-three simulated minutes through the real render loop,
-switches each experiment on and looks at what changed, taps End, reads the summary, then
-browses, labels, exports and deletes the recording — and discards a short one from its
-own summary.
+all in `tools/stub/`. A hundred and sixty checks: it opens each panel, drives the update flow
+(check, nothing new, a version arriving, a failed install, the handover), works the header's
+sound switch both ways, slows the wave with the pace slider and checks it really runs
+slower, turns on Demo mode, taps Start, watches the tracker stay silent until the phone
+settles and then the lead-in hand over to it, breathes for three simulated minutes through
+the real render loop, switches each experiment on and looks at what changed, taps End,
+reads the summary and the pace it learned from the session, then browses, labels, exports
+and deletes the recording — and discards a short one from its own summary.
 
 This is what covers the wiring: an id that no longer resolves, a symbol that moved to
 another module, a control wired to its effect but not to the thing that saves it, a
@@ -791,6 +828,12 @@ what you are deleting — do not add a second delete beside that one.
 **The fine lane zooms by pinch**, not by a row of width buttons, and `+`/`-` do the same
 from a keyboard. The readout row that used to sit under it — "At 3:20 / You 0.42 / Your
 rate 3.1" — is gone: the lane has a time axis and a signal on it, and the row restated both.
+
+**The home screen carries two controls, and they are the only two outside Adjust.** The
+sound switch sits in the header where the status tag goes during a session, and the pace
+slider sits under the setup lines. Both are hidden while breathing. Anything else that
+wants to live on that screen has to earn it against §3's warning about the first screen
+needing to survive a translation on a small phone.
 
 **Recordings is a place, not a setting.** It is reachable from the home screen. Reaching it
 used to mean opening Adjust first, which is why it was hard to find. The row under Storage

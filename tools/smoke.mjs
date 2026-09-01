@@ -187,17 +187,61 @@ check('the sand it reached stays wet behind it', mod.Shore.wet >= mod.Shore.BAND
 check('the sound does not build a context it cannot start',
       mod.Shore.audio === false && FakeAudioContext.last === null);
 check('and waits for the first touch instead', mod.Shore.armed === true);
-document.dispatch('pointerdown', {});
+check('the header offers to switch it on', $('soundBtn').textContent === 'Sound on',
+      JSON.stringify($('soundBtn').textContent));
+
+/* The switch in the header. The sound is meant to start itself on the first
+   touch and on some phones it does not, so there is a way to say so. */
+$('soundBtn').click();
 await settle();
 run(1, 60);
-check('the sound starts with the waves once the page is touched',
+check('the header switch starts the sound',
       mod.Shore.audio === true && !!FakeAudioContext.last);
+check('and then offers to switch it off', $('soundBtn').textContent === 'Sound off',
+      JSON.stringify($('soundBtn').textContent));
+$('soundBtn').click();
+await settle();
+check('switching it off stops the sound and stays off',
+      mod.Shore.audio === false && mod.Shore.mute === true);
+run(2, 60);
+check('and it does not creep back on', mod.Shore.audio === false);
+$('soundBtn').click();
+await settle();
+run(1, 60);
+check('the sound comes back on the next tap',
+      mod.Shore.audio === true && mod.Shore.mute === false);
 {
   const ctxNow = FakeAudioContext.last;
   const before = ctxNow.params().reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
   run(4, 60);
   const after = ctxNow.params().reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
   check('and is driven by the same wave that is drawn', after > before, `${after - before} writes`);
+}
+
+/* The wave's rate, set before lying down. One number drives the home screen,
+   the lead-in and the velocity they are both normalised against, so a slower
+   setting must not simply mean a quieter wave. */
+{
+  const wasPeriod = mod.Lead.PERIOD;
+  const revs0 = mod.Shore.phase;
+  $('pace').value = '30';
+  $('pace').dispatch('input', {target: $('pace')});
+  check('the pace slider sets the rate of the wave', Math.abs(mod.Lead.PERIOD - 20) < 0.01,
+        `${mod.Lead.PERIOD.toFixed(1)} s a breath, was ${wasPeriod.toFixed(1)}`);
+  check('and says so beside itself', $('paceVal').textContent.startsWith('3'),
+        JSON.stringify($('paceVal').textContent));
+  const ctxNow = FakeAudioContext.last;
+  const before = ctxNow.params().reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
+  run(6, 60);
+  const after = ctxNow.params().reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
+  check('a slow wave still drives the sound', after > before, `${after - before} writes`);
+  // Six seconds of a 20 s wave is 0.30 of a cycle; at the old 10 s it was 0.60.
+  const advanced = ((mod.Shore.phase - revs0) % 1 + 1) % 1;
+  check('and the wave really is running slower', advanced > 0.20 && advanced < 0.42,
+        `${advanced.toFixed(2)} of a cycle in six seconds`);
+  $('pace').value = '60';
+  $('pace').dispatch('input', {target: $('pace')});
+  check('back to six a minute', Math.abs(mod.Lead.PERIOD - 10) < 0.01);
 }
 
 /* ---------------------------------------------------------------- panels */
@@ -530,6 +574,10 @@ $('tglDim').click();
 Dim.sleep();
 check('the screen can be dim when a session ends', document.body.classList.contains('dimmed'));
 
+// Move the pace off where the session is actually running, so the learned
+// default has somewhere to come back from.
+$('pace').value = '120';
+$('pace').dispatch('input', {target: $('pace')});
 $('mainBtn').click();                       // End
 await new Promise(r => setTimeout(r, 0));
 await new Promise(r => setTimeout(r, 0));
@@ -552,6 +600,17 @@ const cells = $('revSumGrid').querySelectorAll('.cell').map(c =>
 check('the summary is not all dashes', cells.some(t => /\d/.test(t)), cells.join(' | '));
 check('a session with something in it is not offered for discard',
       $('revSumDiscard').classList.contains('hidden'));
+
+/* The wave's rate follows the body it just listened to. The slider was moved
+   to twelve a minute during the session above; the session itself ran at six,
+   so ending it should bring the default back down near six. */
+check('a session long enough to mean something moves the wave',
+      Math.abs(mod.Lead.PERIOD - 10) < 3.5,
+      `${(60/mod.Lead.PERIOD).toFixed(1)} a minute, from ${$('pace').value} tenths`);
+check('and says so on the summary rather than in a toast',
+      /opening waves are set to/.test($('revSumFlag').textContent) &&
+      !$('revSumFlag').classList.contains('hidden'),
+      JSON.stringify($('revSumFlag').textContent));
 
 /* ---------------------------------------------------------------- stored */
 await settle(20);

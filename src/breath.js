@@ -46,6 +46,7 @@ export const Breath = {
   tiltDev:0, stillTilt:0, settled:false, sinceBegin:0,
   TAU_FAST:4, TAU_SLOW:12,   // s
   TILT_STILL:1.5,     // degrees between them. Measured below.
+  SETTLE_WARM:1.0,    // s before the hold may start counting
   SETTLE_HOLD:2.0,    // s under that before the tracker starts listening
   SETTLE_CAP:45,      // s. It is a clean start, not a lock-out: past this the
                       // tracker listens anyway and the confidence gates decide.
@@ -216,11 +217,17 @@ export const Breath = {
       20 a minute wave alike.
 
       Measured over every recording here, with the first bogus event dropped:
-      a phone on a table settles at the 6 s floor, so do the sessions that
-      opened already on the belly, the session the owner called great at 8.2 s,
-      the session started with the phone in the hand at 53 s — which is right,
-      because that is how long it was in the hand, and the cap above ends it
-      sooner than that — and three minutes of deliberate shaking never settles.
+      everything that was already lying still settles at the 3 s floor — a
+      phone on a table, the sessions that opened on the belly, and the session
+      the owner called great; the session started with the phone in the hand
+      runs to the 45 s cap, which is right, because it was in the hand that
+      long; and three minutes of deliberate shaking never settles.
+
+      The warm-up is one second and the hold two. It was four and two, which
+      put a 6 s floor under a phone that was already down — too slow to open a
+      session on. Dropping the warm-up altogether is a second too far: the
+      bogus recording's peak confidence goes 0.14 -> 0.38, past the 0.35 that
+      reports a rate. One second keeps every rejection and halves the wait.
 
       There is no way back: once a session has settled it stays settled.
       Shifting position mid-session is handled by the axis tracker and the AGC
@@ -241,7 +248,7 @@ export const Breath = {
     // Both filters are seeded from the same sample, so they start identical and
     // drift apart over a time constant. Without this the hold is satisfied by
     // the seeding alone and every session settles two seconds in, put down or not.
-    const warm = this.sinceBegin > this.TAU_FAST;
+    const warm = this.sinceBegin > this.SETTLE_WARM;
     if(warm && this.tiltDev < this.TILT_STILL) this.stillTilt += dt;
     else this.stillTilt = 0;
     // The baseline has been pinned to the smoothed vector all along and the

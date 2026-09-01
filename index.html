@@ -17,6 +17,9 @@
 <div id="app">
   <header>
     <h1 class="wordmark">breathe</h1>
+    <!-- The sound is supposed to start itself on the first touch. Where it does
+         not, this is the touch. Home screen only. -->
+    <button class="soundbtn" id="soundBtn" data-t="btn.soundon">Sound on</button>
     <span class="depth hidden" id="statusTag"></span>
   </header>
 
@@ -31,6 +34,16 @@
         <li data-t="step.sound">Sound on, notifications off. Headphones work best.</li>
         <li data-t="step.breathe">Breathe, and listen to the waves.</li>
       </ul>
+
+      <!-- The rate the wave runs at, here and for the first half minute of the
+           session. Set it before you lie down; it is a place to start from,
+           not a target to keep to. -->
+      <div class="pace">
+        <label class="pace-lab" for="pace" data-t="pace.label">Waves to breathe with</label>
+        <input type="range" id="pace" min="20" max="120" step="5" value="60"
+               aria-describedby="paceVal">
+        <output class="pace-val" id="paceVal" for="pace">6<span data-t="unit.min">/min</span></output>
+      </div>
 
     </div>
 

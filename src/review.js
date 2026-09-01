@@ -33,6 +33,7 @@ import { Store } from './store.js';
    ============================================================ */
 export const Review = {
   onDone:null,                 // app wires this: return to the intro screen
+  note:'',                     // one line the app adds to this summary's flags
 
   screen:null,                 // null | 'summary' | 'list' | 'detail'
   session:null,                // the full session object on screen
@@ -231,6 +232,11 @@ export const Review = {
       flags.push(t('rev.noflag.q', null, 'The signal was noisy for most of this session. The rates above are approximate.'));
     if(!this.sig.n)
       flags.push(t('rev.noflag.sig', null, 'This recording has no waveform stored, so the trace is empty.'));
+    // Something the app changed because of this session, set by whoever changed
+    // it. It goes here rather than in a toast because the summary is where you
+    // are looking, and because a toast at the end of a session has to queue
+    // behind an update announcement.
+    if(this.note) flags.push(this.note);
     d.sumFlag.textContent = flags.join(' ');
     d.sumFlag.classList.toggle('hidden', !flags.length);
   },

@@ -36,6 +36,12 @@ function touched(){
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.18.0', date:'2026-09-01', notes:[
+    'A switch in the top right turns the sound on and off. The sound is supposed to start itself on the first touch of the screen; where it does not, that is the touch.',
+    'Settling is quicker: about three seconds for a phone that is already lying still, down from six. A phone still being put down waits as long as it needs to.',
+    'You can set how fast the opening waves run, on the home screen, from two to twelve a minute. It changes the wave you are watching and hearing right there, and it is the rate the session opens at.',
+    'After a session with ten breaths or more in it, that setting moves to match your own breathing — halfway between your average and your fastest breath, so there is somewhere to slow down from. The summary says when it has done that.'
+  ]},
   {v:'0.17.0', date:'2026-09-01', notes:[
     'The home screen has sound again from the moment you open it. It was building its sound before you had touched the screen, which a phone will not allow, so there was nothing to hear until you had run a session and come back.',
     'A session no longer opens with a lurch. Reaching over to tap Start tilts the phone far more than a breath does, and the app was reading that as the first thing you did — the trace jumped, and on two recordings made on a table it reported breathing worth following from a phone that never moved. It now waits for the phone to be lying still before it measures anything, which takes about six seconds. The header says settling until it does.',
@@ -319,8 +325,25 @@ const el = {
   vRate:$('vRate'), vRatio:$('vRatio'), vHr:$('vHr'), vHrUnit:$('vHrUnit'),
   cellHr:$('cellHr'),
   statusTag:$('statusTag'), qualityTxt:$('qualityTxt'), traceKey:$('traceKey'),
-  waves:$('waves')
+  waves:$('waves'), soundBtn:$('soundBtn'), pace:$('pace'), paceVal:$('paceVal')
 };
+
+/** The readout beside the pace slider, and the label on the sound switch. Both
+    change with state, so applyLang() cannot reach them. */
+function paintPace(){
+  el.paceVal.textContent = '';
+  el.paceVal.appendChild(document.createTextNode(nfmt(Pace.bpm, Pace.bpm % 1 ? 1 : 0)));
+  const u = document.createElement('span');
+  u.textContent = t('unit.min', null, '/min');
+  el.paceVal.appendChild(u);
+}
+
+function paintSoundBtn(){
+  const on = !!Shore.audio;
+  el.soundBtn.dataset.on = String(on);
+  el.soundBtn.textContent = on ? t('btn.soundoff', null, 'Sound off')
+                               : t('btn.soundon',  null, 'Sound on');
+}
 
 /* ---------- iOS: keep audio out of the "ringer" bucket ----------
    Community-reported behaviour, not a documented API: starting a silent
@@ -417,6 +440,7 @@ async function begin(sensorP, audioP){
   // do by accident.
   el.recBtn.classList.add('hidden');
   el.buildLine.classList.add('hidden');
+  el.soundBtn.classList.add('hidden');   // the header slot is the status tag's now
   const audioOk = await audioP;
   const sensor  = await sensorP;
   UI.sensorPerm = sensor;
@@ -534,10 +558,45 @@ async function end(){
     try{ session = (await Store.get(session.id, {motion:false})) || session; }catch(e){}
   }
   reportSaveTrouble();
+  Review.note = '';
+  learnPace(session && session.summary);
   Review.showSummary(session);
   refreshStorageRow();
   // A version that arrived mid-session held its tongue. Now is a fine time.
   if(Updater.pending) Updater.announce();
+}
+
+/* Ten breaths, which at the rates this app is used at is three or four
+   minutes. Below that a session is a start and a stop with a couple of breaths
+   between, and its average is one breath's worth of evidence. */
+const PACE_LEARN_MIN = 10;
+
+/** Move the wave's rate to match the body it just listened to.
+
+    Halfway between the average of the session and its fastest breath, not the
+    average itself: the wave is where you *start*, and the owner works their
+    way down inside a session — 6.2 to 2.5 a minute over seven minutes in one
+    recording here. Opening at the average would open below where they began
+    and ask them to speed up to meet it, which is the wrong direction for
+    everything this app does. The fastest breath alone is one breath, so the
+    halfway point is the trade.
+
+    It is a default, not a target: nothing scores the user against it and they
+    can move the slider afterwards. */
+function learnPace(sum){
+  if(!sum || !(sum.breaths >= PACE_LEARN_MIN)) return;
+  const avg = sum.meanBpm, fast = sum.maxBpm;
+  if(!(avg > 0) || !(fast > 0)) return;
+  const want = clamp((avg + fast)/2, Pace.MIN, Pace.MAX);
+  const tenths = Math.round(want*10/5)*5;         // the slider's own half-breath step
+  if(tenths === parseInt(el.pace.value, 10)) return;
+  setSlider('pace', tenths);
+  saveSettings();
+  // Said on the summary rather than in a toast: a toast at the end of a session
+  // queues behind the update announcement, and the summary is where you are.
+  Review.note = t('n.pace.b', [nfmt(Pace.bpm, 1)],
+    'The opening waves are set to ' + nfmt(Pace.bpm, 1) +
+    ' a minute from this session. You can change that on the home screen.');
 }
 
 /** Review's Done button. The list and detail screens never call this — they are
@@ -547,7 +606,9 @@ function toIntro(){
   Shore.start();
   el.recBtn.classList.remove('hidden');
   el.buildLine.classList.remove('hidden');
+  el.soundBtn.classList.remove('hidden');
   el.statusTag.classList.add('hidden');
+  paintSoundBtn();
 }
 
 /** Recording must never disturb a session, so trouble is reported once, after it. */
@@ -609,8 +670,36 @@ export function reward(bpm){
    Smootherstep on the two strokes, so the turnarounds have no corner in them
    for the tau = 0.35 s filter to ring on. Returns -1..1. */
 const PHASES = [[0.18, 1], [0.38, 0], [0.68, -1], [1.00, 0]];
-function demoBreath(dt, state){
-  state.phase = ((state.phase || 0) + dt/10) % 1;
+
+/* The rate the wave runs at — on the home screen, and in the lead-in, because
+   they are the same wave. Six a minute is where it starts; the owner works
+   their way down from there and can set it before lying down, and a session
+   with enough breaths in it to mean something moves the default. See
+   learnPace(). */
+const Pace = {
+  MIN: 2, MAX: 12, DEF: 6,          // breaths a minute
+  bpm: 6,
+  get period(){ return 60/this.bpm; },     // seconds
+  set(v){ this.bpm = clamp(fin(v, this.DEF), this.MIN, this.MAX); },
+
+  /* The steepest the wave ever moves, as a fraction of one full stroke a
+     second. The rise covers the whole stroke in 0.18 of the period and
+     smootherstep peaks at 1.875x its mean. Velocity is divided by this, so
+     the loudest moment of the wave is 1 whatever rate it runs at — which is
+     the same rule Audio.frame() applies to real breathing, and for the same
+     reason: peak velocity scales with rate, so a fixed divisor would fade the
+     wave out exactly as the user slowed it down. */
+  get vRef(){ return 1.875/(0.18*this.period); }
+};
+
+/* Demo mode's simulated body runs at a fixed six a minute, not at Pace: the
+   pace control sets the rate of the *wave*, and if the fake body followed it
+   too the two could never disagree — which is exactly the case worth hearing,
+   since a real body does not breathe at whatever the slider says. */
+const DEMO_PERIOD = 10;
+
+function demoBreath(dt, state, period){
+  state.phase = ((state.phase || 0) + dt/(period || Pace.period)) % 1;
   const u = state.phase;
   let from = 0, base = -1;
   for(const [to, dir] of PHASES){
@@ -648,7 +737,7 @@ function demoBreath(dt, state){
    It also earns its keep twice over, because breathing along with a known wave
    is what finally makes the *direction* observable. See Breath.resolveSign(). */
 export const Lead = {
-  PERIOD: 10,                  // seconds; demoBreath's own, six breaths a minute
+  get PERIOD(){ return Pace.period; },   // the wave's own, and the crossfade's
   BREATHS: 3,                  // waves before handing over, given something to hand to
   MAX: 6,                      // waves before handing over regardless. See ready().
   on:false, phase:0, breaths:0, mix:0, handing:false, wasRising:false,
@@ -675,9 +764,10 @@ export const Lead = {
     this.wasRising = rising;
     this.s = s;
     this.level = reach;
-    // 0.73/s is one full stroke of this wave — the same normalisation the home
-    // screen uses, and for the same reason: the loudest moment is the fastest.
-    this.vel = clamp(vel/0.73, -1, 1);
+    // The same normalisation the home screen uses, against a stroke of 1 here
+    // rather than the 0.70 the shore draws over. Both go through Pace.vRef, so
+    // the two halves of the handover are the same loudness at any rate.
+    this.vel = clamp(vel/Pace.vRef, -1, 1);
 
     // The reference the user is breathing along with, fed to the tracker so it
     // can see which way round the axis is.
@@ -739,7 +829,7 @@ function loop(now){
 
   if(UI.demo){
     const dt0 = now/1000;
-    const s = demoBreath(dt, UI);
+    const s = demoBreath(dt, UI, DEMO_PERIOD);
     // 0.45 m/s^2 on each of two axes: the amplitude real sessions actually
     // measured. It was 0.05, which the confidence gate would now read as a
     // phone lying on a table.
@@ -788,7 +878,7 @@ function loop(now){
   if(Lead.on){
     const k = Lead.blend();
     rich = lerp(0.80, UI.rich, k);
-    bpm  = lerp(60/Lead.PERIOD, Breath.bpmSmooth || 60/Lead.PERIOD, k);
+    bpm  = lerp(Pace.bpm, Breath.bpmSmooth || Pace.bpm, k);
   }
 
   Audio.frame({
@@ -912,7 +1002,11 @@ function signalHint(){
    eyes shut — and after a few minutes untouched, because a phone left on this
    screen should not play surf all afternoon. */
 export const Shore = {
-  on:false, audio:false, armed:false, reduced:false,
+  // mute is the sound switch in the header, not a saved setting: the volume
+  // slider is the setting. This is a way out of silence — and back into it —
+  // for the visit you are in, because the sound is meant to start itself and
+  // on some phones it does not.
+  on:false, audio:false, armed:false, reduced:false, mute:false,
   phase:0, prev:null, wet:0.14, spray:[], last:0, until:0,
 
   BAND: 0.14,                  // the waterline when fully drained, as a fraction
@@ -940,18 +1034,21 @@ export const Shore = {
       without a gesture, and there is no way around that. So try, and if the
       context comes up suspended, take the first touch the page gets — which on
       a phone is moments away and needs no button. */
-  wantAudio(){
-    if(this.audio) return;
+  /** `inGesture` is the caller saying it is already inside one — the header
+      switch is, by construction, so it must not ask. */
+  wantAudio(inGesture){
+    if(this.audio || this.mute) return;
     // A context built before the page has ever been touched comes up suspended
     // and does not reliably come back — and the app was building one on load,
     // every time, which is why the home screen was silent until a session had
     // been run and torn its context down. Wait for the touch instead: on a
     // phone it is moments away, and a context built inside one starts running.
-    if(!touched()){ this.armGesture(); return; }
+    if(!inGesture && !touched()){ this.armGesture(); return; }
     Audio.start().then(()=>{
       const live = Audio.ctx && Audio.ctx.state === 'running';
       if(live){
         this.audio = true;
+        paintSoundBtn();
         Audio.setVolume(parseInt($('vol').value, 10)/100);
         Audio.fade(Audio.vol, 5.0);          // in over five seconds, from nothing
       }else{
@@ -981,6 +1078,23 @@ export const Shore = {
     this.on = false;
     this.audio = false;
     if(!keepAudio) Audio.stop(1.6);
+    paintSoundBtn();
+  },
+
+  /** The header switch. Off tears the context down rather than muting it, so
+      nothing is left running behind a silent screen; on builds a fresh one,
+      inside the tap, which is the one place a phone will let it start. */
+  toggle(){
+    if(this.audio){
+      this.mute = true;
+      this.audio = false;
+      Audio.stop(0.8);
+    }else{
+      this.mute = false;
+      if(!this.on) this.start();     // it may have gone quiet on its own
+      this.wantAudio(true);
+    }
+    paintSoundBtn();
   },
 
   /** A touch anywhere wakes it again after it has let the screen go quiet. */
@@ -1008,15 +1122,15 @@ export const Shore = {
 
     if(this.audio){
       // The same numbers a session sends, from the same breath: level is the
-      // waterline, and velocity is how fast it is moving. The advance runs
-      // 0.70 of the strip over 1.8 s and smootherstep peaks at 1.875x the
-      // mean, so 0.73/s is one full stroke — divide by that and the loudest
-      // the sound gets is the moment the water is running fastest up the sand.
-      const v = clamp(vel/0.73, -1, 1);
+      // waterline, and velocity is how fast it is moving. The water runs RUN
+      // of the strip over one stroke, so its peak is that much of Pace.vRef —
+      // divide by it and the loudest the sound gets is the moment the water is
+      // running fastest up the sand, at whatever rate the wave is set to.
+      const v = clamp(vel/(Pace.vRef*this.RUN), -1, 1);
       Audio.frame({
         level: (s+1)/2, vel: v, speed: Math.abs(v),
         inhaling: rising, resting: Math.abs(vel) < 0.02,
-        rich: 0.8, bpm: 6, dt
+        rich: 0.8, bpm: Pace.bpm, dt
       });
       // The crest, at the moment the water stops advancing — the same instant
       // the spray is thrown, because they are the same event.
@@ -1229,6 +1343,11 @@ const SLIDERS = [
   // has to be able to go back to where it started without a reload, now that
   // moving it is permanent. resetSound() below asserts the two agree.
   ['vol',     'volume',      55,  v => Audio.setVolume(v/100)],
+  // Tenths of a breath a minute: this table is integers, and half a breath a
+  // minute is a step you can hear. Lives on the home screen rather than in
+  // Adjust, because it is set before lying down — but it is a row here like
+  // everything else, or it would work and silently not be saved.
+  ['pace',    'pace',        60,  v => { Pace.set(v/10); paintPace(); }],
   ['sens',    'sensitivity', 50,  v => { Breath.sensitivity = clamp(v/100, 0, 1); }],
   ['mSwell',  'swell',      100,  v => Audio.setMix('swell', v/100)],
   ['mBreak',  'brk',        100,  v => Audio.setMix('brk',   v/100)],
@@ -1357,6 +1476,8 @@ function paintChoice(id){
 function repaintLabels(){
   el.main.textContent = t(UI.state === 'idle' ? 'btn.start' : 'btn.end',
                           null, UI.state === 'idle' ? 'Start' : 'End');
+  paintPace();
+  paintSoundBtn();
   Updater.paint();
   Review.repaint();
   Log.built = false;
@@ -1401,6 +1522,11 @@ for(const [id, , apply] of TOGGLES){
   });
 }
 
+// The sound switch in the header. Not in TOGGLES: it is not saved, and it is
+// not an aria-checked switch row — it is a button whose label says what the
+// next tap does.
+el.soundBtn.addEventListener('click', ()=>Shore.toggle());
+
 // Demo mode: wired by hand, since it is the one switch that is not saved.
 $('tglDemo').addEventListener('click', function(){
   const on = this.getAttribute('aria-checked') !== 'true';
@@ -1423,7 +1549,8 @@ $('mBreak').addEventListener('input', ()=>{
 // The sound has seven controls and no way back once they are all moved, now
 // that they persist. Volume and sensitivity are yours and are left alone.
 $('resetMixBtn').addEventListener('click', ()=>{
-  for(const [id, key, def] of SLIDERS) if(key !== 'volume' && key !== 'sensitivity') setSlider(id, def);
+  for(const [id, key, def] of SLIDERS)
+    if(key !== 'volume' && key !== 'sensitivity' && key !== 'pace') setSlider(id, def);
   saveSettings();
   notice(t('n.soundreset', null, 'Sound reset'), t('n.soundreset.b', null, 'The seven sound controls are back where they started.'), 3500);
 });

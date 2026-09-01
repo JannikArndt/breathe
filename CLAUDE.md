@@ -343,7 +343,30 @@ further above its mean, so the inferred peak came out far too low, every hold me
 movement against it, and the gate stayed open through exactly what it exists to catch —
 12 % of a hold-heavy session read as rest where 43 % does now. **Do not re-derive the peak
 from the mean.** The thresholds are unchanged because they were always expressed against a
-peak; only the estimate of it moved. `resting` needs 0.5 s of holding, and `restGate` fades in over
+peak; only the estimate of it moved.
+
+**A stroke may not set that peak until the gain has converged.** `slopePeak` is measured in
+normalised units, and normalised units mean nothing until the AGC does. It opens from
+`rms = 0.02` — a scale of 0.219, right for a modest breath and three times too small for a
+deep one — and converges over τ = 14 s. On the 2055 recording the phone settled at 45.0 s
+(at `SETTLE_CAP`, not by the hold test: it was still being moved) and the projection then
+swung from +0.63 to the ±1.8 clamp in 1.3 s, five times faster than any real stroke in that
+session, purely because the gain had not caught up. `|dsLp|` hit 2.27 against a true stroke
+peak of 0.37, `slopePeak` latched to 1.90, and since the reference releases over two periods
+— 52 s at 2.3 a minute — the ratio never cleared the 0.50 leave-threshold again for the best
+part of a minute. The gate sat at 0.00 through the first three real inhales and the session
+opened silent; the owner heard the fourth arrive, drop out and come back half a second
+later. So `REST_WARM` is 28 s, two AGC time constants, and for that long after settling a
+stroke may not raise the reference. It still *decays* throughout, so the seed cannot latch
+either, and nothing else in the chain waits on it.
+
+**Lowering the seed instead does not work, and was measured.** `slopePeak` starts at 0.55
+and the value that broke this was 1.57 — three times the seed, so the seed was never what
+set it. Reseeding to 0.05 moves the first inhale's reference from 1.579 to 1.559 and its
+gate not at all; doing both pins the reference at its own 0.05 floor for two breaths, and
+then no hold is detected at all. Do not re-derive this from the seed.
+
+`resting` needs 0.5 s of holding, and `restGate` fades in over
 0.30 s and out over 0.60 s. **`vel()` and `speed()` are both multiplied by `restGate`.**
 This exists because velocity is normalised against breathing rate in `Audio.frame()`: at
 5.4 /min the reference peak is 0.216, so a belly tremor of 0.05 divides out to a
@@ -638,16 +661,19 @@ node tools/smoke.mjs            # everything else
 
 ### The DSP harness
 
-36 checks against synthetic tilt: axis recovery with no calibration step, rate tracking at
+37 checks, all but two against synthetic tilt: axis recovery with no calibration step, rate tracking at
 12, 6, 3 and ~2/min, inhale/exhale split, direction resolved from the lead-in with the phone
 inverted — and left alone when there is no lead-in to resolve it from — tolerance to
 0.6 m/s² per minute of postural drift, the quality meter, the phase convention, that the
 signal is live in the first seconds without detecting cycles, the learned stroke
 amplitude, and rest detection — that a hold reads as rest and closes the gate while an
 ordinary stroke does neither — and that confidence separates breathing from a still phone.
-One check replays the real bogus recording from `recordings/` and asserts peak confidence
-stays under 0.35 (it is 0.135); it skips rather than fails when `recordings/` is not
-checked out. Four more cover the pulse estimator: it recovers a synthetic 62 bpm
+Two checks replay real recordings from `recordings/` and skip rather than fail when it is
+not checked out: the bogus one, asserting peak confidence stays under 0.35 (it is 0.135),
+and the 2055 one, asserting the mean rest gate across its first real inhale clears 0.45
+(0.00 before the fix below, 0.86 after). The second is there because the synthetic feed
+structurally cannot catch it — it settles in three seconds and never opens the gain on a
+breath deeper than the seed expects, which is exactly the case that broke. Four more cover the pulse estimator: it recovers a synthetic 62 bpm
 heartbeat, it reports nothing on noise alone, it reads through the 0.12 m/s² a still body
 produces, and it refuses at the 0.8 m/s² of a phone being carried.
 

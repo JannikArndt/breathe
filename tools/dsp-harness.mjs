@@ -340,6 +340,41 @@ console.log('source: ' + srcDir + '\n');
   }
 }
 
+// 7b. the opening breaths of a real slow session are not gated to silence
+{
+  const path = `${here}/../recordings/breathe-20260901-2055.json`;
+  let S = null;
+  try { S = JSON.parse(readFileSync(path, 'utf8')); } catch { /* not present */ }
+  const rows = S && S.motion && S.motion.rows;
+  if (!rows || !rows.length) {
+    console.log('skip  opening breaths of a real slow session (recordings/ not checked out)');
+  } else {
+    // This session settles at the 45 s cap rather than by the hold test — the
+    // phone was still being moved — and the AGC then opens on a 0.64 m/s^2
+    // breath from a seed sized for a third of that. The projection swings to
+    // the clamp five times faster than any real stroke here, and the rest
+    // reference used to latch onto that and stay latched for a minute: the
+    // gate sat at 0.00 through the first three inhales and the session opened
+    // silent. The owner heard it as a swell that arrived, dropped out and came
+    // back half a second later.
+    Breath.begin(rows[0][0]);
+    Breath.sensitivity = (S.app && typeof S.app.sensitivity === 'number') ? S.app.sensitivity : 0.5;
+    // The first real inhale runs 54-62 s; sample the middle of it, clear of
+    // both turnarounds, where the belly is unambiguously moving.
+    // The defect was the whole stroke being shut, not one dip inside it, so
+    // the mean across the inhale is what says whether the sound was there:
+    // 0.00 before the fix against 0.79 after, either side of a wide gap.
+    let sum = 0, n = 0;
+    for (const r of rows) {
+      Breath.push(r[1], r[2], r[3], r[0]);
+      if (r[0] >= 55 && r[0] <= 61) { sum += Breath.restGate; n++; }
+    }
+    const gate = n ? sum / n : 0;
+    check('the first breath of a slow session is not gated to silence',
+      n > 0 && gate > 0.45, `mean gate over the first inhale = ${gate.toFixed(2)}`);
+  }
+}
+
 // 8. the learned stroke amplitude tracks the signal, and scales the hysteresis
 {
   session({ bpm: 10, secs: 120 });

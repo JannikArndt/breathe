@@ -180,8 +180,18 @@ check('the sand it reached stays wet behind it', mod.Shore.wet >= mod.Shore.BAND
       mod.Shore.wet.toFixed(2));
 
 // The audio starts itself. A browser will not build a context without a
-// gesture, so the app tries and then takes the first touch the page gets.
-check('the sound starts with the waves', mod.Shore.audio === true && !!FakeAudioContext.last);
+// gesture, so the app waits for the first touch the page gets. It used to
+// build one anyway on load, which on iOS comes up suspended and does not
+// reliably come back — so the home screen was silent until a session had been
+// run and torn that context down, and only had sound the second time round.
+check('the sound does not build a context it cannot start',
+      mod.Shore.audio === false && FakeAudioContext.last === null);
+check('and waits for the first touch instead', mod.Shore.armed === true);
+document.dispatch('pointerdown', {});
+await settle();
+run(1, 60);
+check('the sound starts with the waves once the page is touched',
+      mod.Shore.audio === true && !!FakeAudioContext.last);
 {
   const ctxNow = FakeAudioContext.last;
   const before = ctxNow.params().reduce((a,p)=>a+p.writes.filter(w=>w.how==='setTargetAtTime').length, 0);
@@ -366,7 +376,28 @@ check('the lead wave is what drives the sound at first',
 check('and it carried on from where the home screen left it',
       Math.abs(leadPhase0 - mod.Shore.phase) < 0.5,
       `${leadPhase0.toFixed(2)} vs ${mod.Shore.phase.toFixed(2)}`);
-run(55, 60);                                // three waves, then one to cross over
+
+/* Phase one. Reaching over to tap Start swings the gravity vector by tens of
+   degrees where a breath moves it by a fraction of one, and fed to a high-pass
+   that swing is a ramp several breaths long. Two sessions recorded on a table
+   opened with it: the tracker read movement worth following from a phone that
+   never moved, and the trace lurched before anything had happened. Nothing is
+   measured until the tilt has stopped moving. */
+check('nothing is measured while the phone is still being put down',
+      Breath.settled === false && Breath.s === 0 && Breath.follow === 0,
+      `s ${Breath.s}, follow ${Breath.follow}`);
+check('and the header says so rather than claiming to listen',
+      $('statusTag').textContent.startsWith('settling'),
+      JSON.stringify($('statusTag').textContent));
+check('the wave is playing through it, so the session is not silent',
+      Lead.on === true);
+run(12, 60);
+check('it starts listening once the phone has settled', Breath.settled === true,
+      `after ${Breath.sinceBegin.toFixed(1)} s`);
+check('and the header changes over', $('statusTag').textContent.startsWith('listening'),
+      JSON.stringify($('statusTag').textContent));
+
+run(45, 60);                                // three waves, then one to cross over
 check('it hands over to your own breathing', Lead.on === false,
       `after ${Lead.breaths} waves, mix ${Lead.mix.toFixed(2)}`);
 check('and the cue stops asking you to follow it',
@@ -519,6 +550,8 @@ check('the summary reports numbers', $('revSumGrid').children.length >= 5,
 const cells = $('revSumGrid').querySelectorAll('.cell').map(c =>
   c.querySelectorAll('.v').map(v => v.textContent).join(''));
 check('the summary is not all dashes', cells.some(t => /\d/.test(t)), cells.join(' | '));
+check('a session with something in it is not offered for discard',
+      $('revSumDiscard').classList.contains('hidden'));
 
 /* ---------------------------------------------------------------- stored */
 await settle(20);
@@ -703,6 +736,24 @@ check('the header reports a live sample rate', /\d+ Hz/.test($('statusTag').text
 $('mainBtn').click();
 await settle(20);
 check('the sensor session ends on the summary', $('mainBtn').textContent === 'Start');
+
+/* Discard. Twenty seconds is a Start that should have been an End, or a phone
+   put down and picked straight back up: there is nothing in it to look at
+   later, and it still takes a row in the list and space on the phone. It is
+   offered only from a short session's own summary, and only ever with a
+   second tap, because it cannot be undone. */
+check('a session too short to hold anything offers to be discarded',
+      !$('revSumDiscard').classList.contains('hidden'));
+$('revSumDiscard').click();
+check('one tap only arms it', $('revSumDiscard').textContent === 'Discard, really' &&
+      (await Store.list()).length === 1, JSON.stringify($('revSumDiscard').textContent));
+$('revSumDiscard').click();
+await settle(20);
+check('the second tap throws the recording away', (await Store.list()).length === 0,
+      (await Store.list()).length + ' left');
+check('and lands back on the home screen', !$('intro').classList.contains('hidden') &&
+      $('review').classList.contains('hidden'));
+
 $('revBack').click();
 await settle();
 await Store.clear();

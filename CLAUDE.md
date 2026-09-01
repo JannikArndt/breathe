@@ -99,11 +99,22 @@ competes for attention with the breathing itself. Nothing should reintroduce a t
 rate, a guide tone, or a sync reward.
 
 **The lead-in is not that, and must not be allowed to become it.** `Lead` in `src/main.js`
-carries the home screen's wave into the session at 6/min and hands over after three waves,
-or sooner once `Breath.follow` clears 0.6. Four things keep it on the right side of the
-line: it is the same single voice rather than a tone laid over one, it never adapts to
-what the user does, nothing scores them against it, and **it ends** — thirty seconds in,
-the sound is theirs. Growing any one of those back is how this becomes the pacer again.
+carries the home screen's wave into the session at 6/min and hands over once there is
+something to hand over *to*. Four things keep it on the right side of the line: it is the
+same single voice rather than a tone laid over one, it never adapts to what the user does,
+nothing scores them against it, and **it ends**. Growing any one of those back is how this
+becomes the pacer again.
+
+`ready()` is three tests and the last one is the one that matters. One wave and
+`Breath.follow` over 0.6, or three waves and `follow` over 0.35 — and in any case
+`MAX` waves, which is six, a minute. The `follow` terms are there because the first
+version handed over on wave count alone, and a phone lying on a table satisfied that
+outright and handed over to nothing. The cap is there because a wave that never stops
+is the pacer. Do not remove either; do not make the cap conditional.
+
+The wave count restarts when `Breath.settled` first goes true (see §4c), so the waves
+spent watching someone put the phone down do not count against a tracker that was not
+listening through them.
 
 It exists because a session used to open in silence. Measured on the 31 Aug recordings,
 the tracker first reported a rate 91 s into the session the owner called great, 192 s into
@@ -412,6 +423,57 @@ sinusoid slips under a 30 s ceiling: with the old ceiling that check reports 2.1
 **Do not re-tighten either constant to "reject noise".** Neither one is what rejects the
 bogus recording — size, rhythm and stillness are, and they are unchanged.
 
+## 4c. Phase one: settling
+
+Reaching over to tap Start, or laying the phone on the belly, swings the gravity vector by
+tens of degrees where a breath moves it by a fraction of one. Fed to the filters that swing
+is a step, and a step through a high-pass is a ramp several breaths long — so the opening
+of a session was spent sonifying an event that was already over. Measured on the two
+sessions recorded on 1 September: a phone lying untouched on a table reported `follow` of
+0.88, its projection sat pinned against the ±1.8 clamp from the first sample, and the axis
+locked onto the tap. **`Breath.settled` gates the whole chain.**
+
+Two things, both in `src/breath.js`:
+
+- **The first `devicemotion` event is dropped.** It is not a reading. Both 1 September
+  recordings open with one: a phone flat and untouched reported (1.81, −5.95, −7.81) before
+  settling to (0, 0, −9.85) one sample later, and every filter here is seeded from the first
+  sample it sees. At 60 Hz waiting one event costs 17 ms.
+- **`trackSettle()` compares two smoothed copies of the gravity vector**, τ = 4 s and
+  τ = 12 s, and settles when the angle between them has been under 1.5° for 2 s. Both are
+  far slower than a breath, so an oscillation moves them together and a *step* pulls them
+  apart. Until it settles, `base` is pinned to `smooth`, so `d` is exactly zero: nothing
+  reaches the axis tracker, the gain, the cycle detector or `Breath.lead()`, `s` reads 0
+  and `follow`/`conf` stay 0.
+
+**A rate test was tried first and must not be put back.** It measured how fast the tilt was
+turning and separated every recording in this repository cleanly — but only because they are
+all slow breathing. Against a synthetic 12 and 20 a minute at the same depth it never
+settled at all, because at those rates a breath alone turns the tilt faster than any usable
+threshold. The two-filter test settles 3, 6, 12 and 20 a minute alike.
+
+**The warm-up is load-bearing.** Both filters are seeded from the same sample, so they start
+identical and drift apart over a time constant. Without `sinceBegin > TAU_FAST` the hold is
+satisfied by the seeding alone and every session settles two seconds in, put down or not.
+That puts a 6 s floor under the settle time, which is what a phone already lying still gets.
+
+Measured over every recording here: table 6.0 s, the sessions that opened already on the
+belly 6.0 s, the session the owner called great 8.2 s, the session started with the phone in
+the hand 45 s (its own test says 53 s; the cap ends it sooner), three minutes of deliberate
+shaking **never**. Against the same recordings the table session's peak `follow` falls from
+0.88 to 0.30 and its projection from 1.80 to 0.03.
+
+`SETTLE_CAP` is 45 s and is a bound, not a lock-out: past it the tracker listens anyway and
+the confidence gates of §4a decide. **There is no way back into phase one.** Once a session
+has settled it stays settled — shifting position mid-session is the axis tracker's and the
+AGC's job, and dropping back into a phase that reports nothing would take the sound away
+from someone who is still breathing.
+
+**Do not reseed the AGC at the handover.** `reset()` leaves `rms` at 0.02, the gate means it
+has not run at all, and the signal opens from a flat line at a plausible gain. Seeding it
+lower — the obvious thing, since nothing has been measured — pins the first two breaths of
+a real session against the clamp.
+
 ## 4a2. Pulse (experimental)
 
 Ballistocardiography from the same accelerometer. It is **off by default** and must stay
@@ -511,6 +573,15 @@ heartbeat.** Say so wherever the number is discussed.
   from the top one, so removing this call silences both.
 - **`DynamicsCompressor` at threshold −10 dB, ratio 12 is the output limiter.** Layers can
   sum unpredictably when a user breathes hard; do not remove it.
+- **A context built before the page has been touched is a context that never speaks.**
+  `Shore.wantAudio()` used to build one on load, every time; on iOS it comes up suspended
+  and does not reliably resume, so the home screen was silent until a session had been run
+  and `Audio.stop()` had torn that context down — which is why the sound only ever arrived
+  the second time round. It now waits for the first gesture (`navigator.userActivation`
+  where it exists, an observed `pointerdown`/`keydown`/`click` otherwise) and builds the
+  context inside it. If one comes up suspended anyway, `Audio.discard()` throws it away so
+  the next gesture gets a fresh one — do not add a retry loop that keeps calling `resume()`
+  on it.
 - **iOS silent switch:** `primeSilentChannel()` starts a silent looping `<audio>` element so
   the page is treated as media playback. This is community-reported behaviour, **not a
   documented API**, and has not been verified against WebKit source. If it stops working,
@@ -559,12 +630,14 @@ regression.
 
 `tools/smoke.mjs` runs the whole app in Node — `src/main.js` and everything it pulls in —
 against a stub DOM built from `index.html`, a stub Web Audio and an in-memory IndexedDB,
-all in `tools/stub/`. A hundred and forty checks: it opens each panel, drives the update flow
-(check, nothing new, a version arriving, a failed install, the handover), turns on Demo
-mode, taps Start, watches the lead-in hand over to the tracker, breathes for three
-simulated minutes through the real render loop,
+all in `tools/stub/`. A hundred and fifty checks: it opens each panel, drives the update flow
+(check, nothing new, a version arriving, a failed install, the handover), waits for the
+sound to take the page's first touch, turns on Demo mode, taps Start, watches the tracker
+stay silent until the phone settles and then the lead-in hand over to it, breathes for
+three simulated minutes through the real render loop,
 switches each experiment on and looks at what changed, taps End, reads the summary, then
-browses, labels, exports and deletes the recording.
+browses, labels, exports and deletes the recording — and discards a short one from its
+own summary.
 
 This is what covers the wiring: an id that no longer resolves, a symbol that moved to
 another module, a control wired to its effect but not to the thing that saves it, a
@@ -679,6 +752,7 @@ stateDiagram-v2
     Breathing --> Settings: Adjust
 
     Summary --> Home: Back
+    Summary --> Home: Discard (under 30 s)
     Summary --> Detail: Label
     List --> Home: Back
     List --> Detail: tap a recording
@@ -705,6 +779,14 @@ buttons and one line of state, stored as `meta.trim = {fromSec, toSec}`, and
 `tools/replay.mjs` and `tools/onset.mjs` honour it by default (`--all` on replay ignores
 it). Recordings made before it are read back through `trimFromLabels()`, which maps the two
 old kinds that meant the same thing. Do not add a second labelling mechanism beside it.
+
+**A session under 30 seconds gets a Discard button on its own summary.** It is a Start
+that should have been an End, or a phone put down and picked straight back up: there is
+nothing in it to look at later and it still costs a row in the list and space on the phone.
+Two taps, like every other delete here, and it lands on Home rather than the list, because
+the session it threw away is the one you were looking at. `Review.DISCARD_UNDER` holds the
+threshold. Longer recordings are still deleted from the detail screen, where you can see
+what you are deleting — do not add a second delete beside that one.
 
 **The fine lane zooms by pinch**, not by a row of width buttons, and `+`/`-` do the same
 from a keyboard. The readout row that used to sit under it — "At 3:20 / You 0.42 / Your

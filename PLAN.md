@@ -138,14 +138,32 @@ not a finding. Do not tune it against these files.
 Whatever replaces it, delete the `exhaleDur < inhaleDur * 0.8` test -- it is
 not merely unproven, it is backwards for the only body measured.
 
-### 2.3 A settle gate, from the tilt
+### 2.3 DONE (0.17.0) -- a settle gate, from the tilt
 
-Do not start tracking until the phone has been still and roughly flat for a few
-seconds; on a large tilt change mid-session, reset the axis, the baseline and
-the confidence rather than letting them drift back over 45 s. 1117 is the case:
-18.5 s of being carried, learned as if it were breathing.
+Shipped, and with two corrections to what is written above.
 
-Costs nothing when the phone is already down -- 0830 settles at 4.8 s.
+**The rate test in 1.1 does not survive a fast breather.** It separates every
+recording here cleanly, but every recording here is slow breathing. Against a
+synthetic 12 and 20 a minute at the same depth it never settles at all, because
+at those rates a breath alone turns the tilt faster than any usable threshold.
+What shipped instead compares two smoothed copies of the gravity vector, tau =
+4 s and tau = 12 s: an oscillation moves them together, a step pulls them apart.
+That settles 3, 6, 12 and 20 a minute alike. See CLAUDE.md section 4c.
+
+**No reset mid-session.** Once settled it stays settled. Dropping back into a
+phase that reports nothing would take the sound away from someone who is still
+breathing, and shifting position is already the axis tracker's and the AGC's job.
+
+Also found on the way: **the first devicemotion event on this phone is not a
+reading**, and every filter was seeded from it. Both 1 September recordings open
+with one -- a phone flat and untouched reporting (1.81, -5.95, -7.81) before
+settling to (0, 0, -9.85) one sample later. That single sample is most of the
+"sudden movement down" a session opened with. It is dropped now.
+
+Measured after: table 6.0 s, belly-start sessions 6.0 s, 1131 8.2 s, 1117 45 s
+(the cap; its own test says 53 s, which is right -- it was in the hand that
+long), three minutes of shaking never. The table session's peak `follow` falls
+from 0.88 to 0.30 and its projection from 1.80 to 0.03.
 
 ### 2.4 Rigidity as the table test
 

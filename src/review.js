@@ -51,6 +51,11 @@ export const Review = {
      finest useful step: below that a breath no longer fits on screen. */
   SPANS:[[0,'Whole'],[120,'2 min'],[30,'30 s'],[8,'8 s']],
 
+  /* seconds. Under this a session gets a Discard button on its summary. Half a
+     minute is about one slow breath plus the settling either side of it, so
+     there is nothing in a recording this short worth keeping. */
+  DISCARD_UNDER: 30,
+
   /* ---------- lazy DOM + palette ---------- */
 
   dom(){
@@ -96,6 +101,7 @@ export const Review = {
       if(this.session) this.showDetail(this.session.id, 'summary');
     });
     $('revSumExport').addEventListener('click', ()=>this.exportOne(this.session));
+    $('revSumDiscard').addEventListener('click', ()=>this.discard());
     $('revExportAll').addEventListener('click', ()=>this.exportAll());
     $('revDetExport').addEventListener('click', ()=>this.exportOne(this.session));
     $('revDetDelete').addEventListener('click', ()=>this.deleteCurrent());
@@ -184,6 +190,18 @@ export const Review = {
     const q = (sum.meanQuality!=null) ? sum.meanQuality : this.meanOf('q');
     // Recordings made before these were summarised fall back to the signal.
     const rate = this.rateStats(sum);
+
+    // A session that lasted less than half a minute is almost always a mistake
+    // — a Start that should have been an End, or a phone put down and picked
+    // straight back up. There is nothing in it to look at later, and it still
+    // takes up space and a row in the list, so offer to throw it away from
+    // here rather than making someone go and find it. Longer sessions are
+    // deleted from the detail screen, where you can see what you are deleting.
+    const short = dur > 0 && dur < this.DISCARD_UNDER;
+    const dis = $('revSumDiscard');
+    dis.classList.toggle('hidden', !short);
+    dis.dataset.armed = '0';
+    dis.textContent = t('rev.discard', null, 'Discard');
 
     const g = d.sumGrid;
     g.textContent = '';
@@ -924,6 +942,28 @@ export const Review = {
     this.metas = (this.metas||[]).filter(m=>m.id!==id);
     this.session = null;
     this.showList();
+  },
+
+  /** Throw the session away and go home. Two taps, like every other delete
+      here, because it cannot be undone. */
+  async discard(){
+    const b = $('revSumDiscard');
+    if(b.dataset.armed !== '1'){
+      b.dataset.armed = '1'; b.textContent = t('rev.discard2', null, 'Discard, really');
+      setTimeout(()=>{ if(b.dataset.armed==='1'){ b.dataset.armed='0'; b.textContent=t('rev.discard', null, 'Discard'); } }, 5000);
+      return;
+    }
+    b.dataset.armed = '0'; b.textContent = t('rev.discard', null, 'Discard');
+    const id = this.session && this.session.id;
+    if(typeof Store !== 'undefined' && Store.available !== false && id){
+      try{ await Store.delete(id); }
+      catch(err){ notice(t('n.nodelete', null, 'Could not delete'),
+                         ((err && err.name)||'The store refused the delete') + '. Try again from Recordings.', 6000); return; }
+    }
+    this.metas = (this.metas||[]).filter(m=>m.id!==id);
+    this.session = null;
+    this.hide();
+    if(this.onDone) this.onDone();
   },
 
   async exportOne(session){

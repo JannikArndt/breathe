@@ -455,6 +455,17 @@ export const Audio = {
 
   setVolume(v){ this.vol = clamp(fin(v,0.55),0,1); if(this.ready) this.fade(this.vol, 0.25); },
 
+  /** Throw away a context that never started, so the next attempt builds a
+      fresh one. A context constructed before the page was touched comes up
+      suspended and resuming it later is not reliable; a context constructed
+      inside a gesture is running from the first sample. Unlike stop(), there
+      is nothing to fade — it was never audible. */
+  discard(){
+    const ctx = this.ctx;
+    this.ready = false; this.voice = null; this.m = null; this.ctx = null;
+    if(ctx) try{ ctx.close(); }catch(e){}
+  },
+
   async stop(fadeSec){
     if(!this.ready) return;
     const f = clamp(fin(fadeSec, 1.4), 0.2, 12);

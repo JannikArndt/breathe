@@ -10,12 +10,38 @@ import { Review } from './review.js';
    6. APP
    ============================================================ */
 
+/* Has anybody touched the page yet? An AudioContext built before the first
+   touch comes up suspended and, on iOS, does not reliably resume afterwards —
+   so the home screen's sound has to wait for one rather than build a context
+   that can never speak. navigator.userActivation answers this directly where
+   it exists (Safari 16.4 and up); everywhere else the app watches for the
+   event itself. Registered here, at module load, so it runs before any
+   listener that asks the question. */
+let sawGesture = false;
+for(const type of ['pointerdown','keydown','click']){
+  document.addEventListener(type, ()=>{ sawGesture = true; }, true);
+}
+function touched(){
+  if(sawGesture) return true;
+  try{
+    const ua = navigator.userActivation;
+    if(ua && ua.hasBeenActive) return true;
+  }catch(e){}
+  return false;
+}
+
 /** Releases, newest first. There is no build step, so this list *is* the
     version: the top entry stamps the home screen and the exported session.
     Add an entry in the same commit as the change it describes, and write the
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.17.0', date:'2026-09-01', notes:[
+    'The home screen has sound again from the moment you open it. It was building its sound before you had touched the screen, which a phone will not allow, so there was nothing to hear until you had run a session and come back.',
+    'A session no longer opens with a lurch. Reaching over to tap Start tilts the phone far more than a breath does, and the app was reading that as the first thing you did — the trace jumped, and on two recordings made on a table it reported breathing worth following from a phone that never moved. It now waits for the phone to be lying still before it measures anything, which takes about six seconds. The header says settling until it does.',
+    'The opening waves wait with it, and no longer hand over to nothing. They step aside once there is really something to hear, and in any case after a minute.',
+    'A session shorter than half a minute can be thrown away from its own summary, so a Start that should have been an End does not leave a recording behind.'
+  ]},
   {v:'0.16.0', date:'2026-08-31', notes:[
     'A session no longer opens in silence. The wave from the home screen carries on into the session at six breaths a minute, so there is something to breathe with while the app works out what it is looking at. It steps aside after three waves, or sooner if it can already hear you, and hands the sound over to your own breathing.',
     'Breathing along with that wave is also how the app now works out which way round it is lying. It used to guess from the shape of a breath and got it backwards about half the time, which is why the sound sometimes rose when you breathed out.',
@@ -623,16 +649,17 @@ function demoBreath(dt, state){
    is what finally makes the *direction* observable. See Breath.resolveSign(). */
 export const Lead = {
   PERIOD: 10,                  // seconds; demoBreath's own, six breaths a minute
-  BREATHS: 3,                  // before handing over on time alone
+  BREATHS: 3,                  // waves before handing over, given something to hand to
+  MAX: 6,                      // waves before handing over regardless. See ready().
   on:false, phase:0, breaths:0, mix:0, handing:false, wasRising:false,
-  s:-1, level:0, vel:0, prev:null,
+  s:-1, level:0, vel:0, prev:null, wasSettled:false,
 
   begin(phase){
     this.on = !!Flags.lead;
     this.phase = phase || 0;   // carried from the home screen, so the wave does not jump
     this.breaths = 0; this.mix = 0; this.handing = false;
     this.wasRising = false; this.s = -1; this.prev = null;
-    this.level = 0.5; this.vel = 0;
+    this.level = 0.5; this.vel = 0; this.wasSettled = false;
   },
 
   /** Advance the wave and decide whether it is time to step aside. */
@@ -656,6 +683,11 @@ export const Lead = {
     // can see which way round the axis is.
     Breath.lead(s);
 
+    // Phase one is over. The waves counted while the phone was still being put
+    // down were heard but not measured against anything, so the count of what
+    // the tracker has had a chance to see starts here.
+    if(Breath.settled && !this.wasSettled){ this.wasSettled = true; this.breaths = 0; }
+
     if(!this.handing && this.ready()){
       // Resolve the direction *before* the crossfade starts, while the lead is
       // still at full volume — flipping the axis inverts the measured signal,
@@ -676,12 +708,20 @@ export const Lead = {
     }
   },
 
-  /** Three waves, or enough movement to follow before that — but never before
-      one full wave has gone by, because a single wave is the least reference
-      the direction can be read from. */
+  /** When to hand over. Three tests, and the last one is the one that keeps
+      this from being a pacer.
+
+      A phone lying on a table used to satisfy the old "three waves and hand
+      over" rule outright, and hand over to nothing. So there has to be
+      something to hand over *to*: either enough movement to follow after a
+      single wave, or a weaker signal after three. But it also always ends —
+      six waves is a minute, and past that the sound is the user's whether or
+      not the app can hear anything, because a wave that never stops is exactly
+      the thing this app deliberately does not have. */
   ready(){
-    if(this.breaths >= this.BREATHS) return true;
-    return this.breaths >= 1 && Breath.follow > 0.6;
+    if(this.breaths >= 1 && Breath.follow > 0.6) return true;
+    if(this.breaths >= this.BREATHS && Breath.follow > 0.35) return true;
+    return this.breaths >= this.MAX;
   },
 
   /** Smootherstep, so the handover has no corner at either end. */
@@ -762,8 +802,12 @@ function loop(now){
   if(UI.hzAcc >= 1){
     UI.hz = Math.round((Breath.samples - UI.lastSamples)/UI.hzAcc);
     UI.lastSamples = Breath.samples; UI.hzAcc = 0;
+    // Settling is a phase of the session, not a fault, so it is reported where
+    // the other live state is rather than in the cue — the cue is what someone
+    // lying down with their eyes half shut reads, and it should stay calm.
     el.statusTag.textContent =
-      t('tag.listening', null, 'listening') +
+      (Breath.settled ? t('tag.listening', null, 'listening')
+                      : t('tag.settling', null, 'settling')) +
       (UI.demo ? ' \u00b7 ' + t('tag.demo', null, 'demo') : ' \u00b7 ' + UI.hz + ' Hz');
   }
 
@@ -898,6 +942,12 @@ export const Shore = {
       a phone is moments away and needs no button. */
   wantAudio(){
     if(this.audio) return;
+    // A context built before the page has ever been touched comes up suspended
+    // and does not reliably come back — and the app was building one on load,
+    // every time, which is why the home screen was silent until a session had
+    // been run and torn its context down. Wait for the touch instead: on a
+    // phone it is moments away, and a context built inside one starts running.
+    if(!touched()){ this.armGesture(); return; }
     Audio.start().then(()=>{
       const live = Audio.ctx && Audio.ctx.state === 'running';
       if(live){
@@ -905,6 +955,9 @@ export const Shore = {
         Audio.setVolume(parseInt($('vol').value, 10)/100);
         Audio.fade(Audio.vol, 5.0);          // in over five seconds, from nothing
       }else{
+        // It came up suspended anyway. Throw it away rather than keep trying to
+        // resume it, so the next touch gets a fresh one.
+        Audio.discard();
         this.armGesture();
       }
     }, ()=>this.armGesture());

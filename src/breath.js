@@ -20,7 +20,7 @@ export const Breath = {
   smooth:[NaN,NaN,NaN], base:[NaN,NaN,NaN],
   u:[0,0,1], invert:false,
   s:0, sPrev:0, dsLp:0, rms:0.02,
-  lastT:0, lastDt:1/60, samples:0, lastEventT:0,
+  lastT:0, lastDt:1/60, samples:0, seen:0, lastEventT:0,
   motionRms:0, breathRms:0,
 
   // ---- continuous axis tracking
@@ -29,6 +29,26 @@ export const Breath = {
   // direction rather than an instant and short enough to follow a shift.
   cov:[[0,0,0],[0,0,0],[0,0,0]], dMean:[0,0,0],
   covSeen:0, lastTrack:0,
+
+  // ---- phase one: settling
+  // Putting the phone down, or reaching over to tap Start, swings the gravity
+  // vector by tens of degrees where a breath moves it by a fraction of one.
+  // Fed to the filters that swing is a step, and a step through a high-pass is
+  // a ramp several breaths long — so the first minute of the session is spent
+  // watching an event that is already over. Two recordings made on a table
+  // show it plainly: the tracker reported movement worth following (0.88 and
+  // 1.00) from a phone that never moved at all, and locked its axis onto the
+  // tap. Nothing is measured until the tilt has stopped moving.
+  //
+  // gFast and gSlow are the same gravity direction at two time constants, both
+  // far slower than a breath; tiltDev is the angle between them, in degrees.
+  gFast:[NaN,NaN,NaN], gSlow:[NaN,NaN,NaN],
+  tiltDev:0, stillTilt:0, settled:false, sinceBegin:0,
+  TAU_FAST:4, TAU_SLOW:12,   // s
+  TILT_STILL:1.5,     // degrees between them. Measured below.
+  SETTLE_HOLD:2.0,    // s under that before the tracker starts listening
+  SETTLE_CAP:45,      // s. It is a clean start, not a lock-out: past this the
+                      // tracker listens anyway and the confidence gates decide.
   axisAmp:0,            // RMS of the projection, in m/s^2 — a physical quantity
   sRaw:0,               // the projection before the AGC, so it stays in m/s^2
   signSet:false, lostFor:0,
@@ -77,6 +97,9 @@ export const Breath = {
     this.u=[0,0,1]; this.signSet=false; this.lostFor=0;
     this.leadDot=0; this.leadMag=0; this.sRaw=0; this.flipped=false;
     this.periods=[]; this.conf=0;
+    this.gFast=[NaN,NaN,NaN]; this.gSlow=[NaN,NaN,NaN];
+    this.tiltDev=0; this.stillTilt=0;
+    this.settled=false; this.sinceBegin=0; this.seen=0;
   },
 
   /** feed one sensor sample. t in seconds. */
@@ -87,6 +110,15 @@ export const Breath = {
     if(!(dt>0) || dt>0.5) dt = 1/60;               // guard against stalls
     this.lastDt = dt;                              // Pulse reads this rather than re-deriving it
     this.samples++;
+    // The first devicemotion event on this phone is not a reading. Both
+    // sessions recorded on 1 September open with one: a phone lying flat and
+    // untouched reported (1.81, -5.95, -7.81) before settling to (0, 0, -9.85)
+    // one sample later, and every filter here is seeded from the first sample
+    // it sees. Seeded from that, the smoothed vector starts 6 m/s^2 away from
+    // the truth and the baseline walks back to it over the next twelve
+    // seconds — which is the "sudden movement down" a session opened with.
+    // Nothing is lost by waiting one event: at 60 Hz it is 17 ms.
+    if(++this.seen === 1) return;
 
     // The baseline is a high-pass, and a high-pass turns a held breath into a
     // ramp. A recorded session at 3 breaths a minute holds the bottom for 5 to
@@ -107,9 +139,18 @@ export const Breath = {
     const tauBase = clamp(3.0*(this.period || 4), 12, 150);
 
     const v=[x,y,z];
+    for(let i=0;i<3;i++) this.smooth[i] = lp(this.smooth[i], v[i], dt, 0.35);
+
+    this.trackSettle(v, dt);
+
+    // Until the phone has settled the baseline is held on the smoothed vector,
+    // so the deviation the rest of the chain reads is exactly zero and none of
+    // the movement of being put down reaches the axis, the gain or the cycle
+    // detector. Once it settles the baseline is already where it belongs and
+    // the session opens from a flat line rather than from a ramp.
     for(let i=0;i<3;i++){
-      this.smooth[i] = lp(this.smooth[i], v[i], dt, 0.35);
-      this.base[i]   = lp(this.base[i], this.smooth[i], dt, tauBase);
+      this.base[i] = this.settled ? lp(this.base[i], this.smooth[i], dt, tauBase)
+                                  : this.smooth[i];
     }
     // energy above the breath band = fidgeting; used for the signal meter
     let hi=0; for(let i=0;i<3;i++){ const e=v[i]-this.smooth[i]; hi+=e*e; }
@@ -117,6 +158,15 @@ export const Breath = {
 
     const d = [this.smooth[0]-this.base[0], this.smooth[1]-this.base[1], this.smooth[2]-this.base[2]];
     if(!isFinite(d[0])) return;
+
+    // Still settling: report a flat line and no confidence rather than a guess.
+    // The lead wave is what the user hears through this, so the session is not
+    // silent — it is just not pretending to hear anything yet.
+    if(!this.settled){
+      this.s = 0; this.sPrev = 0; this.dsLp = 0; this.sRaw = 0;
+      this.follow = 0; this.conf = 0; this.phase = 0;
+      return;
+    }
 
     this.trackAxis(d, dt, t);
 
@@ -145,6 +195,61 @@ export const Breath = {
     // 0.087 rad/s is a 72 s breath, just past the detector's own ceiling.
     const w = clamp(this.omega, 0.087, 2.2);
     this.phase = Math.atan2(-this.dsLp/w, sN);
+  },
+
+  /** Phase one. Has the phone stopped being put down?
+
+      The gravity vector is an absolute attitude reference — it says which way
+      the phone is tilted, though not which way it faces. Putting it down is a
+      *step* in that direction; breathing is an *oscillation* about it. So the
+      test is not how fast the tilt is moving, which cannot tell those apart at
+      a fast breathing rate, but how far apart two smoothed copies of it drift.
+      Both time constants are far longer than a breath, so an oscillation moves
+      them together and they stay within a degree of each other; a step pulls
+      the 4 s copy off the 12 s one by tens of degrees for several seconds.
+
+      A rate test was tried first and rejected: it separated the recordings in
+      this repository cleanly, but only because they are all slow breathing.
+      Against a synthetic 12 and 20 a minute at the same depth it never
+      settled at all, because at those rates a breath alone moves the tilt
+      faster than the threshold. The two-filter test settles a 3, 6, 12 and
+      20 a minute wave alike.
+
+      Measured over every recording here, with the first bogus event dropped:
+      a phone on a table settles at the 6 s floor, so do the sessions that
+      opened already on the belly, the session the owner called great at 8.2 s,
+      the session started with the phone in the hand at 53 s — which is right,
+      because that is how long it was in the hand, and the cap above ends it
+      sooner than that — and three minutes of deliberate shaking never settles.
+
+      There is no way back: once a session has settled it stays settled.
+      Shifting position mid-session is handled by the axis tracker and the AGC
+      as it always was, not by dropping into phase one and going quiet. */
+  trackSettle(v, dt){
+    this.sinceBegin += dt;
+    if(this.settled) return;
+    if(!isFinite(this.gFast[0])){ this.gFast = v.slice(); this.gSlow = v.slice(); return; }
+    let dd = 0;
+    for(let i=0;i<3;i++){
+      this.gFast[i] = lp(this.gFast[i], v[i], dt, this.TAU_FAST);
+      this.gSlow[i] = lp(this.gSlow[i], v[i], dt, this.TAU_SLOW);
+      const e = this.gFast[i] - this.gSlow[i];
+      dd += e*e;
+    }
+    // arc length over 9.81 m/s^2, in degrees
+    this.tiltDev = Math.sqrt(dd)/9.81*180/Math.PI;
+    // Both filters are seeded from the same sample, so they start identical and
+    // drift apart over a time constant. Without this the hold is satisfied by
+    // the seeding alone and every session settles two seconds in, put down or not.
+    const warm = this.sinceBegin > this.TAU_FAST;
+    if(warm && this.tiltDev < this.TILT_STILL) this.stillTilt += dt;
+    else this.stillTilt = 0;
+    // The baseline has been pinned to the smoothed vector all along and the
+    // gain has not run at all, so both start from where reset() left them: the
+    // signal opens from a flat line at a plausible gain, with no step to ring
+    // on and nothing to unwind. Seeding the gain lower here instead pins the
+    // first two breaths of a real session against the clamp.
+    if(this.stillTilt >= this.SETTLE_HOLD || this.sinceBegin >= this.SETTLE_CAP) this.settled = true;
   },
 
   /** Is the belly moving, or is the user holding still between breaths?

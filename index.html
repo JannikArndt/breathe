@@ -305,6 +305,8 @@
     <div class="bar hidden" id="revSumBar">
       <button id="revLabelBtn" data-t="rev.label">Label</button>
       <button id="revSumExport" data-t="rev.export">Export</button>
+      <!-- Only for a session too short to have anything in it. See Review.renderSummary. -->
+      <button class="danger hidden" id="revSumDiscard" data-armed="0" data-t="rev.discard">Discard</button>
     </div>
     <div class="bar hidden" id="revListBar">
       <button id="revExportAll" data-t="rev.exportall">Export all</button>

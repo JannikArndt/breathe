@@ -411,7 +411,7 @@ check('the shore stops once a session starts', mod.Shore.on === false);
    what it was looking at — 91 s before it first reported a rate in the best of
    the recorded sessions, and never in one of them. It now opens on the same
    wave the home screen was playing and steps aside once it can hear you. */
-const { Lead } = mod;
+const { Lead, UI } = mod;
 check('the session opens on the lead wave', Lead.on === true && Lead.mix === 0);
 const leadPhase0 = Lead.phase;
 run(3, 60);
@@ -435,9 +435,18 @@ check('and the header says so rather than claiming to listen',
       JSON.stringify($('statusTag').textContent));
 check('the wave is playing through it, so the session is not silent',
       Lead.on === true);
+/* Not measuring is not the same as not looking. The trace was flat for the
+   whole of phase one, which on a session that starts in the hand is most of a
+   minute of the app appearing to do nothing at all. */
+check('but the trace still draws what the phone is doing',
+      UI.pre[UI.pre.length-1] === true &&
+      UI.trace.some(v => Math.abs(v) > 0.02),
+      `peak ${Math.max(...UI.trace.map(Math.abs)).toFixed(3)}`);
 run(12, 60);
 check('it starts listening once the phone has settled', Breath.settled === true,
       `after ${Breath.sinceBegin.toFixed(1)} s`);
+check('and the settling signal gives way to the tracker\'s own',
+      Breath.sPre === 0 && UI.pre[UI.pre.length-1] === false);
 check('and the header changes over', $('statusTag').textContent.startsWith('listening'),
       JSON.stringify($('statusTag').textContent));
 
@@ -638,7 +647,8 @@ if(metas.length){
         Math.abs(m.bytes - (cols.motion.cols.n*16 + cols.derived.cols.n*derivedWidth + (m.metaBytes||0))) < 64,
         `${m.bytes} B claimed`);
   check('the recording says which channels it carries',
-        cols.derived.columns.includes('rest'), cols.derived.columns.join(','));
+        cols.derived.columns.includes('rest') && cols.derived.columns.includes('sPre'),
+        cols.derived.columns.join(','));
   check('the raw motion channel survived the round trip',
         !!full && full.motion.rows.length > 1000,
         full ? full.motion.rows.length + ' samples' : 'none');

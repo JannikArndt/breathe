@@ -50,7 +50,12 @@ export const Store = {
 
   FORMAT:'breathe-session/1',
   MOTION_COLUMNS:['t','x','y','z'],
-  DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich','hr','hrConf','rest'],
+  // sPre is the settling phase's display signal — what the phone was doing
+  // before the tracker started listening. It is 0 once a session has settled
+  // and s is 0 before, so the two never overlap. Appended rather than
+  // inserted: a reader maps columns by name, and an older recording that has
+  // no sPre simply has none.
+  DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich','hr','hrConf','rest','sPre'],
   DERIVED_HZ:10,
 
   /* Fixed vocabulary, kept for reading recordings made before the trim. The
@@ -745,7 +750,7 @@ export const Recorder = {
       this.maxSamples = this.MAX_MIN*60*60;
       // 2 min of headroom, doubled as needed up to the ceiling
       this.m = allocCols(60*120, 3, this.maxSamples);
-      this.d = allocCols(10*120, 9, this.MAX_MIN*60*20);
+      this.d = allocCols(10*120, 10, this.MAX_MIN*60*20);
       this.active = true;
     }catch(e){
       this.active = false;
@@ -773,7 +778,7 @@ export const Recorder = {
 
   /**
    * ~10 Hz snapshot of what the tracker believed at that moment.
-   * @param o {t,s,level,phase,bpm,quality,rich,hr,hrConf}
+   * @param o {t,s,level,phase,bpm,quality,rich,hr,hrConf,rest,sPre}
    */
   derived(o){
     if(!this.active || !o) return;
@@ -791,6 +796,7 @@ export const Recorder = {
     d.v[6][i] = o.hr || 0;
     d.v[7][i] = o.hrConf || 0;
     d.v[8][i] = o.rest || 0;        // the rest gate, 1 = moving, 0 = held
+    d.v[9][i] = o.sPre || 0;        // the settling trace, 0 once it has settled
   },
 
   /**

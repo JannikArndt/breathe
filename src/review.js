@@ -424,7 +424,8 @@ export const Review = {
     const dv = session.derived || {}, rows = dv.rows || [], ci = this.cols(dv);
     const n = rows.length;
     const t=new Float32Array(n), s=new Float32Array(n),
-          b=new Float32Array(n), q=new Float32Array(n), g=new Float32Array(n);
+          b=new Float32Array(n), q=new Float32Array(n), g=new Float32Array(n),
+          p=new Float32Array(n);
     // Recordings made before the guide tone was removed still carry pacerLevel
     // and pacerBpm. They are ignored: the pacer is gone from the product, so
     // drawing its line would explain nothing to anyone looking at a session now.
@@ -434,6 +435,13 @@ export const Review = {
     // "moving", so an older recording simply shows no held stretches rather
     // than showing the whole session as held.
     const hasG = ci.rest!=null;
+    // sPre is what the phone was doing while the tracker was still settling —
+    // the opening of the session, which read as a flat line before it was
+    // recorded. It is only ever the first stretch, so everything past the last
+    // row that carries one is left non-finite and simply not drawn; a
+    // recording made before the channel existed has no settling line at all.
+    const hasP = ci.sPre!=null;
+    let preEnd = -1;
     for(let i=0;i<n;i++){
       const r = rows[i] || [];
       t[i] = +r[ci.t] || 0;
@@ -441,8 +449,11 @@ export const Review = {
       b[i] = +r[ci.bpm] || 0;
       q[i] = hasQ ? (+r[ci.quality]||0) : 0;
       g[i] = hasG ? (+r[ci.rest]||0) : 1;
+      p[i] = hasP ? (+r[ci.sPre]||0) : 0;
+      if(p[i]) preEnd = i;
     }
-    this.sig = { n, t, s, b, q, g, hasRest: hasG };
+    for(let i=preEnd+1;i<n;i++) p[i] = NaN;
+    this.sig = { n, t, s, b, q, g, p, hasRest: hasG, hasPre: preEnd >= 0 };
     this.det.dur = session.durationSec || (n ? t[n-1] : 0);
     this.det.play = clamp(this.det.play, 0, this.det.dur);
     if(!(this.det.span>0)) this.det.span = this.det.dur || 30;
@@ -501,6 +512,9 @@ export const Review = {
       if(i1<i0) i1=i0;
       let mn=Infinity, mx=-Infinity;
       for(let i=i0;i<=i1;i++){ if(a[i]<mn) mn=a[i]; if(a[i]>mx) mx=a[i]; }
+      // a channel that only covers part of the session (sPre) leaves the rest
+      // non-finite, and a column with nothing in it is a gap, not a zero
+      if(!isFinite(mn) || !isFinite(mx)){ top.push(null); bot.push(null); continue; }
       top.push(this.yOf(mx,h,pad)); bot.push(this.yOf(mn,h,pad));
     }
     ctx.beginPath();
@@ -521,6 +535,7 @@ export const Review = {
     ctx.beginPath();
     let started=false;
     for(let i=i0;i<=i1;i++){
+      if(!isFinite(a[i])){ started=false; continue; }
       const x = (S.t[i]-t0)/(t1-t0)*w;
       const y = this.yOf(a[i],h,pad);
       started ? ctx.lineTo(x,y) : (ctx.moveTo(x,y), started=true);
@@ -577,6 +592,8 @@ export const Review = {
     // background: how deep each breath was
     ctx.fillStyle = K.you; ctx.globalAlpha = 0.16;
     this.band(ctx,pw,ph,t0,t1,'s',pad);
+    // the settling stretch, fainter: watched, not read
+    if(this.sig.hasPre){ ctx.globalAlpha = 0.09; this.band(ctx,pw,ph,t0,t1,'p',pad); }
     ctx.globalAlpha = 1;
 
     ctx.font = '9px ui-monospace, monospace';
@@ -630,6 +647,7 @@ export const Review = {
       this.held(ctx,w,h,t0,t1);
       ctx.fillStyle = K.you; ctx.globalAlpha = 0.34;
       this.band(ctx,w,h,t0,t1,'s',pad);
+      if(this.sig.hasPre){ ctx.globalAlpha = 0.17; this.band(ctx,w,h,t0,t1,'p',pad); }
       ctx.globalAlpha = 1;
     }
     // the slice the fine lane is showing
@@ -679,6 +697,9 @@ export const Review = {
       this.held(ctx,w,h,t0,t1);
       ctx.strokeStyle=K.you; ctx.lineWidth=1.9;
       this.poly(ctx,w,h,t0,t1,'s',pad);
+      if(this.sig.hasPre){
+        ctx.globalAlpha=.5; this.poly(ctx,w,h,t0,t1,'p',pad); ctx.globalAlpha=1;
+      }
     }
     this.veil(ctx,w,h,t0,t1);
     this.playMark(ctx,w,h,(this.det.play-t0)/(t1-t0)*w,true);

@@ -1,4 +1,4 @@
-import { clamp, lerp, lp, TAU } from './util.js';
+import { clamp, lerp, lp, fin, TAU } from './util.js';
 
 /* ============================================================
    2. BREATH TRACKER
@@ -52,6 +52,15 @@ export const Breath = {
                       // tracker listens anyway and the confidence gates decide.
   axisAmp:0,            // RMS of the projection, in m/s^2 — a physical quantity
   sRaw:0,               // the projection before the AGC, so it stays in m/s^2
+  // Display only, and only while settling. The chain measures nothing yet, but
+  // the phone is plainly moving and a flat line says the app is not looking —
+  // which is what the first half-minute of a session looked like. sPre is the
+  // gap between the smoothed vector and its 12 s copy, projected on the axis
+  // in use, at a fixed scale rather than through the AGC: it is the movement
+  // itself, in units of PRE_FULL, and it reaches nothing but the trace and the
+  // recording. 0.5 m/s^2 is a little over the deepest breath measured here, so
+  // a real breath reads as most of the lane and being picked up runs off it.
+  sPre:0, PRE_FULL:0.5,
   signSet:false, lostFor:0,
   // Direction, resolved by watching the user breathe along with a reference
   // rather than by guessing from the shape of the breath. See resolveSign().
@@ -99,7 +108,7 @@ export const Breath = {
     this.leadDot=0; this.leadMag=0; this.sRaw=0; this.flipped=false;
     this.periods=[]; this.conf=0;
     this.gFast=[NaN,NaN,NaN]; this.gSlow=[NaN,NaN,NaN];
-    this.tiltDev=0; this.stillTilt=0;
+    this.tiltDev=0; this.stillTilt=0; this.sPre=0;
     this.settled=false; this.sinceBegin=0; this.seen=0;
   },
 
@@ -166,8 +175,18 @@ export const Breath = {
     if(!this.settled){
       this.s = 0; this.sPrev = 0; this.dsLp = 0; this.sRaw = 0;
       this.follow = 0; this.conf = 0; this.phase = 0;
+      // ...but say so with the movement rather than with a flat line. See sPre.
+      const q = isFinite(this.gSlow[0])
+        ? (this.smooth[0]-this.gSlow[0])*this.u[0]
+        + (this.smooth[1]-this.gSlow[1])*this.u[1]
+        + (this.smooth[2]-this.gSlow[2])*this.u[2]
+        : 0;
+      this.sPre = clamp(fin(q, 0)/this.PRE_FULL, -1.8, 1.8);
       return;
     }
+    // Handing over: the trace reads s from here on, and a stale sPre behind it
+    // would draw the settling stretch twice.
+    this.sPre = 0;
 
     this.trackAxis(d, dt, t);
 

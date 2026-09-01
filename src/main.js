@@ -36,6 +36,10 @@ function touched(){
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.18.1', date:'2026-09-01', notes:[
+    'The trace no longer sits flat while the app is settling. It draws what the phone is doing from the first second — fainter, because the app is watching it rather than reading it — so the opening of a session looks like something is happening, which it is. On a session that starts with the phone in your hand that stretch can be most of a minute.',
+    'That opening stretch is kept with the recording too, and the session view shows it in the same faint line before your breathing starts.'
+  ]},
   {v:'0.18.0', date:'2026-09-01', notes:[
     'A switch in the top right turns the sound on and off. The sound is supposed to start itself on the first touch of the screen; where it does not, that is the touch.',
     'Settling is quicker: about three seconds for a phone that is already lying still, down from six. A phone still being put down waits as long as it needs to.',
@@ -313,7 +317,9 @@ export const UI = {
   badSince:0,
   // trace is the signal; held and marks are what "Show what it hears" draws
   // over it. They share the trace's index, so they shift together.
-  trace:[], held:[], marks:[], traceAcc:0, axisAcc:29,
+  // pre marks the samples drawn from the settling signal rather than from the
+  // tracker, so the trace can show them without claiming to have read them.
+  trace:[], held:[], pre:[], marks:[], traceAcc:0, axisAcc:29,
   sensorPerm:'—', hz:0, hzAcc:0, lastSamples:0
 };
 
@@ -485,7 +491,7 @@ async function begin(sensorP, audioP){
   el.main.textContent = t('btn.end', null, 'End'); el.main.classList.remove('primary'); el.main.disabled = false;
 
   UI.state = 'running';
-  UI.trace = []; UI.held = []; UI.marks = [];
+  UI.trace = []; UI.held = []; UI.pre = []; UI.marks = [];
   Dim.arm();
   Breath.invert = $('tglInvert').getAttribute('aria-checked')==='true';
   Breath.begin(performance.now()/1000);
@@ -915,14 +921,21 @@ function loop(now){
   UI.traceAcc += dt;
   if(UI.traceAcc>0.1){
     UI.traceAcc-=0.1;              // carry the remainder: resetting to 0 ran the tick at ~8.6 Hz
-    UI.trace.push(clamp(Breath.s,-1.6,1.6));
+    // Before the phone has settled the tracker reports nothing, and the trace
+    // used to report that as a flat line for the first half-minute — the app
+    // looked broken while it was in fact watching. Draw the settling signal
+    // instead, dimmed, so what is on screen is the movement rather than a
+    // claim about it.
+    UI.trace.push(clamp(Breath.settled ? Breath.s : Breath.sPre,-1.6,1.6));
     UI.held.push(Breath.restGate < 0.5);
+    UI.pre.push(!Breath.settled);
     if(UI.trace.length>620){
-      UI.trace.shift(); UI.held.shift();
+      UI.trace.shift(); UI.held.shift(); UI.pre.shift();
       for(let i=0;i<UI.marks.length;i++) UI.marks[i]--;
       while(UI.marks.length && UI.marks[0] < 0) UI.marks.shift();
     }
-    Recorder.derived({t:now/1000, s:Breath.s, level:level, phase:Breath.phase,
+    Recorder.derived({t:now/1000, s:Breath.s, sPre:Breath.sPre,
+                      level:level, phase:Breath.phase,
                       bpm:(Breath.conf>0.45 ? Breath.bpmSmooth : 0)||0,
                       quality:Breath.quality(), rich:UI.rich,
                       hr:Pulse.reading(Breath.motionRms), hrConf:Pulse.conf,
@@ -1286,12 +1299,22 @@ function drawTrace(){
     ctx.stroke();
   }
 
-  ctx.beginPath();
-  for(let i=0;i<n;i++){
-    const y=h/2 - clamp(UI.trace[i],-1.6,1.6)*(h/2-5)/1.6;
-    i?ctx.lineTo(x0+i*step,y):ctx.moveTo(x0+i*step,y);
+  // Two strokes, not one: the settling stretch is the same movement drawn
+  // fainter, because the app is watching it rather than reading it. They meet
+  // at the handover, where both signals are 0.
+  const yOf = i => h/2 - clamp(UI.trace[i],-1.6,1.6)*(h/2-5)/1.6;
+  ctx.lineWidth=1.7; ctx.lineJoin='round';
+  for(const settling of [true,false]){
+    ctx.beginPath();
+    let open=false;
+    for(let i=0;i<n;i++){
+      if(!!UI.pre[i] !== settling){ open=false; continue; }
+      const x=x0+i*step, y=yOf(i);
+      open ? ctx.lineTo(x,y) : (ctx.moveTo(x,y), open=true);
+    }
+    ctx.strokeStyle = settling ? alpha(P.glass, 0.45) : P.glass;
+    ctx.stroke();
   }
-  ctx.strokeStyle=P.glass; ctx.lineWidth=1.7; ctx.lineJoin='round'; ctx.stroke();
 }
 
 /* ---------- wiring ---------- */

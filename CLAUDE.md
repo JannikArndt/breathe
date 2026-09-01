@@ -506,6 +506,27 @@ has settled it stays settled — shifting position mid-session is the axis track
 AGC's job, and dropping back into a phase that reports nothing would take the sound away
 from someone who is still breathing.
 
+**Not measuring is not the same as not looking, and the trace must show the difference
+rather than showing nothing.** Phase one drew a flat line, so the first three seconds — or,
+on a session that starts with the phone in the hand, the first forty-five — read as an app
+that was not working. `Breath.sPre` is a **display channel and nothing else**: the gap
+between the smoothed gravity vector and its 12 s copy (the settle filters' own two
+signals), projected on the axis in use, at a fixed `PRE_FULL` of 0.5 m/s² rather than
+through the AGC. It is computed inside the `!settled` branch, after everything the gate
+zeroes, so it cannot reach the axis tracker, the gain, the cycle detector or `lead()`; it
+is set to 0 on the first settled sample, so `s` and `sPre` are never both live and the two
+lines meet at zero. Measured over the recordings here it reads 0.20–0.37 of full scale on
+a belly, 0.02 on a table, and pegs at the clamp for a phone being carried — which is the
+right picture in all three cases. The live trace and the session view draw it fainter than
+the tracker's own line, and `UI.pre[]` is what marks which is which. Do not feed it to
+anything that decides something.
+
+`sPre` is the tenth derived column, appended rather than inserted, and a recording made
+before it exists simply has none: `Review.prepare()` leaves the channel non-finite past the
+last row that carries one, and `band()`/`poly()` treat a non-finite sample as a gap. Do not
+write the settling signal into the `s` channel to save a column — `tools/analyze.mjs`
+segments cycles from `s`, and a lay-down ramp in there is a breath that never happened.
+
 **Do not reseed the AGC at the handover.** `reset()` leaves `rms` at 0.02, the gate means it
 has not run at all, and the signal opens from a flat line at a plausible gain. Seeding it
 lower — the obvious thing, since nothing has been measured — pins the first two breaths of

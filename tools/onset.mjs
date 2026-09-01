@@ -79,9 +79,28 @@ for (let i = 0; i < rows.length; i++) {
   raw.push(inv * (sm[0] * u[0] + sm[1] * u[1] + sm[2] * u[2]));
 }
 
+/* Only the stretch the owner marked as usable, when there is one: the handling
+   at each end of a session is exactly the kind of movement this tool would
+   otherwise report as a breath with a wild onset. */
+const trim = S.trim || null;
+const inTrim = i => !trim || (tr[i].t >= trim.fromSec && tr[i].t <= trim.toSec);
+
 /* ---- segment ground truth ---- */
+/* The range has to be measured inside the trim. This signal is smoothed and
+   nothing else — no high-pass — so picking the phone up at either end of the
+   session swings it by the better part of 2 g, while a breath moves it by
+   fractions of one. On the 2055 recording the whole file spans 19.6 m/s^2 and
+   the breathing inside the trim spans 0.375, so a threshold taken from the
+   whole file came out 11x larger than a breath and the tool found no cycles at
+   all. Falling back to the whole file when there is no trim keeps the old
+   behaviour for untrimmed recordings. */
 let lo = Infinity, hi = -Infinity;
-for (const v of raw) { if (v < lo) lo = v; if (v > hi) hi = v; }
+for (let i = 0; i < raw.length; i++) {
+  if (!inTrim(i)) continue;
+  if (raw[i] < lo) lo = raw[i];
+  if (raw[i] > hi) hi = raw[i];
+}
+if (!(hi > lo)) { lo = Infinity; hi = -Infinity; for (const v of raw) { if (v < lo) lo = v; if (v > hi) hi = v; } }
 const H = (hi - lo) * 0.22;
 const ext = [];
 let up = true, best = raw[0], bestI = 0;
@@ -90,12 +109,6 @@ for (let i = 1; i < raw.length; i++) {
   if (up) { if (v > best) { best = v; bestI = i; } else if (best - v > H) { ext.push({ i: bestI, kind: 'peak', v: best }); up = false; best = v; bestI = i; } }
   else    { if (v < best) { best = v; bestI = i; } else if (v - best > H) { ext.push({ i: bestI, kind: 'trough', v: best }); up = true;  best = v; bestI = i; } }
 }
-
-/* Only the stretch the owner marked as usable, when there is one: the handling
-   at each end of a session is exactly the kind of movement this tool would
-   otherwise report as a breath with a wild onset. */
-const trim = S.trim || null;
-const inTrim = i => !trim || (tr[i].t >= trim.fromSec && tr[i].t <= trim.toSec);
 
 const leads = [], strokes = [], gates = [];
 for (let k = 0; k < ext.length - 1; k++) {

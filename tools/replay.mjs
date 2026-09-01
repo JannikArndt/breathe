@@ -33,7 +33,6 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   const take = () => argv[++i];
   if (a === '--json') opt.json = true;
-  else if (a === '--all') opt.all = true;
   else if (a === '--from') opt.from = parseFloat(take());
   else if (a === '--to') opt.to = parseFloat(take());
   else if (a === '--src') opt.src = take();
@@ -55,7 +54,6 @@ function usage() {
 
   --from <sec>   first second to report on   (tracker still runs from 0)
   --to <sec>     last second to report on
-  --all          ignore the usable stretch the recording carries
   --src <path>   module directory to load the tracker from (default ../src)
   --cycles <n>   how many detected cycles to list (default 24, 0 = all)
   --json         machine-readable output, no plot
@@ -111,16 +109,18 @@ const app = S.app || {};
 const labels = (S.labels || []).slice().sort((x, y) => x.tSec - y.tSec);
 const t0 = rows[0][0];
 const tEnd = rows[rows.length - 1][0];
-/* A recording can carry its own bounds. Every session starts with someone
-   putting a phone down and ends with them picking it up, and those two minutes
-   throw an analysis off more than the rest of the session put together — so if
-   the owner has marked where the usable part is, honour it unless told
-   otherwise. --from/--to still win, and --all ignores the mark. */
-const trim = (!opt.all && S.trim) ? S.trim : null;
-const from = opt.from === null || !isFinite(opt.from)
-  ? (trim ? Math.max(t0, trim.fromSec) : t0) : Math.max(t0, opt.from);
-const to = opt.to === null || !isFinite(opt.to)
-  ? (trim ? Math.min(tEnd, trim.toSec) : tEnd) : Math.min(tEnd, opt.to);
+/* The whole recording unless --from/--to say otherwise.
+
+   Recordings used to carry their own bounds — an interval the owner marked by
+   hand on the review screen — and this honoured it by default. That screen is
+   gone: marking where a session becomes worth reading stopped earning its keep
+   once the tracker could tell for itself, and tools/onset.mjs now derives the
+   same stretch from `settled` and confidence rather than being told. Old files
+   still carry a `trim`; it is left alone rather than read, because a recording
+   quietly analysed over a different span than the one you asked for is worse
+   than one analysed over all of it. --from/--to are how you narrow it. */
+const from = opt.from === null || !isFinite(opt.from) ? t0 : Math.max(t0, opt.from);
+const to = opt.to === null || !isFinite(opt.to) ? tEnd : Math.min(tEnd, opt.to);
 if (to <= from) die(`--from ${from} is not before --to ${to}`);
 
 /* ---------------------------------------------------------------- rate */
@@ -250,11 +250,11 @@ const replayed = stats(win);
 const asRecorded = recorded.length ? stats(recorded) : null;
 
 /* ---------------------------------------------------------------- marks
-   A recording now carries one interval — where the usable part starts and
-   stops — rather than a list of label kinds. Older files carry the list; the
-   two kinds that meant the same thing are read back as an interval so a
-   pre-0.12 recording still reports something. */
-const boundary = S.trim ? [S.trim] : (() => {
+   Only old recordings have anything here. Pre-0.12 files carry a list of label
+   kinds, and the two that meant "I had lain down by here" and "I sat up after
+   here" are read back as one interval so such a file still reports something.
+   Nothing has written a mark of either shape for some time. */
+const boundary = (() => {
   let f = 0, t = 0;
   for (const l of labels) {
     if ((l.kind === 'settled' || l.kind === 'lay-down') && !f) f = l.tSec;
@@ -341,9 +341,11 @@ else {
   if (show) say(`    ... ${winCycles.length - opt.cycles} more (--cycles 0 for all)`);
 }
 
-head('the usable stretch');
-if (!stretches.length)
-  say('  not marked. Open the recording in the app and say where the good part starts and stops.');
+/* Only old recordings have one of these. Nothing marks a stretch any more, so
+   a recording without one is the normal case and is not worth a line telling
+   the reader to go and fix it — tools/onset.mjs works the usable part out for
+   itself now, from the tracker's own settle and confidence. */
+if (stretches.length) head('the marked stretch (an old recording)');
 for (const s of stretches) {
   say(`  ${pad(s.fromSec + 's', 9)}-> ${pad(s.toSec + 's', 10)} ${pad(fmtDur(s.sec), 7)}` +
       `  ${pad(s.meanBpm + '/min', 10)} ${pad(s.breaths + ' breaths', 12)} quality ${s.meanQuality}`);
@@ -433,15 +435,6 @@ function plot() {
   // calibration phase for some time, and `calStart` was never defined, so this
   // line threw every time the plot ran. It only ever ran at the bottom of a
   // long plot, which is how it survived.
-  if (S.trim) {
-    const us = S.trim.fromSec - t0, ue = S.trim.toSec - t0;
-    if (ue > lo && us < lo + span) {
-      const ub = new Array(PW).fill(' ');
-      for (let c = colOf(Math.max(us, lo)); c <= colOf(Math.min(ue, lo + span)); c++) ub[c] = '=';
-      console.log(pad('usable =', GUT) + ub.join(''));
-    }
-  }
-
   const ax = new Array(PW).fill(' ');
   const ticks = 6;
   for (let k = 0; k <= ticks; k++) {
@@ -454,8 +447,7 @@ function plot() {
 
   say('  ' + (waveform
       ? '# your breath   . rest gate (low = held still)   ^ peak   v trough'
-      : '# your rate') +
-    (S.trim ? '   = the stretch marked usable' : ''));
+      : '# your rate'));
 }
 
 function rateStrip() {

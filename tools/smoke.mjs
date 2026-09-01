@@ -590,16 +590,26 @@ check('and the waiting version speaks up once the session is over',
       $('noticeTitle').textContent === 'A new version is ready' && Updater.pending === false,
       JSON.stringify($('noticeTitle').textContent));
 $('tglDim').click();
-check('the summary is on screen', $('review').classList.contains('open') ||
+check('the session screen is on screen', $('review').classList.contains('open') ||
       !$('review').classList.contains('hidden'));
-check('the summary reports numbers', $('revSumGrid').children.length >= 5,
-      $('revSumGrid').children.length + ' cells');
+const { Review } = await import(resolve(root, 'src/review.js'));
+check('End lands on the session screen, not a separate summary',
+      !$('revInfo').classList.contains('hidden') && Review.screen === 'info');
+check('it reports numbers', $('revGrid').children.length >= 5,
+      $('revGrid').children.length + ' cells');
 
-const cells = $('revSumGrid').querySelectorAll('.cell').map(c =>
+const cells = $('revGrid').querySelectorAll('.cell').map(c =>
   c.querySelectorAll('.v').map(v => v.textContent).join(''));
-check('the summary is not all dashes', cells.some(t => /\d/.test(t)), cells.join(' | '));
-check('a session with something in it is not offered for discard',
-      $('revSumDiscard').classList.contains('hidden'));
+check('the numbers are not all dashes', cells.some(t => /\d/.test(t)), cells.join(' | '));
+// The graph and the two quiet actions are the whole screen now: there is no
+// bottom bar on it at all, which is what keeps Export from being the button
+// your thumb lands on.
+check('the session screen carries the graph', !!$('revOver') && !!$('revFine'));
+check('and export and delete, quietly and not in a bar',
+      !$('revExport').classList.contains('hidden') &&
+      !$('revDelete').classList.contains('hidden') &&
+      $('revExport').closest('.rev-acts') !== null,
+      'export in .rev-acts');
 
 /* The wave's rate follows the body it just listened to. The slider was moved
    to twelve a minute during the session above; the session itself ran at six,
@@ -608,9 +618,9 @@ check('a session long enough to mean something moves the wave',
       Math.abs(mod.Lead.PERIOD - 10) < 3.5,
       `${(60/mod.Lead.PERIOD).toFixed(1)} a minute, from ${$('pace').value} tenths`);
 check('and says so on the summary rather than in a toast',
-      /opening waves are set to/.test($('revSumFlag').textContent) &&
-      !$('revSumFlag').classList.contains('hidden'),
-      JSON.stringify($('revSumFlag').textContent));
+      /opening waves are set to/.test($('revFlag').textContent) &&
+      !$('revFlag').classList.contains('hidden'),
+      JSON.stringify($('revFlag').textContent));
 
 /* ---------------------------------------------------------------- stored */
 await settle(20);
@@ -675,48 +685,31 @@ check('the session is listed', rows.length === 1, rows.length + ' rows');
 if(rows.length){
   rows[0].click();
   await settle(10);
-  check('tapping a row opens the detail', !$('revDetail').classList.contains('hidden'));
-  const { Review } = await import(resolve(root, 'src/review.js'));
-  check('the detail lane knows where the holds were',
+  check('tapping a row opens the same session screen', !$('revInfo').classList.contains('hidden'));
+  check('and it is titled as a recording, with its date',
+        $('revTitle').textContent === 'Recording' && !!$('revTag').textContent,
+        JSON.stringify($('revTitle').textContent + ' / ' + $('revTag').textContent));
+  check('the lane knows where the holds were',
         Review.sig.hasRest && [...Review.sig.g].some(v => v < 0.5),
         Review.sig.hasRest ? 'rest channel present' : 'no rest channel');
-  check('and it opens with the whole recording marked usable',
-        Review.trim === null && /All of it/.test($('revTrimState').textContent),
-        JSON.stringify($('revTrimState').textContent));
 
-  // The two marks. Everything before the first and after the last is someone
-  // handling a phone, and this screen exists to say where that stops and starts.
-  Review.setPlay(20);
-  $('revTrimFrom').click();
-  Review.setPlay(150);
-  $('revTrimTo').click();
-  await new Promise(r => setTimeout(r, 60));
-  await settle(14);
-  check('marking both ends sets the usable stretch',
-        !!Review.trim && Review.trim.fromSec === 20 && Review.trim.toSec === 150,
-        JSON.stringify(Review.trim));
-  check('and says so in words', /0:20 to 2:30/.test($('revTrimState').textContent),
-        JSON.stringify($('revTrimState').textContent));
+  // The heart rate is recovered from the raw motion after the fact, because
+  // the Pulse experiment is off by default and so hr/hrConf are empty in
+  // effectively every recording that exists. This is the same estimator the
+  // live path runs, fed the stored rows.
+  for(let i = 0; i < 400 && !Review.hr; i++) await new Promise(r => setTimeout(r, 0));
+  check('the heart rate is recovered from the stored motion',
+        !!Review.hr && Review.hr.n > 0, Review.hr ? Review.hr.n + ' points' : 'nothing');
+  const hrCell = $('revGrid').querySelectorAll('.cell')
+    .filter(c => c.querySelectorAll('.k').some(k => k.textContent === 'Heart rate'));
+  check('and it reaches the numbers under the graph', hrCell.length === 1,
+        hrCell.length + ' cells named Heart rate');
 
-  const trimmed = (await Store.list())[0];
-  check('the trim is written to the recording',
-        !!trimmed.trim && trimmed.trim.fromSec === 20 && trimmed.trim.toSec === 150,
-        JSON.stringify(trimmed.trim));
-
-  // Marking a start past the end is a correction, not an error to refuse.
-  Review.setPlay(200);
-  $('revTrimFrom').click();
-  check('a start past the end pushes the end out of the way',
-        Review.trim.fromSec === 200 && Review.trim.toSec > 200,
-        JSON.stringify(Review.trim));
-
-  $('revTrimClear').click();
-  await new Promise(r => setTimeout(r, 60));
-  await settle(14);
-  check('and it can be cleared again', Review.trim === null &&
-        /All of it/.test($('revTrimState').textContent));
-  check('the store forgets it too', (await Store.list())[0].trim === null,
-        JSON.stringify((await Store.list())[0].trim));
+  // Opening another recording while a pass is in flight must not let the first
+  // one finish into the second one's screen.
+  const job = Review.hrJob;
+  Review.cancelHr();
+  check('a heart-rate pass can be cancelled', Review.hrJob === null && (!job || job.cancelled === true));
 
   // Pinch stands in for the row of width buttons that used to be here.
   const span0 = Review.det.span;
@@ -728,17 +721,19 @@ if(rows.length){
         Math.abs(Review.det.span - Review.det.dur) < 0.01,
         Review.det.span.toFixed(0) + 's of ' + Review.det.dur.toFixed(0) + 's');
 
-  // Whatever this screen writes, it must never cost a sample.
-  const afterTrim = await Store.get(trimmed.id, {cols:true});
-  check('marking a recording leaves the raw motion where it was',
-        !!afterTrim && afterTrim.motion.cols && afterTrim.motion.cols.n > 1000,
-        afterTrim && afterTrim.motion.cols ? afterTrim.motion.cols.n + ' samples' : 'none');
+  // Opening a recording must never cost a sample. Nothing on this screen
+  // writes any more, but the store's refusal is what actually guarantees it.
+  const rec0 = (await Store.list())[0];
+  const afterOpen = await Store.get(rec0.id, {cols:true});
+  check('opening a recording leaves the raw motion where it was',
+        !!afterOpen && afterOpen.motion.cols && afterOpen.motion.cols.n > 1000,
+        afterOpen && afterOpen.motion.cols ? afterOpen.motion.cols.n + ' samples' : 'none');
 
   // And the store refuses the write outright, whatever a future caller does:
   // recording is the one thing in this app that cannot be redone.
-  const stripped = await Store.get(trimmed.id, {motion:false});
+  const stripped = await Store.get(rec0.id, {motion:false});
   const wrote = await Store.put(stripped);
-  const afterPut = await Store.get(trimmed.id, {cols:true});
+  const afterPut = await Store.get(rec0.id, {cols:true});
   check('a write that would erase the samples is refused', wrote === false,
         String(Store.lastError));
   check('and the samples are still there afterwards',
@@ -746,12 +741,14 @@ if(rows.length){
 
   $('revBack').click();
   await settle();
-  check('Back from a detail opened by the list returns to the list',
+  check('Back from a session opened by the list returns to the list',
         !$('revList').classList.contains('hidden'));
 
   rows[0].click(); await settle(10);
-  $('revDetDelete').click();                     // arms
-  $('revDetDelete').click();                     // confirms
+  $('revDelete').click();                        // arms
+  check('one tap only arms Delete', $('revDelete').textContent === 'Delete, really' &&
+        (await Store.list()).length === 1, JSON.stringify($('revDelete').textContent));
+  $('revDelete').click();                        // confirms
   await settle(16);
   check('Delete removes the recording', (await Store.list()).length === 0);
   check('and lands back on the list', !$('revList').classList.contains('hidden'));
@@ -796,25 +793,24 @@ $('mainBtn').click();
 await settle(20);
 check('the sensor session ends on the summary', $('mainBtn').textContent === 'Start');
 
-/* Discard. Twenty seconds is a Start that should have been an End, or a phone
-   put down and picked straight back up: there is nothing in it to look at
-   later, and it still takes a row in the list and space on the phone. It is
-   offered only from a short session's own summary, and only ever with a
-   second tap, because it cannot be undone. */
-check('a session too short to hold anything offers to be discarded',
-      !$('revSumDiscard').classList.contains('hidden'));
-$('revSumDiscard').click();
-check('one tap only arms it', $('revSumDiscard').textContent === 'Discard, really' &&
-      (await Store.list()).length === 1, JSON.stringify($('revSumDiscard').textContent));
-$('revSumDiscard').click();
+/* Throwing away a session you have just finished. Twenty seconds is a Start
+   that should have been an End, or a phone put down and picked straight back
+   up. There used to be a separate Discard button for exactly this, on a
+   summary screen that no longer exists; the one Delete does the job, and where
+   it lands is the whole difference — home, because the list is not where you
+   were. Still two taps, because it cannot be undone. */
+check('a session you have just finished can be thrown away from its own screen',
+      !$('revDelete').classList.contains('hidden'));
+$('revDelete').click();
+check('one tap only arms it', $('revDelete').textContent === 'Delete, really' &&
+      (await Store.list()).length === 1, JSON.stringify($('revDelete').textContent));
+$('revDelete').click();
 await settle(20);
 check('the second tap throws the recording away', (await Store.list()).length === 0,
       (await Store.list()).length + ' left');
-check('and lands back on the home screen', !$('intro').classList.contains('hidden') &&
+check('and lands back on the home screen, not on the list',
+      !$('intro').classList.contains('hidden') &&
       $('review').classList.contains('hidden'));
-
-$('revBack').click();
-await settle();
 await Store.clear();
 await settle();
 check('Recordings is reachable again', !$('recBtn').classList.contains('hidden'));
@@ -851,9 +847,9 @@ check('and the readout fills in', $('vRate').textContent !== '',
 $('mainBtn').click();
 await settle(20);
 check('and the summary renders in German',
-      $('revSumGrid').children.length >= 5 &&
-      /Dauer|Atemzüge/.test($('revSumGrid').textContent || $('revSumGrid').children.map(c=>c.textContent).join(' ')),
-      $('revSumGrid').children.map(c => c.querySelectorAll('.k').map(k=>k.textContent).join('')).join(' | '));
+      $('revGrid').children.length >= 5 &&
+      /Dauer|Atemzüge/.test($('revGrid').textContent || $('revGrid').children.map(c=>c.textContent).join(' ')),
+      $('revGrid').children.map(c => c.querySelectorAll('.k').map(k=>k.textContent).join('')).join(' | '));
 $('revBack').click();
 await settle();
 $('panelBtn').click();

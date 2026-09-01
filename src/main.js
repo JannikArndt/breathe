@@ -36,6 +36,13 @@ function touched(){
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.19.0', date:'2026-09-01', notes:[
+    'A recording is one screen now. The summary a session ends on and the screen you got to by tapping Label were the same recording shown twice; they are one, and it is what both Recordings and the end of a session open into. It keeps the strip showing the whole session and the lane underneath you can pinch to zoom into.',
+    'Marking where a recording starts and stops is gone. It was there because the app used to need telling which part of a session was worth reading, and it does not any more.',
+    'Your heart rate is drawn over the breathing, in red, with its own scale at the right edge. It is worked out from the same movement the breathing comes from, after the fact, so it appears on recordings made long before there was a heart rate setting at all. The line breaks wherever nothing could be found rather than guessing across the gap. It is an estimate from a phone on your belly and it has never been checked against a real pulse — read it as interesting, not as a measurement.',
+    'A few more numbers under the graph: your longest single pause, and that heart rate. They are smaller and there are more of them, because they are there to be glanced at.',
+    'Export and delete moved below the numbers and got quieter. This is somewhere to look, not somewhere to press.'
+  ]},
   {v:'0.18.1', date:'2026-09-01', notes:[
     'The first breaths of a session are no longer silent. To tell a hold from a stroke the app measures how fast your belly moves at its fastest, and it was taking that measurement from the moment the phone finished settling — which is the one moment in a session when the trace moves faster than any breath ever does. Every real breath then looked slow by comparison, so the app read the opening minute as holding still and kept the sound shut. On the recording that turned this up the first three breaths made no sound at all, and the fourth was half there.',
     'The same measurement was what made the sound stutter at the start — a swell that arrived, dropped out and came back about half a second later, for the first few breaths.'
@@ -564,7 +571,7 @@ async function end(){
   reportSaveTrouble();
   Review.note = '';
   learnPace(session && session.summary);
-  Review.showSummary(session);
+  Review.showInfo(session, 'summary');
   refreshStorageRow();
   // A version that arrived mid-session held its tongue. Now is a fine time.
   if(Updater.pending) Updater.announce();

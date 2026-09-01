@@ -53,11 +53,6 @@ export const Store = {
   DERIVED_COLUMNS:['t','s','level','phase','bpm','quality','rich','hr','hrConf','rest'],
   DERIVED_HZ:10,
 
-  /* Fixed vocabulary, kept for reading recordings made before the trim. The
-     app no longer writes labels; see setTrim. */
-  LABEL_KINDS:['lay-down','settled','sat-up','phone-moved','talking',
-               'drifted-off','bad-detection','good-stretch','other'],
-
   _db:null, _openP:null,
 
   /* ---------- lifecycle ---------- */
@@ -229,33 +224,6 @@ export const Store = {
     }).then(function(v){ return v || {}; });
   },
 
-  /* ---------- the trim ----------
-     Which stretch of a recording is worth reading. Every session begins with
-     someone putting the phone down and ends with them picking it up, and those
-     two minutes of handling are worth more than the rest of the session put
-     together at throwing an analysis off.
-
-     It replaced a vocabulary of nine label kinds and a free-text note, which
-     asked the user to describe a recording when all they ever wanted to say was
-     where the good part starts and stops. Metadata only: it never touches the
-     samples, so marking a recording cannot cost you one. */
-
-  /** @param trim {fromSec, toSec} — or null to mark the whole recording usable */
-  setTrim(id, trim){
-    const t = this._cleanTrim(trim);
-    return this._editMeta(id, function(meta){ meta.trim = t; })
-               .then(function(){ return t; });
-  },
-
-  _cleanTrim(t){
-    if(!t) return null;
-    const a = rnd(t.fromSec, 3), b = rnd(t.toSec, 3);
-    const from = (typeof a === 'number' && isFinite(a) && a > 0) ? a : 0;
-    const to   = (typeof b === 'number' && isFinite(b) && b > from) ? b : 0;
-    if(!from && !to) return null;
-    return {fromSec: from, toSec: to};
-  },
-
   /** Whole-object write. There are a dozen values and they change on a slider
       drag, so a read-modify-write per key would be far more traffic than
       replacing the row. */
@@ -339,66 +307,27 @@ export const Store = {
     }).then(function(){ return undefined; });
   },
 
-  /* ---------- labels ----------
-     Labels live in the meta record, never in the sample arrays, so adding
-     one is a read-modify-write of a few hundred bytes rather than of the
-     whole recording. This is the path the labelling UI uses. */
+  /* ---------- metadata edits ----------
+     There are none, and that is deliberate.
 
-  /** @returns Promise<labels[]|null> — null when the session is gone. */
-  addLabel(id, label){
-    const clean = this._cleanLabel(label);
-    if(!clean) return Promise.resolve(null);
-    return this._editMeta(id, function(meta){
-      if(!meta.labels) meta.labels = [];
-      meta.labels.push(clean);
-      meta.labels.sort(function(a,b){ return a.tSec - b.tSec; });
-    });
-  },
+     This block held setTrim, addLabel, removeLabel, setLabels and the
+     read-modify-write they shared. All of it existed for one screen — the one
+     where you marked which stretch of a recording was worth reading, and
+     before that described it with a vocabulary of nine label kinds. That
+     screen is gone: the tracker got good enough to work the usable stretch out
+     for itself, so tools/onset.mjs derives it from `settled` and confidence
+     rather than being told, and nothing writes a mark of either shape any
+     more.
 
-  removeLabel(id, index){
-    return this._editMeta(id, function(meta){
-      if(meta.labels && index >= 0 && index < meta.labels.length) meta.labels.splice(index, 1);
-    });
-  },
+     Stored recordings keep whatever `trim` and `labels` they already carry —
+     _pack and _assemble still round-trip both, so nothing anyone has recorded
+     loses a field. They are simply never edited again.
 
-  setLabels(id, labels){
-    const self = this;
-    return this._editMeta(id, function(meta){
-      const out = [];
-      for(let i=0;i<(labels||[]).length;i++){
-        const c = self._cleanLabel(labels[i]);
-        if(c) out.push(c);
-      }
-      out.sort(function(a,b){ return a.tSec - b.tSec; });
-      meta.labels = out;
-    });
-  },
-
-  _editMeta(id, mutate){
-    const self = this;
-    return this._run(['meta'],'readwrite', function(st){
-      const r = st.meta.get(id);
-      let meta = null;
-      r.onsuccess = function(){
-        meta = r.result || null;
-        if(!meta) return;
-        mutate(meta);
-        meta.bytes = (meta.bytes || 0) - (meta.metaBytes || 0);
-        meta.metaBytes = self._metaBytes(meta);
-        meta.bytes += meta.metaBytes;
-        st.meta.put(meta);
-      };
-      return function(){ return meta ? (meta.labels || []) : null; };
-    });
-  },
-
-  _cleanLabel(l){
-    if(!l || typeof l.tSec !== 'number' || !isFinite(l.tSec)) return null;
-    const kind = this.LABEL_KINDS.indexOf(l.kind) >= 0 ? l.kind : 'other';
-    let note = l.note == null ? '' : String(l.note);
-    if(note.length > 200) note = note.slice(0, 200);   // a note, not a diary
-    return {tSec: rnd(Math.max(0, l.tSec), 3), kind: kind, note: note};
-  },
+     The rule that outlived the feature: nothing but Recorder may write a
+     sample channel. _write still refuses any put that would replace a
+     non-empty motion channel with an empty one, which is what actually
+     protected the raw signal — the metadata-only edit path was the polite
+     version of the same promise, and the store's refusal is the real one. */
 
   /* ---------- eviction ----------
      One rule, so it can be stated in the interface: keep the newest
@@ -487,6 +416,19 @@ export const Store = {
     meta.metaBytes = this._metaBytes(meta);
     meta.bytes = bytes + meta.metaBytes;
     return {meta:meta, data:data};
+  },
+
+  /** Normalise a `trim` on the way in. Nothing sets one any more, but
+      recordings made when the review screen still had the two buttons carry
+      one, and _pack round-trips it so re-saving such a recording does not
+      quietly drop a field it arrived with. Read and write, never edit. */
+  _cleanTrim(t){
+    if(!t) return null;
+    const a = rnd(t.fromSec, 3), b = rnd(t.toSec, 3);
+    const from = (typeof a === 'number' && isFinite(a) && a > 0) ? a : 0;
+    const to   = (typeof b === 'number' && isFinite(b) && b > from) ? b : 0;
+    if(!from && !to) return null;
+    return {fromSec: from, toSec: to};
   },
 
   _metaBytes(meta){

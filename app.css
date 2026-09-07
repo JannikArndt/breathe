@@ -474,6 +474,42 @@ body.dimmed .dim-catch{
 .readout.rev-grid .v{font-size:15px}
 .readout.rev-grid .v small{font-size:9px}
 
+/* ---------- the two blocks that read off the selection ---------- */
+/* A heading small enough not to compete with the numbers under it. Both blocks
+   describe the slice the fine lane is showing, so both carry the selected
+   length in the heading rather than repeating it in a cell of their own. */
+.rev-sub{
+  margin-bottom:8px;
+  font-family:var(--data);font-size:9px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--mute);
+}
+.rev-dist{margin-top:24px}
+/* The histogram is one lane wide and short: it answers "how spread out was
+   this", and a taller box would read as a second waveform. */
+.dist{display:block;width:100%;height:96px;border-radius:2px;background:var(--lane)}
+.rev-legend{
+  margin-top:7px;display:flex;flex-wrap:wrap;gap:4px 14px;
+  font-family:var(--data);font-size:9.5px;letter-spacing:.08em;color:var(--mute);
+}
+.rev-legend b{color:var(--foam);font-weight:400;font-variant-numeric:tabular-nums}
+
+.rev-phase{margin-top:24px}
+/* Four across, because the point of the row is that they are the four parts of
+   one thing. On a 320px phone that is 74px a cell, which fits "12.4" and its
+   unit and nothing else — which is all there is to put in one. */
+.readout.rev-quad{grid-template-columns:repeat(4,1fr)}
+.readout.rev-quad .cell{padding:11px 4px}
+.readout.rev-quad .k{font-size:9px}
+.readout.rev-quad .v{font-size:15px}
+.readout.rev-quad .v small{font-size:9px}
+.rev-ratio{
+  margin-top:9px;
+  font-family:var(--data);font-size:16px;letter-spacing:.1em;
+  color:var(--foam);font-variant-numeric:tabular-nums;
+}
+.rev-ratio span{font-size:9px;letter-spacing:.14em;color:var(--mute);
+  text-transform:uppercase;margin-right:9px}
+
 /* Export and delete. Quiet, full-width, and below the numbers: this screen is
    somewhere to look, not somewhere to press, so neither of them is the button
    your thumb finds first. Export used to be the primary action in a bottom bar

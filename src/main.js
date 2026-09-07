@@ -36,6 +36,13 @@ function touched(){
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.21.0', date:'2026-09-07', notes:[
+    'The numbers under a recording now describe the part of it you are looking at. Pinch the lane to pick a stretch and the count, the rate and the timings all follow it. A session where you breathed slowly for twenty minutes and then something else happened for forty used to average the two into one number that was true of neither half.',
+    'A breath is shown in its four parts: in, the pause at the top, out, and the pause at the bottom — with the ratio between them, so a steady rhythm reads as something like 6 : 5 : 6 : 7. The four add up to one breath.',
+    'A chart of your breathing rate over the chosen stretch, with the middle, the average and the fast end marked. Where a single average hides that a session had two speeds in it, the shape of the chart does not.',
+    'A session longer than forty-five minutes now shows all of it. Only the first forty-five minutes of raw movement are kept, and the app was treating that as the end of the recording — so the last stretch of a long session was on the phone but could not be scrolled to. The breathing trace now runs to the end; the heart rate still stops where the raw movement does, and the screen says so.',
+    'The line under the graph is just "pinch to zoom" now.'
+  ]},
   {v:'0.20.0', date:'2026-09-07', notes:[
     'The sound now goes quiet at the top of a breath, not just at the bottom. When you pause at the end of an inhale the app was still starting the exhale underneath you, about half a second too soon — the pause at the top of a breath is roughly a second long where the one at the bottom runs two and a half, and the sound was fading out too slowly to catch the short one. It fades twice as fast now, and it decides you are holding a little sooner.',
     'The pause at the bottom of a breath is unchanged. That part was already right, and every recording says it still is.',

@@ -83,7 +83,7 @@ comment in the codebase refers to them.
 | `src/pulse.js` | `Pulse` — experimental heart rate from the same accelerometer |
 | `src/hr.js` | `HR` — the same estimator run over a stored recording's raw motion, chunked, after the fact |
 | `src/store.js` | `Recorder` (typed-array capture) and `Store` (IndexedDB: recordings, settings, eviction, export) |
-| `src/review.js` | `Review` — one screen per session (End lands on it, so does a row in the browser) and the browser itself |
+| `src/review.js` | `Review` — one screen per session (End lands on it, so does a row in the browser), the segmentation and window statistics behind its numbers, and the browser itself |
 | `src/main.js` | `RELEASES`/`Updater`/`Log`, `UI`/`el`, `Pace`, `Shore` and `Lead`, the control table, permissions, wake lock, session lifecycle, rAF loop, canvas drawing, event wiring |
 
 The dependency graph is a DAG and should stay one. Everything imports `util`; `hr` imports
@@ -220,6 +220,18 @@ graph draws from `derived` at 10 Hz and materialising 48 000 motion rows for tha
 nobody asked for. `Review.startHr()` reads the raw rows separately, once, after the screen
 is already up — and never writes them back.
 
+**A session is as long as its longest channel, not as long as its motion.**
+`Recorder.MAX_MIN` stops the raw 60 Hz channel at 45 minutes — 162 000 samples, 2.6 MB
+of buffer — while the derived channel runs to 90. `Store.build` read the length off
+motion alone, so a 63-minute session was written claiming 2700.012 s, and because the
+review screen clamps its time axis to `durationSec`, the last eighteen minutes of a
+recording that was sitting on the phone could not be scrolled to. It takes the later
+of the two now; `hz` still divides by the motion span, because that is the span those
+samples actually cover. Files written the old way are read past rather than migrated,
+in `Review.prepare` and `tools/analyze.mjs`. A truncated recording also carries a
+`recording-truncated` event, and the session screen uses it to say why the heart rate
+stops partway along a lane the breathing runs the whole length of.
+
 **A summary of a session is never the last sample of it.** `Store.calFromEvents` fills
 `calibration.axis` from the `axis` events, and it used to take the last one — which is the
 one event guaranteed to be wrong, because a session ends with the phone being picked up
@@ -351,6 +363,19 @@ raise the τ, the app takes longer to adapt after the user shifts position.
 ones, so on asymmetric breathing the reported inhale runs ~0.4 s long and the exhale ~0.4 s
 short at a 7 s cycle. The total is unaffected. The harness asserts these bounds explicitly
 rather than the true values — if those checks start failing, the smoothing τ has moved.
+
+**That ~0.4 s is a figure for a 7 s cycle and it does not stay 0.4 s.** Measured on
+the waking stretch of `breathe-20260907-1553` — a 23 s cycle, deep and clean — the
+body's own strokes are nearly symmetric (rise 11.35 s against fall 10.97 s, ratio
+1.03) while the app reported 13.08 and 10.31, a ratio of 1.27. That is **2.4 s of
+asymmetry the body did not have**, six times the documented figure, and it does not
+split evenly the way the note above describes: +1.73 s onto the inhale against
+−0.66 s off the exhale. The combined magnitude is roughly what scaling 0.8 s by
+23.7/7 predicts, so the *size* is consistent with the filter; the lopsidedness is
+not explained. **Do not read `inhaleSec`/`exhaleSec` from a slow session as the
+body's own timing** — at three breaths a minute they carry a couple of seconds of
+the filter in them. The review screen measures its four phases from turning points
+and the rest gate for this reason, not from these two fields.
 
 `resolveSign()` sets `Breath.flipped` when it inverts the axis, and the render loop
 copies it into each `axis` event purely so an exported session can say so. It changes no
@@ -796,16 +821,19 @@ regression.
 
 `tools/smoke.mjs` runs the whole app in Node — `src/main.js` and everything it pulls in —
 against a stub DOM built from `index.html`, a stub Web Audio and an in-memory IndexedDB,
-all in `tools/stub/`. A hundred and sixty-six checks: it opens each panel, drives the update
+all in `tools/stub/`. A hundred and seventy-one checks: it opens each panel, drives the update
 flow (check, nothing new, a version arriving, a failed install, the handover), works the
 header's sound switch both ways, slows the wave with the pace slider and checks it really
 runs slower, turns on Demo mode, taps Start, watches the tracker stay silent until the phone
 settles and then the lead-in hand over to it, breathes for three simulated minutes through
 the real render loop, switches each experiment on and looks at what changed, taps End,
-reads the session screen and the pace it learned from the session, then browses, opens the
-recording again, waits for the heart rate to be recovered from its stored motion and checks
-it reached the numbers under the graph, cancels a pass in flight, exports and deletes the
-recording — and throws a short one away from the screen End landed on.
+reads the session screen and the pace it learned from the session, zooms into half of it
+and checks the numbers under the graph actually followed the selection rather than still
+describing the session, checks the four parts of a breath add up to one breath and the rate
+histogram is drawn, then browses, opens the recording again, waits for the heart rate to be
+recovered from its stored motion and checks it reached the numbers under the graph, cancels
+a pass in flight, exports and deletes the recording — and throws a short one away from the
+screen End landed on.
 
 This is what covers the wiring: an id that no longer resolves, a symbol that moved to
 another module, a control wired to its effect but not to the thing that saves it, a
@@ -885,6 +913,13 @@ and a synthetic hold understates the problem because it turns sharply where a be
 off. **Run it on real recordings after any change to the baseline, the AGC, or rest
 detection — on every session it can read, not on one.** `recordings/CLAUDE.md` says which
 those are and what each is good for.
+
+**Every tool here describes whatever stretch it is given, and one recording is now two
+sessions.** `breathe-20260907-1553` is 23 minutes of deliberate slow breathing followed
+by 39 of the owner asleep, and run over the whole file it turns 2.5/min into 16.88,
+0.57 amplitude into 0.13, and a 13 s inhale into 2.3 — none of which describes either
+half. Use `--from`/`--to`, and read `recordings/CLAUDE.md` §3a before quoting a number
+off that file.
 
 `tools/analyze.mjs` describes a recording rather than re-running the tracker over it:
 cycle timing, stroke depth, how much of the session was spent held still, and how often
@@ -1009,6 +1044,63 @@ that zoom: a session that opens at six a minute and ends at two looks the same a
 end. The fine lane is the window you pinch into, and it carries the waveform and the heart
 rate. Do not give the fine lane the rate line as well; two scales on one lane was tried on
 paper and is a chart, not a picture of a breath.
+
+**Every number under the graph describes the slice the fine lane is showing, and that
+is the whole point of the screen.** It used to describe the session. A recording that
+was slow deliberate breathing for 23 minutes and then something else for 39 —
+`breathe-20260907-1553`, and see `recordings/CLAUDE.md` §3a — averaged the two into
+11.76 breaths a minute, which is a rate that occurred at no moment of it. There is no
+honest single average for a session with structure in it; there is only a way to ask
+about one part at a time, and pinching is it. So the screen **opens on the whole
+recording** rather than on a 90 s window, because the window now decides what the
+numbers mean, and the caption is down to "pinch to zoom".
+
+**The four parts of a breath are seconds per breath, not per stroke and not per
+pause.** In, the hold at the top, out, the hold at the bottom — divided by the number
+of cycles in the window, so they add up to one cycle and the ratio under them means
+something. Dividing the holds by the *holds* gives the length of a pause when there
+was one, which is a different and much larger number: asleep this owner holds at the
+top of maybe one breath in four, and that arithmetic reported a 6.4 s breath in a
+stretch whose cycles are 3.3 s long. `tools/smoke.mjs` asserts the four sum to
+60/avg within 8%, because if they ever stop doing that the ratio has quietly become
+four unrelated numbers with colons between them.
+
+**The rate histogram is weighted by time, not by breath.** A stretch that spends four
+minutes at 3 a minute and one at 18 was mostly at 3, and counting breaths says the
+opposite — eighteen of them against twelve. The weighting is also what makes the mean
+exact rather than merely fairer: `Σ(bpm·sec)/Σsec` is `60·breaths/seconds`, the number
+you get by dividing one by the other. Its axis is the 2nd and 98th percentile of the
+window rather than the slowest and fastest breath in it, the same lesson
+`tools/onset.mjs` learned about its own thresholds: one mis-segmented cycle at 20 a
+minute inside twenty minutes of breathing at two stretched the axis to 0.4–20.5 and
+squeezed every real breath into the first eighth of the picture.
+
+**`Review.segment()` is the tracker's own rule, run over the stored waveform.**
+Peak/trough with a hysteresis that follows the stroke depth (`strokeAmp` seeded at
+1.7, α = 0.25, `H = clamp(strokeAmp·0.30, 0.30, 0.80)`) — the same numbers as
+`Breath.detectCycle`, so this cannot quietly become a second opinion. Two things
+differ deliberately and both are load-bearing:
+
+- **It reads `derived`, not the raw motion.** Both ways into this screen fetch
+  without the motion channel, and 10 Hz is thirty-five samples across the fastest
+  cycle the detector will take.
+- **It is not the live period band.** The tracker emits a breath on *every* peak and
+  gates only its *rate estimate* on 3–70 s, which is why a session recorded at 18 a
+  minute carries breath events whose periods are under three seconds. Rejecting those
+  here showed 213 breaths for a stretch that has 375 in it. The screen uses
+  1.5–120 s: 40 a minute is still above anything a resting body does, so the bogus
+  recording's 1.2 s "breaths" stay out. Measured on 1553 it finds 764 cycles where
+  the app recorded 769 events, and matches two independently written counters window
+  by window.
+
+**The holds come from the recorded `rest` channel**, not from a second slope test, so
+the seconds under the graph and the shading on it cannot disagree about where a
+breath stopped. A recording made before that channel existed shows dashes and no
+ratio, and says why — two zeros in a four-part ratio would read as a breath with no
+pause in it rather than as a recording that cannot say. Note that the gate is the
+app's opinion and not the body's: on 1553's waking stretch it gives a 4.7 s top hold
+where the body's own slope test gives 2.67 s. That gap is worth understanding and is
+not yet understood.
 
 **The heart rate is drawn on the fine lane, on its own scale, with no gutter reserved for
 it.** The lane's full width is the time axis and `bindLane`/`timeAtX` map a finger straight

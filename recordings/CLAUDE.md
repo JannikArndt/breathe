@@ -20,7 +20,7 @@ leave the repository.
 
 ## 2. What is here
 
-Fourteen files. Thirteen carry raw 60 Hz motion, which is the only thing that lets a
+Fifteen files. Fourteen carry raw 60 Hz motion, which is the only thing that lets a
 DSP change be re-measured after the fact; `20260831-0853` does not, because an old
 labelling bug destroyed it (see §6).
 
@@ -40,6 +40,7 @@ labelling bug destroyed it (see §6).
 | `20260903-2033` | 15:22 at 2.96/min, 0.19.0 | One of the three that produced the rest-gate latency fix (§4). |
 | `20260904-1907` | 18:07 at 3.40/min, 0.19.0 | The clean separator: its top and bottom holds are the same length (1.33 / 1.37 s) and the gate still came out shallower at the top, which is what showed the asymmetry was in the code and not only in the body. |
 | `20260906-2041` | 15:05 at 3.40/min, 0.19.0 | The shallow one — see §3. Also the recording that exposed the exported-axis bug (§6). |
+| `20260907-1553` | 63:04 on 0.20.0. Slow deliberate breathing for 23 minutes, then the owner **fell asleep** and it ran on | The only recording here with two bodies in it, and the reason §3a exists. Every whole-session number it produces describes neither half. Also the first to hit the 45-minute motion cap, which is what turned up the truncation bug (§6). |
 
 ---
 
@@ -61,8 +62,18 @@ taken as the median over the confident part of the session, which is what
 | 0830 | 0.41 | | 2033 | 0.48 |
 | 0853 | 0.49 | | 1907 | 0.43 |
 | 1122 | 0.59 | | **2041** | **0.15** |
-| great | 0.63 | | bogus (control) | 0.011 |
-| 2055 | 0.63 | | | |
+| great | 0.63 | | **1553 awake** | **0.57** |
+| 2055 | 0.63 | | bogus (control) | 0.011 |
+
+**1553 is measured over its waking stretch only, and that is not a nicety.** The
+whole-file figure is 0.13, which would put it beside 2041 as the second shallow
+session here. It is not shallow: it is one of the deepest, at 1.50 m/s²
+peak-to-peak against 1.42–1.61 for the rest, with the cleanest signal-to-noise in
+the set (quality 0.75). The 0.13 is the median of a session that spent 23 minutes
+at 0.43–0.65 and 39 minutes asleep at 0.05–0.13, so the median lands in the
+sleeping half. `calibration.amplitude` in that file says 0.1276 for the same
+reason. **A median over a session that changed state is a number about neither
+state** — see §3a.
 
 **2041 is a third the size of every other session and that is real.** It was checked
 three ways: the app's own running estimate holds 0.14–0.175 from 31 s onward, an
@@ -88,15 +99,98 @@ the body (under 22% of peak stroke speed):
 | 2033 | 0.87 s | 2.85 s |
 | 1907 | 1.33 s | 1.37 s |
 | 2041 | 0.48 s | 0.45 s |
+| **1553 awake** | **2.67 s** | **7.18 s** |
 
-**The top hold is about a second; the bottom is about two and a half.** Seven of the
-eight are asymmetric, and 0830 — the one every constant in `detectRest` was measured
+**The top hold is about a second; the bottom is about two and a half.** Eight of the
+nine are asymmetric, and 0830 — the one every constant in `detectRest` was measured
 against — is the only session where the two are equal. See §4.
+
+**1553's waking stretch has the longest top hold in the set, 2.67 s**, past 0830's
+2.55 s, and a 7.18 s bottom. It agrees with the majority on *direction* — the bottom
+is 2.7× the top — while being roughly two and a half times the usual size at both
+ends. So "about a second" is the middle of a range that runs from 0.48 to 2.67, not
+a constant; what has held across all nine is the direction and roughly the ratio.
 
 **Signal-to-noise.** The `quality` channel in an export is **not** confidence. It is
 `breathRms / (breathRms + 2.2·motionRms + 0.004)`, so a shallow session reads low
 even while tracking perfectly: 2041 shows 0.38 against 0.65–0.73 elsewhere, while its
 replayed `conf` is 0.80. Do not read `quality` as "how well did the tracker do".
+
+---
+
+## 3a. The recording with two bodies in it
+
+`20260907-1553` is the first session here that changed state partway through. The
+owner breathed deliberately and slowly for 23 minutes and then fell asleep with the
+phone still on their belly, and it ran another 39. **Every whole-session number it
+produces is a blend of two things and describes neither**, which is a new failure
+mode for this folder and the reason the review screen now reports whatever stretch
+you have selected rather than the session.
+
+Measured over the two stretches separately, with the transition placed at
+t ≈ 1430 s by two independent changepoint estimates (1412 s on amplitude, 1453 s on
+dominant frequency) and confirmed by the file's own `summary.secondsUnder7` of
+1409.8:
+
+| | awake, 120–1400 s | asleep, 1500–2700 s |
+|---|---|---|
+| rate | 2.5 /min | 18 /min |
+| breaths | 56–61 | 368–375 |
+| depth, peak-to-peak | 1.50 m/s² | 0.34 m/s² |
+| depth, band RMS | 0.563 m/s² | 0.091 m/s² |
+| held fraction | 51 % | 9 % |
+| top / bottom hold | 2.67 / 7.18 s | ≈0 / 0.2 s |
+| `quality` | 0.75 | 0.32 |
+| heart rate (estimated) | 92 /min | 81 /min |
+
+And the blended numbers the file itself carries: `meanBpm` **11.76**, which is a rate
+that never occurred at any moment of the session; `calibration.amplitude` **0.1276**,
+which is the sleeping half's depth; `meanInhaleSec`/`meanExhaleSec` **2.3 / 2.53 s**
+against a waking truth of about 13 and 10.
+
+**The sleeping rhythm is real, and it took a specific test to establish that.**
+Counting peaks does not settle it — a peak detector run over white noise at the same
+RMS, through the same τ = 0.35 s smoothing, produces a "rhythm" of its own. What
+settles it is coherence, measured in the respiratory band (0.10–0.60 Hz) so the slow
+amplitude drift does not dominate the answer:
+
+| | spectral peak | prominence over the band | per-window rate | autocorrelation at T / 2T |
+|---|---|---|---|---|
+| asleep | 18.0 /min | **69.7×** | 19.0 ± 1.20 /min (CV **0.063**) | **+0.68 / +0.33** |
+| awake (in its own 0.02–0.10 Hz band) | 2.5 /min | 47.8× | 2.0 ± 0.46 /min (CV 0.199) | +0.64 / +0.34 |
+| white noise, matched RMS, same filter | 11.5 /min | 4.1× | 12.0 ± 6.06 /min (CV 0.401) | +0.16 / +0.00 |
+| pink noise, matched RMS, same filter | 6.0 /min | 8.5× | 6.0 ± 1.29 /min (CV 0.187) | −0.22 / +0.00 |
+
+The sleeping stretch scores **better than the waking one on every coherence measure**
+— a sharper peak, a steadier per-window frequency, and the same autocorrelation
+structure at one and two periods. Neither noise control comes close on any of them.
+So the app's ~18/min is a real oscillation and not the detector chopping up a
+shallower signal. Two further checks agree: the cardiac band (1.0–1.6 Hz) carries
+0.31 % of the spectral power against 43 % in the breathing band, and the axis moved
+less than 3° across the transition, so this is not the phone shifting.
+
+**Do not read the awake stretch's 6–36 Hz content as tidal breathing hiding under
+the slow breathing.** Its peak there is 6.0/min with an autocorrelation at one period
+of only +0.18 — harmonic leakage from the sharp turnarounds of a 2.5/min waveform,
+not a second rhythm. The asleep +0.68 is what a real one looks like.
+
+**What is genuinely uncertain**, and should stay uncertain until there is a second
+night: whether the depth waxes and wanes on a 5–9 minute cycle across the sleeping
+stretch. A periodogram of the axis-covariance amplitude series peaks around 474 s,
+and two of the larger upswings coincide with a small uptick in raw movement energy,
+so a movement contribution cannot be excluded. One night from one person is not a
+finding. The heart rate falling 92 → 81 carries the standing caveat from CLAUDE.md
+§4a2 in full: two implementations of one method agreeing is not validation, and this
+estimator has still never been checked against a real pulse.
+
+**What this recording is good for.** It is the only test here of a session that
+changes state, so it is the one to check any *summary* against — a statistic that
+looks reasonable on it is probably robust to a session with structure in it. It is
+also a deep, clean, long waking stretch (quality 0.75, the best in the set), so
+`--from 0 --to 1400` makes it a first-class reference for the waking half of any
+§4 question. **It does not settle the open question in §4**: its strokes are
+symmetric (rise 11.35 s against fall 10.97 s, ratio 1.03), so it cannot separate a
+deep signal from an asymmetric one any better than 2041 could.
 
 ---
 
@@ -163,6 +257,8 @@ which confounds the two.
 | sign from the lead-in | 1122, and 0830 | Both sessions the owner called inverted are the two whose axis came out negative; the sign is a coin flip and the lead-in resolves it. |
 | **rest-gate latency (§4)** | **2033, 1907, 2041, + five more** | **The top hold is a third the length of the bottom one, and the gate was too slow for it.** |
 | **exported axis (§6)** | **2041** | **The last axis event is sampled while the phone is being picked up.** |
+| **truncated duration (§6)** | **1553** | **The motion channel stops at 45 min and the derived channel does not, so the session reported itself 18 minutes short.** |
+| **stats follow the selection** | **1553** | **A session with two states in it has no honest single average: `meanBpm` came out 11.76 for a body that was at 2.5 and then at 18.** |
 
 ---
 
@@ -200,6 +296,26 @@ history and the replayed one is the code you are about to change.
 
 **Recordings before 0.12.0 carry no `app.build`.** 0829 and 0830 predate it.
 
+**`durationSec` in a file exported before 0.21.0 is the end of the *motion* channel,
+not the end of the session.** `Recorder.MAX_MIN` stops the raw channel at 45 minutes
+while the derived channel runs on to 90, so a longer session was written claiming to
+be exactly 2700.012 s. 1553 is the only file here that hit it: it says 2700 and its
+derived rows run to 3783.8. `Store.build` now takes the later of the two, and both
+`tools/analyze.mjs` and the review screen read past the ones already written. A file
+that hit the cap also carries a `recording-truncated` event, which is the reliable
+way to tell.
+
+**A whole-session summary of a recording that changed state is a number about
+neither state.** This is 1553's contribution and it is worth stating separately from
+§3a, because it applies to every tool here rather than to one file: `analyze.mjs` and
+`onset.mjs` both describe whatever they are given, and given a session that was two
+sessions they average them. On 1553 that turns 2.5/min into 16.88, 0.57 amplitude
+into 0.13, 51 % held into 25 %, and a 13 s inhale into 2.3. Pass `--from`/`--to`, or
+cut the file first. `analyze.mjs`'s own stillness figure moves the *other* way and
+for a different reason — its `STILL` threshold is `0.18 × medSlope`, derived from the
+population being measured, and the sleeping strokes carry a 3.5× higher median peak
+slope, which raises the threshold and lets real waking movement read as still.
+
 ---
 
 ## 7. Working with these files
@@ -230,7 +346,10 @@ on their own.
 ## 8. What is worth recording next
 
 - **A session with a deep signal and a strongly asymmetric breath**, to work on the
-  open question in §4. 2041 is asymmetric but shallow, so it cannot separate the two.
+  open question in §4. 2041 is asymmetric but shallow, so it cannot separate the two;
+  1553's waking stretch is deep and clean but symmetric (1.03), so it cannot either.
+- **A second night of sleep**, to say whether the 5–9 minute depth cycling in §3a is
+  a thing this body does or a thing that one recording did.
 - **A second body.** Everything above is one person. Every threshold that reads as
   "measured" is measured on them.
 - **A session with a real heart-rate reference.** The pulse estimator agrees with an

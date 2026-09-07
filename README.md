@@ -171,8 +171,19 @@ where being readable matters more than being small. Raw motion is never thinned:
 at 4 dp is finer than the accelerometer's own step. The newest 48 MB is kept and the oldest
 whole recording is dropped to make room.
 
-Sessions can be labelled after the fact — the first thirty seconds of any recording are you
-getting settled, so marking where you actually lay down makes the data usable.
+There is no labelling and no trim. There was: nine label chips, then a free-text note, then
+two buttons marking where the usable stretch started and stopped. All of it existed because
+the tracker could not tell for itself which part of a session was worth reading, and it can
+— `tools/onset.mjs` derives the same stretch from where the phone settled and where
+confidence passed 0.45, and comes out better than the hand-marked interval did.
+
+Raw motion stops at 45 minutes. That is 162 000 samples and 2.6 MB of buffer, and a
+breathing session is not usually an all-nighter; the derived channels carry on to 90, so a
+longer session still has its whole waveform, its rate and its breath count, and only loses
+the raw signal the heart rate is recovered from. The recording says so and the session
+screen says so on screen. This was worth more than it sounds: the first session that ran
+past the cap was written claiming to be exactly 45 minutes long, because the length was
+read off the channel that had stopped.
 
 Two things about that storage were wrong for a while and are worth writing down. Recordings
 were written at the size of the *buffer they were captured in* rather than the size of their
@@ -340,6 +351,23 @@ part that matters — a fresh page can never end up driving last week's modules,
 come from the same cache and that cache is discarded whole.
 
 ---
+
+### Reading a recording back
+
+The session screen is a strip of the whole recording, a lane you pinch to zoom into, and a
+set of numbers — and the numbers describe the slice you are looking at rather than the
+session. That is not a nicety. The first recording here that changed state partway through
+(slow deliberate breathing for 23 minutes, then the owner fell asleep and it ran another 39)
+reported an average of 11.76 breaths a minute, which is a rate that occurred at no moment of
+it: it is the blend of 2.5 and 18. There is no honest single average for a session with
+structure in it. There is only a way to ask about one part at a time.
+
+So the screen shows the length, the length of what you have selected, how many breaths are
+in it, the rate as a median, an average and a p95 over a histogram of the whole
+distribution — where a session with two speeds in it draws two humps and a single number
+draws none — and one breath in four parts: in, the hold at the top, out, the hold at the
+bottom, with the ratio between them. The four are seconds per breath, so they add up to one
+cycle and something like `6 : 5 : 6 : 7` is a rhythm you can read.
 
 ## Known limitations
 

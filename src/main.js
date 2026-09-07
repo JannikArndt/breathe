@@ -36,6 +36,11 @@ function touched(){
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.20.0', date:'2026-09-07', notes:[
+    'The sound now goes quiet at the top of a breath, not just at the bottom. When you pause at the end of an inhale the app was still starting the exhale underneath you, about half a second too soon — the pause at the top of a breath is roughly a second long where the one at the bottom runs two and a half, and the sound was fading out too slowly to catch the short one. It fades twice as fast now, and it decides you are holding a little sooner.',
+    'The pause at the bottom of a breath is unchanged. That part was already right, and every recording says it still is.',
+    'A recording now saves the direction your breathing actually moved the phone. It was saving the very last reading instead, which is taken while you are picking the phone up — so on one recording it stored a direction twenty-two degrees away from the one the whole session had used. Nothing you can see was affected; it made recordings harder to read afterwards.'
+  ]},
   {v:'0.19.0', date:'2026-09-01', notes:[
     'A recording is one screen now. The summary a session ends on and the screen you got to by tapping Label were the same recording shown twice; they are one, and it is what both Recordings and the end of a session open into. It keeps the strip showing the whole session and the lane underneath you can pinch to zoom into.',
     'Marking where a recording starts and stops is gone. It was there because the app used to need telling which part of a session was worth reading, and it does not any more.',
@@ -849,9 +854,9 @@ function loop(now){
     Recorder.sample(dx, dy, dz, dt0);   // or a demo session has no raw channel to replay
   }
 
-  // The sound runs from the first frame, calibration included. Waiting for the
-  // axis left the user lying in silence for twenty seconds wondering whether
-  // anything worked. Before finishCalibration() the projection uses the default
+  // The sound runs from the first frame. Waiting for the axis left the user
+  // lying in silence for twenty seconds wondering whether anything worked.
+  // Before the axis tracker has converged the projection uses the default
   // z axis, which on a phone lying face-up on a belly already carries most of
   // the movement, so it responds — just less precisely than it will in a moment.
   // When there is nothing worth following, the sound settles to a neutral bed

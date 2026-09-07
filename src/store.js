@@ -745,9 +745,9 @@ export const Recorder = {
    *   lead               {waves, follow, sinceBegin} once, at the handover
    *   recording-truncated {afterSec}                 only past the 45-minute cap
    *
-   * This list said `recalibrate` and `signal-lost`/`signal-back` for a year and
-   * nothing has ever emitted any of the three, so anyone reading an export went
-   * looking for events that were never written. `breath` was also listed twice.
+   * This list said `recalibrate` and `signal-lost`/`signal-back` when nothing
+   * has ever emitted any of the three, so anyone reading an export went looking
+   * for events that were never written. `breath` was also listed twice.
    * If a new type is added, add it here — a comment nobody maintains is worse
    * than no comment, because it reads as a promise about the data.
    */
@@ -880,23 +880,65 @@ function allocCols(n, vcount, max){
 
 /** There is no calibration step any more, but the axis is still the single most
     useful thing to know when reading a recording back, so the tracker's own
-    estimate is sampled into `axis` events and the last one fills the field the
-    tools already read. Recordings made before this carry the old events. */
+    estimate is sampled into `axis` events every 30 s and summarised here.
+    Recordings made before this carry the old calibration-start/end events.
+
+    It used to be the LAST axis event, and that is the one event guaranteed to
+    be wrong: the session ends with the phone being picked up, which swings the
+    tilt by tens of degrees, and the axis tracker follows it. On the 0906
+    recording the axis sat at [-0.03, 0.995, 0.09] for thirteen minutes and the
+    file was exported carrying [-0.42, 0.90, 0.10] — 24 degrees off, sampled
+    mid-handling. Nothing in the app read the field, so it went unnoticed until
+    tools/analyze.mjs printed it as "the axis" next to a session's real one.
+
+    Filtering on `ok` is not enough on its own. Confidence is an average over
+    several cycles, so it lags: on that recording the two events during the
+    worst of the handling do read ok:false, but the next two recover to conf
+    0.59 and 0.84 while the axis is still 35 and 24 degrees off. So take the
+    median over the confident events instead — a handful of dragged samples
+    cannot move it, and it needs no threshold beyond the one already recorded.
+
+    An eigenvector has no sign (see resolveSign in breath.js), so the samples
+    are sign-aligned before the median or two consistent axes would cancel. */
 function calFromEvents(events){
   let startSec = null, end = null;
+  const good = [];
   for(let i=0;i<events.length;i++){
-    if(events[i].type === 'calibration-start') startSec = events[i].tSec;
-    if(events[i].type === 'calibration-end')   end = events[i];
-    if(events[i].type === 'axis'){ if(startSec===null) startSec = 0; end = events[i]; }
+    const e = events[i];
+    if(e.type === 'calibration-start') startSec = e.tSec;
+    if(e.type === 'calibration-end')   end = e;
+    if(e.type === 'axis'){
+      if(startSec === null) startSec = 0;
+      end = e;
+      // amp 0 is the seed axis before anything has been tracked
+      if(e.ok !== false && e.axis && e.amplitude > 0) good.push(e);
+    }
   }
   if(!end) return null;
+  let axis = end.axis || null, amplitude = end.amplitude, endSec = end.tSec;
+  if(good.length){
+    const ref = good[good.length - 1].axis;
+    const cols = [[], [], []];
+    for(const e of good){
+      const flip = (e.axis[0]*ref[0] + e.axis[1]*ref[1] + e.axis[2]*ref[2]) < 0 ? -1 : 1;
+      for(let k = 0; k < 3; k++) cols[k].push(flip * e.axis[k]);
+    }
+    const mid = a => { const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
+    const m = [mid(cols[0]), mid(cols[1]), mid(cols[2])];
+    const n = Math.hypot(m[0], m[1], m[2]);
+    if(n > 1e-9){
+      axis = [m[0]/n, m[1]/n, m[2]/n];
+      amplitude = mid(good.map(e => e.amplitude));
+      endSec = good[good.length - 1].tSec;
+    }
+  }
   return {
     startSec: startSec === null ? 0 : startSec,
-    endSec: end.tSec,
-    axis: end.axis || null,
+    endSec: endSec,
+    axis: axis,
     flipped: (typeof end.flipped === 'boolean') ? end.flipped : null,
-    amplitude: rnd(end.amplitude, 4),
-    ok: end.ok !== false
+    amplitude: rnd(amplitude, 4),
+    ok: good.length > 0 || end.ok !== false
   };
 }
 

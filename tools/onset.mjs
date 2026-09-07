@@ -14,19 +14,31 @@
  * from it directly with a generous 22% hysteresis, because ground truth must
  * not invent breaths.
  *
- * For each real breath:
- *   takeoff  the tilt has risen 15% of the way from trough to peak — the
- *            inhale has genuinely started
- *   sound    vel * restGate, which is what drives the swell, first passes
- *            25% of its peak for that cycle
+ * BOTH turnarounds, measured the same way. For each stroke:
+ *   takeoff  the tilt has moved 15% of the way from one extreme to the other —
+ *            the inhale, or the exhale, has genuinely started
+ *   sound    the matching half of vel * restGate, which is what drives the
+ *            swell, first passes 25% of its peak for that stroke
  *
  *   lead = takeoff - sound.   Positive means the app is early.
+ *
+ * It measured only the bottom to begin with, and that gap hid a real bug for as
+ * long as it lasted: the exhale was starting up to 1.5 s before the belly began
+ * to descend, on recordings where every number this tool printed looked healthy.
+ * A tool that watches one end of a breath will be believed about both.
+ *
+ * The last block is the one that matches what a person actually reports. A lead
+ * in seconds says when the exhale channel crossed a quarter of its peak; it
+ * does not say whether there was ever any silence for it to interrupt. Holds
+ * are found with the tracker's own rest test applied to the body — under 22% of
+ * the peak stroke speed — and reported with how much of each one the gate was
+ * actually shut for.
  *
  * Needs a recording with raw motion rows; sessions exported before that fix
  * carry only the derived channels and are skipped with a message.
  *
  *   node tools/onset.mjs recordings/some-session.json
- *   node tools/onset.mjs recordings/some-session.json --html other.html
+ *   node tools/onset.mjs recordings/some-session.json --src other-src/
  */
 
 import { readFileSync } from 'node:fs';
@@ -129,31 +141,86 @@ for (let i = 1; i < raw.length; i++) {
   else    { if (v < best) { best = v; bestI = i; } else if (v - best > H) { ext.push({ i: bestI, kind: 'trough', v: best }); up = true;  best = v; bestI = i; } }
 }
 
-const leads = [], strokes = [], gates = [];
-for (let k = 0; k < ext.length - 1; k++) {
-  if (ext[k].kind !== 'trough' || ext[k + 1].kind !== 'peak') continue;
-  if (!usable(ext[k].i) || !usable(ext[k + 1].i)) continue;
-  const lowP = ext[k], highP = ext[k + 1];
-  const thr = lowP.v + (highP.v - lowP.v) * 0.15;
-  let iTake = lowP.i; while (iTake < highP.i && raw[iTake] < thr) iTake++;
+/* Body velocity, central difference over +/- 0.25 s. Used for the hold block
+   below, which needs to know when the belly stopped rather than where it was. */
+const bodyV = [];
+for (let i = 0; i < raw.length; i++) {
+  const a = Math.max(0, i - 15), b = Math.min(raw.length - 1, i + 15);
+  bodyV.push((raw[b] - raw[a]) / Math.max(1e-6, tr[b].t - tr[a].t));
+}
 
+/* Both turnarounds, measured the same way.
+
+   This measured only the bottom to begin with, and the top was wrong the whole
+   time without anything here able to say so: the owner reported the bottom as
+   good and the exhale as starting too early, and every number this tool printed
+   was about the bottom. A tool that watches one end of a breath will be
+   believed about both. */
+const dirs = {
+  up:   { lead: [], stroke: [], gate: [] },   // trough -> peak, the inhale
+  down: { lead: [], stroke: [], gate: [] }    // peak -> trough, the exhale
+};
+for (let k = 0; k < ext.length - 1; k++) {
+  const a = ext[k], b = ext[k + 1];
+  if (a.kind === b.kind) continue;
+  if (!usable(a.i) || !usable(b.i)) continue;
+  const rising = a.kind === 'trough';
+  const D = rising ? dirs.up : dirs.down;
+  const span = b.v - a.v;                       // signed: negative on an exhale
+
+  // the belly is a sixth of the way into the stroke, so it has genuinely started
+  const thr = a.v + span * 0.15;
+  let iTake = a.i;
+  while (iTake < b.i && (rising ? raw[iTake] < thr : raw[iTake] > thr)) iTake++;
+
+  // the matching half of the signed velocity channel, which is what the swell
+  // is driven from, first passing a quarter of its peak for this stroke
+  const chan = i => Math.max(0, rising ? tr[i].vel : -tr[i].vel) * tr[i].gate;
   let pk = 0;
-  for (let i = lowP.i; i <= highP.i; i++) pk = Math.max(pk, Math.max(0, tr[i].vel) * tr[i].gate);
-  let iSnd = lowP.i; while (iSnd < highP.i && Math.max(0, tr[iSnd].vel) * tr[iSnd].gate < 0.25 * pk) iSnd++;
+  for (let i = a.i; i <= b.i; i++) pk = Math.max(pk, chan(i));
+  let iSnd = a.i; while (iSnd < b.i && chan(iSnd) < 0.25 * pk) iSnd++;
 
   // the gate at the moment the belly is moving fastest — the sound has to be
   // fully open there, or the fix for "too early" has bought silence instead
-  let steep = 0, iSteep = lowP.i;
-  for (let i = lowP.i + 30; i < highP.i - 30; i++) {
-    const d = raw[i + 30] - raw[i - 30];
+  let steep = 0, iSteep = a.i;
+  for (let i = a.i + 30; i < b.i - 30; i++) {
+    const d = (raw[i + 30] - raw[i - 30]) * (rising ? 1 : -1);
     if (d > steep) { steep = d; iSteep = i; }
   }
 
-  leads.push(+(tr[iTake].t - tr[iSnd].t).toFixed(2));
-  strokes.push(+(tr[highP.i].t - tr[iTake].t).toFixed(1));
-  gates.push(+tr[iSteep].gate.toFixed(2));
+  D.lead.push(+(tr[iTake].t - tr[iSnd].t).toFixed(2));
+  D.stroke.push(+(tr[b.i].t - tr[iTake].t).toFixed(1));
+  D.gate.push(+tr[iSteep].gate.toFixed(2));
 }
 
+/* How long the belly actually held at each end, and how much of that hold the
+   sound was actually silent for.
+
+   This is the number that matches what a person reports. A lead in seconds says
+   when the exhale channel crossed a quarter of its peak; it does not say whether
+   there was ever any silence to interrupt. On the 0.19.0 recordings the top hold
+   ran 0.87-1.33 s against a gate that took about 0.8 s to shut, so the answer
+   was "almost none" — 0.03 and 0.22 s against 1.13 and 0.80 s at the bottom —
+   and that is what "it starts the exhale too early" sounded like.
+
+   The hold is found with the tracker's own rest test (CLAUDE.md 4) applied to
+   the body: under 22% of the peak stroke speed either side of the turn. */
+const holds = { top: [], bottom: [] };
+for (let k = 1; k < ext.length - 1; k++) {
+  const e = ext[k], prev = ext[k - 1], next = ext[k + 1];
+  if (!usable(e.i) || !usable(prev.i) || !usable(next.i)) continue;
+  let pk = 0;
+  for (let i = prev.i; i <= next.i; i++) pk = Math.max(pk, Math.abs(bodyV[i]));
+  let a = e.i; while (a > prev.i && Math.abs(bodyV[a]) < 0.22 * pk) a--;
+  let b = e.i; while (b < next.i && Math.abs(bodyV[b]) < 0.22 * pk) b++;
+  const dur = tr[b].t - tr[a].t;
+  if (dur < 0.3) continue;                       // a rounded turn, not a hold
+  let quiet = 0;
+  for (let i = a; i <= b; i++) if (tr[i].gate < 0.2) quiet += dtAt(i);
+  (e.kind === 'peak' ? holds.top : holds.bottom).push({ dur, quiet });
+}
+
+const leads = dirs.up.lead;
 if (!leads.length) { console.error('no complete breaths found in the raw signal'); process.exit(1); }
 const med = arr => { const s = arr.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
 const heldPct = (100 * tr.filter(x => x.gate < 0.5).length / tr.length).toFixed(0);
@@ -172,12 +239,28 @@ if (di.rest != null && dv.rows && dv.rows.length) {
   asRun = (100 * held / dv.rows.length).toFixed(0);
 }
 
+const f2 = x => (x == null ? '   -  ' : x.toFixed(2).padStart(6));
+const early = a => a.filter(x => x > 0.5).length;
+
 console.log(`${file}`);
 console.log(`  ${leads.length} breaths over ${t.toFixed(0)} s   sensitivity ${Breath.sensitivity}` +
             `   (settled at ${usable0.toFixed(0)} s, confident stretches only)`);
-console.log(`  inhale, takeoff to peak     median ${med(strokes)} s   range ${Math.min(...strokes)}–${Math.max(...strokes)} s`);
-console.log(`  sound starts before it      median ${med(leads)} s   worst ${Math.max(...leads)} s`);
-console.log(`  held (gate under half)      ${heldPct}% of the session` +
+for (const [key, name, into] of [['up', 'inhale', 'peak'], ['down', 'exhale', 'trough']]) {
+  const D = dirs[key];
+  if (!D.lead.length) continue;
+  console.log(`  ${(name + ', takeoff to ' + into).padEnd(32)} median ${f2(med(D.stroke))} s   range ${Math.min(...D.stroke)}–${Math.max(...D.stroke)} s`);
+  console.log(`  ${'sound starts before it'.padEnd(32)} median ${f2(med(D.lead))} s   worst ${f2(Math.max(...D.lead))} s` +
+              `   over half a second early on ${early(D.lead)}/${D.lead.length}`);
+  console.log(`  ${'gate at the steepest point'.padEnd(32)} median ${f2(med(D.gate))}     worst ${f2(Math.min(...D.gate))}     (1 = wide open)`);
+}
+for (const [key, name] of [['top', 'top of the inhale'], ['bottom', 'bottom of the exhale']]) {
+  const H = holds[key];
+  const label = ('hold at the ' + name).padEnd(32);
+  if (!H.length) { console.log(`  ${label} none over 0.3 s`); continue; }
+  console.log(`  ${label} median ${f2(med(H.map(x => x.dur)))} s` +
+              `   silent for ${f2(med(H.map(x => x.quiet)))} s of it   (${H.length} holds)`);
+}
+console.log(`  ${'held (gate under half)'.padEnd(32)} ${heldPct}% of the session` +
             (asRun !== null ? `   (${asRun}% when it was recorded)` : ''));
-console.log(`  gate at the steepest point  median ${med(gates)}   worst ${Math.min(...gates)}   (1 = wide open)`);
-console.log(`  per breath: ${leads.join(' ')}`);
+console.log(`  per inhale: ${dirs.up.lead.join(' ')}`);
+console.log(`  per exhale: ${dirs.down.lead.join(' ')}`);

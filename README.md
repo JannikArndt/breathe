@@ -361,14 +361,17 @@ come from the same cache and that cache is discarded whole.
   are the reliable path.
 - **Side-lying and prone positions are untested.** The axis-finding should cope, but the
   sign heuristic was designed for supine.
-- **Everything measured here comes from one body.** Three recordings, one person, one
+- **Everything measured here comes from one body.** Fourteen recordings, one person, one
   phone, one mattress. Every constant that was moved because a recording said so was moved
   because *that* recording said so. The sensitivity control exists for this reason and is
-  not a substitute for a second person.
+  not a substitute for a second person. This is not a theoretical risk: the rest gate was
+  fitted to the one session that pauses equally at the top and the bottom of a breath, and
+  was wrong at the top on every other recording for four releases.
 - **Very shallow chest breathers** may not move the phone enough. The signal line reports
   this and suggests moving the phone lower, but there is a floor below which there is no
-  signal to find. The sensitivity control moves where that floor sits, because two
-  recordings are not a sample to set it from.
+  signal to find. The sensitivity control moves where that floor sits, because these
+  recordings are not a sample to set it from. One session here does move the phone about a
+  third as far as the rest, and still tracks.
 - **Large postural shifts** blow out the baseline for roughly 30 s. The signal meter shows
   "noisy" while it recovers.
 - **The inhale/exhale split is skewed by about 0.4 s** at a 7 s cycle. The 0.35 s smoothing
@@ -442,9 +445,13 @@ node tools/onset.mjs  recordings/some-session.json    # how early does the sound
 node tools/analyze.mjs recordings/some-session.json   # timing, depth, stillness
 ```
 
-`onset.mjs` answers the one question the harness structurally cannot. The harness feeds a
-sinusoid, and a sinusoid has no holds in it — which is precisely the case that has broken
-twice here.
+`onset.mjs` answers the one question the harness structurally cannot: how early does the
+sound start, measured against the body rather than against the app's own signal? The
+harness feeds a raised cosine, and that has no holds in it — which is precisely the case
+that has broken three times here. It measures both ends of a breath, and reports how much
+of each pause the sound was actually silent for; run it over every recording that carries
+raw motion, not one, because fitting a constant to a single session is the mistake it
+exists to catch.
 
 See `CLAUDE.md` for the invariants these checks protect and what not to change without
-re-running them.
+re-running them, and `recordings/CLAUDE.md` for what each recording has already proved.

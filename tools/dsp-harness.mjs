@@ -404,11 +404,13 @@ console.log('source: ' + srcDir + '\n');
     if (Math.abs(Breath.vel()) > 0.25) { midGate = Math.min(midGate, Breath.restGate); midResting = midResting || Breath.resting; }
   }
 
-  // now hold: freeze the phase and keep feeding the same tilt plus sensor noise
+  // now hold: freeze the phase and keep feeding the same tilt plus sensor noise.
+  // `feed` advances state.t itself, so nothing may advance it here as well —
+  // this loop used to do both, which fed the tracker 33 ms samples and made an
+  // "8 s" hold sixteen seconds long. Any latency is forgiven by that much slack.
   const held = state.u;
   let restedAt = null, gateLow = 1;
   for (let i = 0; i < 60 * 8; i++) {
-    state.t += 1 / 60;
     state.u = held;
     feed(state, { bpm: 8, secs: 1 / 60 });
     state.u = held;
@@ -420,6 +422,54 @@ console.log('source: ' + srcDir + '\n');
   check('the gate closes on a hold', gateLow < 0.25, `gate fell to ${gateLow.toFixed(2)}`);
   check('an ordinary stroke is not rest', midResting === false && midGate > 0.75,
     `gate stayed ${midGate.toFixed(2)}`);
+}
+
+// 9b. a SHORT hold, at the top of an inhale, is still caught
+{
+  /* The check above holds for 8 s at the bottom of an exhale, which is the case
+     the 0830 recording is full of and the case that already worked. It cannot
+     fail for a gate that is merely slow, because eight seconds forgives any
+     latency — and a slow gate is exactly what was wrong.
+
+     Across the eight recordings tools/onset.mjs can read, the hold at the top
+     of an inhale runs about a second (medians 0.48 to 2.55 s, six of the eight
+     at or under 1.05 s) where the hold at the bottom runs about two and a half.
+     The gate took ~0.8 s to shut, so the bottom hold outlasted it and the top
+     hold did not: the exhale swelled while the belly was still at the top, and
+     the owner reported it. 0830 is the one session that holds equally at both
+     ends, and it is the one every constant in detectRest was measured against.
+
+     So: hold at the TOP of an inhale for 1.5 s, which is about what these
+     recordings actually do there, and require the sound to have gone quiet by
+     the end of it. Measured over five runs each, the gate lands at 0.36 with
+     the old 0.5 s / 0.60 s pair and 0.08 with the 0.35 s / 0.30 s one, and the
+     noise moves neither by more than 0.01. The threshold sits in that gap.
+
+     A synthetic hold understates the problem, which is worth knowing before
+     trusting this number: the raised cosine turns sharply where a belly rounds
+     off, so `stillFor` here only starts counting once the freeze begins, while
+     on a real recording it has usually been counting for a moment already. On
+     the 2033 session the same 0.87 s hold comes out 0.58 s silent. */
+  const state = { t: 0, u: 0 };
+  Breath.begin(0);
+  feed(state, { bpm: 8, secs: 90 });
+
+  // walk forward to the top of an inhale — tilt() peaks at u = inShare
+  const inShare = 0.45;
+  while (Math.abs(state.u - inShare) > 0.004) feed(state, { bpm: 8, secs: 1 / 60 });
+
+  const held = state.u;
+  let restedAt = null;
+  for (let i = 0; i < 60 * 1.5; i++) {
+    state.u = held;
+    feed(state, { bpm: 8, secs: 1 / 60 });
+    state.u = held;
+    if (Breath.resting && restedAt === null) restedAt = i / 60;
+  }
+  check('a short hold at the top of an inhale goes quiet',
+    Breath.restGate < 0.20,
+    `gate ${Breath.restGate.toFixed(2)} after 1.5 s` +
+    (restedAt === null ? ', never called it rest' : `, rest at ${restedAt.toFixed(2)} s`));
 }
 
 // 10. the experimental pulse estimator

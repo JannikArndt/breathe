@@ -59,9 +59,19 @@ const t = col('t'), s = col('s'), quality = col('quality'), bpmCol = col('bpm');
 const n = t.length;
 const hz = D.hz || (n - 1) / (t[n - 1] - t[0]);
 
-const pct = (a, p) => { const b = [...a].sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.max(0, Math.round((b.length - 1) * p)))]; };
+/* An empty array has no percentile, and several of these are empty on a
+   recording with no breathing in it — the table and shaking controls, and any
+   session too short to complete a cycle. This used to hand `undefined` to f2
+   and exit on a stack trace, which reads as "the tool is broken" rather than
+   "there are no cycles here". Nothing downstream distinguishes a measured zero
+   from an absent one, so 0 is the honest answer and `cycles.n` says which. */
+const pct = (a, p) => {
+  if (!a.length) return 0;
+  const b = [...a].sort((x, y) => x - y);
+  return b[Math.min(b.length - 1, Math.max(0, Math.round((b.length - 1) * p)))];
+};
 const med = a => pct(a, 0.5);
-const f2 = x => Number(x.toFixed(2));
+const f2 = x => Number((Number.isFinite(x) ? x : 0).toFixed(2));
 
 /* ---------- cycles from the recorded turning points ----------
    The app already found these; re-deriving them here would measure this script
@@ -166,13 +176,45 @@ for (const tp of turns) {
   if (tH !== null && tReal !== null && tReal - tH > 0.6) { earlyFlips++; flipLead.push(tReal - tH); }
 }
 
+/* The axis a session actually ran at, recomputed from its `axis` events rather
+   than read out of `calibration`.
+
+   Store.calFromEvents used to fill that field from the LAST axis event, which
+   is the one sampled while the phone is being picked up. Recordings exported
+   before that was fixed carry the dragged value: the 0906 session ran thirteen
+   minutes at [-0.03, 0.995, 0.09] and reports [-0.42, 0.90, 0.10], 24 degrees
+   off, which read here as "that session used a different axis" when it did not.
+   The store now stores the median of the confident samples; this does the same
+   arithmetic so the recordings already in the repository read correctly too.
+   Falls back to the stored field for a recording with no axis events. */
+function axisSummary(S){
+  const good = (S.events || []).filter(e =>
+    e.type === 'axis' && e.ok !== false && e.axis && e.amplitude > 0);
+  if (!good.length) return S.calibration;
+  const ref = good[good.length - 1].axis, cols = [[], [], []];
+  for (const e of good) {
+    // an eigenvector has no sign, so align before averaging or two consistent
+    // axes cancel each other out
+    const flip = (e.axis[0]*ref[0] + e.axis[1]*ref[1] + e.axis[2]*ref[2]) < 0 ? -1 : 1;
+    for (let k = 0; k < 3; k++) cols[k].push(flip * e.axis[k]);
+  }
+  const m = [med(cols[0]), med(cols[1]), med(cols[2])];
+  const norm = Math.hypot(m[0], m[1], m[2]);
+  if (!(norm > 1e-9)) return S.calibration;
+  return {
+    ...(S.calibration || {}),
+    axis: m.map(x => x / norm),
+    amplitude: Number(med(good.map(e => e.amplitude)).toFixed(4))
+  };
+}
+
 const out = {
   file, id: S.id, startedAt: S.startedAt,
   durationSec: f2(S.durationSec || t[n - 1]),
   derivedHz: f2(hz),
   motionRows: (S.motion && S.motion.rows && S.motion.rows.length) || 0,
   motionCount: (S.motion && S.motion.count) || 0,
-  calibration: S.calibration,
+  calibration: axisSummary(S),
   quality: { median: f2(med(quality)), p10: f2(pct(quality, 0.1)) },
   rate: { medianBpm: f2(med(bpmCol.filter(x => x > 0))), fromEvents: events.length },
   cycles: {

@@ -3,6 +3,13 @@
 Operating notes for coding agents working on **breathe**. Read this before editing anything.
 Design rationale and evidence live in `README.md`; this file is the contract.
 
+**Touching the signal chain — `breath.js`, `pulse.js`, or any constant in §4 — means
+reading [`recordings/CLAUDE.md`](recordings/CLAUDE.md) as well.** Nearly every number in
+§4 was measured against a specific recording, and that file says which one, what it
+measured, and what has already been tried and rejected. It also records the trap that
+this section is built to avoid: a constant fitted to one session, correct on the session
+it was fitted to and wrong on every other one in the repository.
+
 ---
 
 ## 1. What this is
@@ -30,12 +37,15 @@ src/hr.js               5b. heart rate recovered from a stored recording
 src/main.js             6. releases, lifecycle, render loop, drawing, wiring
 README.md               reasoning, decisions, evidence, limitations
 CLAUDE.md               this file
+recordings/             real sessions, and the evidence every §4 constant rests on
+recordings/CLAUDE.md    what each recording proved; read before tuning the chain
+recordings/README.md    how to get a session off a phone and into the repository
 tools/dsp-harness.mjs   headless Node test for the signal chain
 tools/smoke.mjs         runs the whole app in Node against stub DOM/audio/IndexedDB
 tools/stub/             the DOM, Web Audio and IndexedDB those tests run against
 tools/replay.mjs        replays an exported session through the real tracker
 tools/analyze.mjs       describes a recorded session: timing, depth, stillness
-tools/onset.mjs         measures how early the sound starts, against the raw tilt
+tools/onset.mjs         measures how early the sound starts at BOTH ends of a breath
 ```
 
 ---
@@ -87,9 +97,14 @@ on. If a helper in `main` is wanted somewhere else, move it to `util`, as `fitCa
 `<script type="module">` is deferred.
 
 Colours live in `app.css` and nowhere else. Canvas cannot use `var()`, so `palette()`
-reads the tokens once off `:root` and `alpha()` turns one into `rgba()`; a hex literal
-in a `.js` file is a bug, and a hex literal in a CSS *rule* (as opposed to a `:root`
-definition) is one too.
+reads the tokens once off `:root` and `alpha()` turns one into `rgba()`; a hex literal in
+a CSS *rule* (as opposed to a `:root` definition) is a bug, and so is one anywhere in
+`src/` except `palette()` itself. **`palette()` is the single exception and it is not a
+precedent.** Its literals are the fallbacks taken when `getComputedStyle` returns nothing
+— which is exactly what happens under the Node stub — so they have to be kept identical
+to `:root` or the canvas quietly draws in an older palette wherever the fallback is used.
+`tools/smoke.mjs` checks all three: no hex in a CSS rule, no hex in any `src/*.js` but
+`util.js`, and every `palette()` fallback equal to its token.
 
 There is no spoken guidance, no session length, and no calibration step. Start asks for
 motion access and the session begins; End stops it and lands on the summary. Do not add a
@@ -191,9 +206,11 @@ is how the sound gets auditioned, and it should audition against something breat
 **Nothing but `Recorder` may write a sample channel.** `Store._write` refuses any write
 that would replace a non-empty motion channel with an empty one, and says so in
 `lastError`. This is not defensive coding for its own sake: `Review.persist()` called
-`Store.put(this.session)` for a year, the session on that screen is deliberately fetched
-without its samples, and so the one action a person takes to make a recording more useful
-silently destroyed the raw signal of three of the four recordings in this repository.
+`Store.put(this.session)`, the session on that screen is deliberately fetched without its
+samples, and so the one action a person takes to make a recording more useful silently
+destroyed the raw signal of three of the four recordings that existed at the time. Two of
+those three were deleted as unreplayable; the survivor is `breathe-20260831-0853.json`,
+and it is still the one file here with no raw motion in it.
 
 There is now no metadata-edit path at all — nothing on the session screen writes anything,
 so `setTrim`, `setLabels` and `_editMeta` are gone (§6a). The store's refusal is what
@@ -202,6 +219,18 @@ of it. **Both ways into the session screen still fetch with `{motion:false}`**, 
 graph draws from `derived` at 10 Hz and materialising 48 000 motion rows for that is a pause
 nobody asked for. `Review.startHr()` reads the raw rows separately, once, after the screen
 is already up — and never writes them back.
+
+**A summary of a session is never the last sample of it.** `Store.calFromEvents` fills
+`calibration.axis` from the `axis` events, and it used to take the last one — which is the
+one event guaranteed to be wrong, because a session ends with the phone being picked up
+and the axis tracker follows it. The 0906 recording ran thirteen minutes at
+`[-0.03, 0.995, 0.09]` and was exported carrying `[-0.42, 0.90, 0.10]`, 24° off. Filtering
+on the event's own `ok` flag does not save you: confidence is an average over several
+cycles, so it lags, and it recovers to 0.59 and 0.84 while the axis is still 35° and 24° off. It
+takes the **median of the confident samples** now, and sign-aligns them first because an
+eigenvector has no sign and two consistent axes would otherwise cancel. `tools/analyze.mjs`
+does the same arithmetic so the files already committed read correctly. The same hazard
+applies to anything else summarised from the end of a session.
 
 **Language: the English lives in `index.html`, keyed by `data-t`.** `src/i18n.js` holds a
 table per language and `apply()` swaps the text in. So the page reads correctly before any
@@ -323,8 +352,12 @@ ones, so on asymmetric breathing the reported inhale runs ~0.4 s long and the ex
 short at a 7 s cycle. The total is unaffected. The harness asserts these bounds explicitly
 rather than the true values — if those checks start failing, the smoothing τ has moved.
 
-`finishCalibration()` also records `Breath.flipped` — whether the sign heuristic
-fired — purely so an exported session can say so. It changes no behaviour.
+`resolveSign()` sets `Breath.flipped` when it inverts the axis, and the render loop
+copies it into each `axis` event purely so an exported session can say so. It changes no
+behaviour, and **it is not a warning**: an eigenvector has no natural sign, so the flag
+says the mechanism ran, not that the session came out upside down. It is set on two of
+the thirteen recordings here and one of them is the reference session. (There is no
+`finishCalibration()`; there has been no calibration step for several releases.)
 `Breath.vel()` returns the *signed* velocity, −1..1, positive while inhaling. The
 audio engine needs direction; `speed()` only ever carried magnitude.
 
@@ -375,12 +408,37 @@ set it. Reseeding to 0.05 moves the first inhale's reference from 1.579 to 1.559
 gate not at all; doing both pins the reference at its own 0.05 floor for two breaths, and
 then no hold is detected at all. Do not re-derive this from the seed.
 
-`resting` needs 0.5 s of holding, and `restGate` fades in over
-0.30 s and out over 0.60 s. **`vel()` and `speed()` are both multiplied by `restGate`.**
+`resting` needs 0.35 s of holding, and `restGate` fades both ways over
+0.30 s. **`vel()` and `speed()` are both multiplied by `restGate`.**
 This exists because velocity is normalised against breathing rate in `Audio.frame()`: at
 5.4 /min the reference peak is 0.216, so a belly tremor of 0.05 divides out to a
 quarter-strength inhale. Comparing against the rate alone cannot tell a hold from a stroke;
 comparing against the user's own strokes can.
+
+**Those two numbers are a latency, and the two ends of a breath do not give it the same
+amount of time.** They were 0.5 s and 0.60 s — about 0.8 s from the belly stopping to the
+sound being gone. Across the eight recordings `tools/onset.mjs` can read, the median hold
+at the top of an inhale is about a second (0.48 to 2.55 s, six of the eight at or under
+1.05 s) where the bottom of an exhale holds about two and a half. So the bottom comfortably
+outlasted the latency and the top did not: the exhale swelled while the belly was still at
+the top, and the owner reported exactly that — the bottom good, the top too early. Time
+actually spent silent inside the top hold was 0.03 and 0.22 s on two of the 0.19.0 sessions
+against 1.13 and 0.80 s at their bottoms.
+
+**`breathe-20260830T223632.json` is why that lasted.** It is the recording every other
+constant in `detectRest` was measured against, and it is the *only* session of the eight
+that holds equally at both ends (2.55 / 2.45 s). Measured on it, a symmetric gate looks
+correct. This is the standing hazard in this section: a constant fitted to one recording,
+right on that recording and wrong everywhere else. **Check a change to any of these
+against every session `onset.mjs` can read, not against one.**
+
+The thresholds above (0.22 in, 0.50 out) were deliberately left alone — they decide
+*whether* a hold is a hold, and they were never what was wrong. Raising the enter
+threshold to 0.30 reads better on the early counts while taking the gate to 43–56 % of a
+session and pushing one session's inhale onset to 2.5 s *late*. That is buying silence,
+which is the failure this gate exists to avoid. A separate `slopePeak` per direction was
+also measured and rejected: the reference flips sign mid-hold and the top regressed on
+every other recording. Both are written up in `recordings/CLAUDE.md` §4 with the numbers.
 
 **Phase.** `phase = atan2(−ṡ_lp / ω, s)` with `ω` clamped to 0.25–2.2 rad/s and
 `ṡ` low-passed at τ = 0.28 s.
@@ -689,7 +747,7 @@ node tools/smoke.mjs            # everything else
 
 ### The DSP harness
 
-37 checks, all but two against synthetic tilt: axis recovery with no calibration step, rate tracking at
+38 checks, all but two against synthetic tilt: axis recovery with no calibration step, rate tracking at
 12, 6, 3 and ~2/min, inhale/exhale split, direction resolved from the lead-in with the phone
 inverted — and left alone when there is no lead-in to resolve it from — tolerance to
 0.6 m/s² per minute of postural drift, the quality meter, the phase convention, that the
@@ -699,11 +757,28 @@ ordinary stroke does neither — and that confidence separates breathing from a 
 Two checks replay real recordings from `recordings/` and skip rather than fail when it is
 not checked out: the bogus one, asserting peak confidence stays under 0.35 (it is 0.135),
 and the 2055 one, asserting the mean rest gate across its first real inhale clears 0.45
-(0.00 before the fix below, 0.86 after). The second is there because the synthetic feed
+(0.00 before the fix below, 0.77 now). The second is there because the synthetic feed
 structurally cannot catch it — it settles in three seconds and never opens the gain on a
-breath deeper than the seed expects, which is exactly the case that broke. Four more cover the pulse estimator: it recovers a synthetic 62 bpm
+breath deeper than the seed expects, which is exactly the case that broke.
+
+**Two of the rest checks are a pair and have to stay one.** One holds 8 s at the bottom of
+an exhale, which is the case the 0830 recording is full of; it cannot fail for a gate that
+is merely slow, because eight seconds forgives any latency — and a slow gate is exactly
+what was wrong at the top. The other holds 1.5 s at the *top* of an inhale, which is about
+what these recordings actually do there, and requires the sound to have gone quiet by the
+end of it: it reports 0.36 with the old constants and 0.08 with the current ones, and the
+noise moves neither by more than 0.01. Deleting the short one puts the §4 bug straight
+back within reach. Note that a synthetic hold *understates* the problem — the raised cosine
+turns sharply where a belly rounds off — so a real recording is still the better witness.
+
+Four more cover the pulse estimator: it recovers a synthetic 62 bpm
 heartbeat, it reports nothing on noise alone, it reads through the 0.12 m/s² a still body
 produces, and it refuses at the 0.8 m/s² of a phone being carried.
+
+**`feed()` advances `state.t` itself.** A hold loop that also advances it feeds the tracker
+33 ms samples and doubles the length of the hold it thinks it is testing; the 8 s check was
+really 16 s until this was fixed. If you write a new synthetic-hold check, freeze the phase
+and let `feed` keep the clock.
 
 It imports `src/breath.js` and `src/pulse.js` directly. It used to slice them out of
 `index.html` between two banner comments, which meant renaming a section silently broke
@@ -721,7 +796,7 @@ regression.
 
 `tools/smoke.mjs` runs the whole app in Node — `src/main.js` and everything it pulls in —
 against a stub DOM built from `index.html`, a stub Web Audio and an in-memory IndexedDB,
-all in `tools/stub/`. A hundred and sixty-four checks: it opens each panel, drives the update
+all in `tools/stub/`. A hundred and sixty-six checks: it opens each panel, drives the update
 flow (check, nothing new, a version arriving, a failed install, the handover), works the
 header's sound switch both ways, slows the wave with the pace slider and checks it really
 runs slower, turns on Demo mode, taps Start, watches the tracker stay silent until the phone
@@ -783,22 +858,40 @@ the tool reported no cycles at all.
 
 ```bash
 node tools/onset.mjs recordings/some-session.json
+node tools/onset.mjs recordings/some-session.json --src /tmp/variant-src   # A/B a change
 ```
 
 Ground truth is the accelerometer smoothed at τ = 0.35 s and nothing else — no high-pass,
 no AGC — projected on the axis the tracker settled on, with cycles segmented from *that*.
-It reports the median and worst lead in seconds, how much of the session read as held, and
-the gate at the steepest point of each real stroke, which is the check that a fix for "too
-early" has not simply bought silence. It needs raw motion rows, so it skips sessions
-exported before that fix.
+It needs raw motion rows, so it skips sessions exported before that fix. `--src` is the
+only flag.
 
-The harness cannot see this: it feeds a sinusoid, and a sinusoid has no holds in it, which
-is precisely the case that was broken. **Run it on a real recording after any change to the
-baseline, the AGC, or rest detection.**
+**It measures both turnarounds, and it did not always.** For its first few releases it
+reported only trough→peak, so every number it printed was about the bottom of a breath —
+which was fine, while the top was arriving up to 1.5 s early on recordings this tool
+called healthy. A tool that watches one end of a breath will be believed about both. It
+now reports, per direction: the lead in seconds, how many strokes opened more than half a
+second early, and the gate at the steepest point of each real stroke — the check that a
+fix for "too early" has not simply bought silence.
+
+**The last block is the one that matches what a person reports.** A lead in seconds says
+when the exhale channel crossed a quarter of its peak; it does not say whether there was
+ever any silence for it to interrupt. So it also finds each hold — the tracker's own rest
+test applied to the body — and prints how much of it the sound was actually silent for.
+That is the number that went 0.03 → 0.58 s at the top on the 2033 session.
+
+The harness cannot see any of this: it feeds a raised cosine, which has no holds in it,
+and a synthetic hold understates the problem because it turns sharply where a belly rounds
+off. **Run it on real recordings after any change to the baseline, the AGC, or rest
+detection — on every session it can read, not on one.** `recordings/CLAUDE.md` says which
+those are and what each is good for.
 
 `tools/analyze.mjs` describes a recording rather than re-running the tracker over it:
 cycle timing, stroke depth, how much of the session was spent held still, and how often
-the hysteresis would trip early. Use it to check a DSP change against real breathing.
+the hysteresis would trip early. Use it to check a DSP change against real breathing. Its
+`axis` line is recomputed from the session's `axis` events rather than read out of
+`calibration`, because that field was filled from the last event — sampled while the phone
+was being picked up — in anything exported before 0.20.0. See `recordings/CLAUDE.md` §6.
 
 ### Language
 
@@ -1015,8 +1108,9 @@ are the history; `RELEASES` is a message to a person. The changes screen and the
   deletes what that component declared for itself. Dimming did exactly this to the Adjust
   sheet and the notice. Adjust one from outside with `transition-duration` or
   `transition-property`; `tools/smoke.mjs` checks for the shorthand.
-- No hex literal outside the `:root` block, and none at all in a `.js` file. `palette()`
-  reads the tokens for canvas. Checked in `tools/smoke.mjs`.
+- No hex literal outside the `:root` block, and none in `src/` except the fallbacks in
+  `palette()`, which must stay equal to the tokens they fall back to. All three are
+  checked in `tools/smoke.mjs`.
 
 ---
 

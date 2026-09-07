@@ -265,6 +265,29 @@ const rootBlock = cssText.slice(cssText.indexOf(':root{'), cssText.indexOf('}', 
 const strayHex = [...cssText.replace(rootBlock, '').matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map(m => m[0]);
 check('no rule carries its own colour', strayHex.length === 0, strayHex.join(' '));
 
+/* palette() in util.js is the one place a colour may be written in JavaScript,
+   because canvas cannot read var() and getComputedStyle returns nothing under
+   the Node stub. Those literals are fallbacks for the tokens, so if they drift
+   from :root the canvas quietly draws in last month's palette wherever the
+   fallback is taken. Nothing tied the two together until this check. */
+const utilText = readFileSync(resolve(root, 'src', 'util.js'), 'utf8');
+const fallbacks = [...utilText.matchAll(/g\('(--[a-z]+)'\s*,\s*'(#[0-9a-fA-F]{3,8})'\)/g)]
+  .map(m => [m[1], m[2].toLowerCase()]);
+const drifted = fallbacks.filter(([tok, hex]) => {
+  const m = rootBlock.match(new RegExp(tok + '\\s*:\\s*(#[0-9a-fA-F]{3,8})\\b'));
+  return !m || m[1].toLowerCase() !== hex;
+});
+check("palette() fallbacks match :root", fallbacks.length >= 8 && drifted.length === 0,
+      drifted.length ? drifted.map(d => d.join(' ')).join(', ') : fallbacks.length + ' tokens');
+
+// And nowhere else in src/ may write one: palette() is the exception, not a
+// precedent. A hex in a render path is a colour that cannot be themed.
+const otherHex = readdirSync(resolve(root, 'src'))
+  .filter(f => f.endsWith('.js') && f !== 'util.js')
+  .flatMap(f => [...readFileSync(resolve(root, 'src', f), 'utf8')
+    .matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map(m => f + ':' + m[0]));
+check('no hex literal outside palette()', otherHex.length === 0, otherHex.join(' '));
+
 // The `transition` shorthand resets every transition property, so a rule that
 // carries one and out-specifies a component's own rule silently deletes what
 // that component declared for itself. Dimming did exactly this to the Adjust

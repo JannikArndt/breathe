@@ -310,11 +310,57 @@ export const Breath = {
     // the threshold cannot chatter.
     if(r < 0.22)      this.stillFor += dt;
     else if(r > 0.50) this.stillFor = 0;
-    this.resting = this.stillFor > 0.5;              // 0.5 s of holding, not a zero crossing
-    // Open in 0.30 s so a real inhale is not audibly late; close in 0.60 s so
-    // the sound settles rather than cutting.
+    // The thresholds above decide WHETHER a hold is a hold. These two decide how
+    // fast the gate can act on one, and that is a race against the length of the
+    // hold — which is not the same at both ends of a breath.
+    //
+    // It was 0.5 s here with a 0.60 s release: about 0.8 s from the belly
+    // stopping to the gate being shut. THE TWO ENDS OF A BREATH DO NOT GIVE IT
+    // THE SAME AMOUNT OF TIME. Across the eight recordings tools/onset.mjs can
+    // read, the median hold at the top of an inhale is 0.48, 0.48, 0.87, 1.02,
+    // 1.03, 1.05, 1.33 and 2.55 s, against 0.45, 0.92, 1.37, 2.45, 2.85, 4.48,
+    // 5.33 and 8.72 s at the bottom — about a second at the top against about
+    // two and a half at the bottom. So the same latency that the bottom hold
+    // comfortably outlasts eats the whole of the top one, and the gate was
+    // still fading when the exhale began.
+    //
+    // 0830 is the reason this went unseen for so long: it is the recording
+    // every other constant in detectRest was measured against, and it is the
+    // ONE session of the eight that holds equally at both ends (2.55 / 2.45 s).
+    // Measured on it, a symmetric gate looks correct. Measured on any other
+    // recording in the repository, it does not.
+    //
+    // 0.35 s and 0.30 s is the point chosen from a 3x3 grid of the two. Time
+    // actually spent silent inside the top hold, before -> after, over those
+    // eight: 2.02->2.20, 0.00->0.18, 0.00->0.62, 0.00->0.33, 0.40->0.48,
+    // 0.03->0.58, 0.22->0.85, 0.00->0.00 s. Breaths opening the exhale channel
+    // more than half a second before the belly has descended a sixth of a
+    // stroke: 2/23->1/23, 0/17, 12/17->11/17, 0/7, 6/26, 11/40->7/40,
+    // 15/51->14/51, 13/47->8/47. Better on four, unchanged on four, worse on
+    // none. The inhale onset does not move on seven of the eight.
+    //
+    // The cost is one number on one session: 2041's inhale arrives 0.82 s late
+    // instead of 0.27 s. That session's exhale is 1.33x faster than its inhale,
+    // so slopePeak is set by the exhale and the inhale then has to climb to half
+    // of the OTHER stroke's peak before the gate reopens. That is a real and
+    // separate weakness — see the open question in recordings/CLAUDE.md — and
+    // the obvious fix for it, a reference per direction, was measured and
+    // rejected: the reference flips sign mid-hold, and the top then regressed on
+    // every other recording (0830 went 1/23 -> 6/23 early, p90 0.22 -> 0.85 s).
+    //
+    // Two more things measured and NOT taken. Going further here, to 0.25 s,
+    // buys 2033 one breath (7/40 -> 6/40) and costs 2041 four times over
+    // (-0.82 -> -1.92 s late, with whole inhales silent). And raising the enter
+    // threshold 0.22 -> 0.30 as well reads better on these counts while taking
+    // the gate to 43-56% of a session — that is buying silence, which is the
+    // failure this gate exists to avoid. Leave the thresholds alone: they decide
+    // whether a hold is a hold, and they were never what was wrong.
+    this.resting = this.stillFor > 0.35;
+    // Open in 0.30 s so a real inhale is not audibly late, and close in 0.30 s
+    // too: a hold at the top of an inhale is often only a second long, and a
+    // slower close spends the whole of it fading.
     const want = this.resting ? 0 : 1;
-    this.restGate = lp(this.restGate, want, dt, want ? 0.30 : 0.60);
+    this.restGate = lp(this.restGate, want, dt, 0.30);
   },
 
   detectCycle(sN, t){

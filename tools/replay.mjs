@@ -10,12 +10,13 @@
  *
  *   node tools/replay.mjs session.json
  *   node tools/replay.mjs session.json --from 300 --to 480
- *   node tools/replay.mjs session.json --html ../other.html --json
+ *   node tools/replay.mjs session.json --src ../other-src/ --json
  *
  * --from/--to bound what is *reported and plotted*, in seconds from the start
  * of the recording. The tracker is always fed from t=0 regardless, because its
- * baseline (tau = 12 s) and AGC (tau = 14 s) filters carry state: replaying a
- * stretch cold would measure the settling transient, not the algorithm.
+ * baseline (tau = 3 breaths, 12-150 s) and AGC (tau = 14 s) filters carry state:
+ * replaying a stretch cold would measure the settling transient, not the
+ * algorithm.
  *
  * Exit code 0 on a successful replay, 1 on a bad file or a failed slice.
  */

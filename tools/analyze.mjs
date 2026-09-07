@@ -210,7 +210,10 @@ function axisSummary(S){
 
 const out = {
   file, id: S.id, startedAt: S.startedAt,
-  durationSec: f2(S.durationSec || t[n - 1]),
+  // A session past the recorder's 45-minute motion cap was written with a
+  // durationSec measured off the motion channel alone; the derived channel is
+  // the one that ran to the end. Take whichever is longer.
+  durationSec: f2(Math.max(S.durationSec || 0, t[n - 1])),
   derivedHz: f2(hz),
   motionRows: (S.motion && S.motion.rows && S.motion.rows.length) || 0,
   motionCount: (S.motion && S.motion.count) || 0,

@@ -744,6 +744,44 @@ if(rows.length){
         Math.abs(Review.det.span - Review.det.dur) < 0.01,
         Review.det.span.toFixed(0) + 's of ' + Review.det.dur.toFixed(0) + 's');
 
+  /* Everything under the graph reads off the slice the fine lane is showing.
+     That is the whole point of the screen, so it is checked rather than
+     assumed: the same session measured over half of itself must report a
+     shorter stretch and fewer breaths in it. A screen that draws a window and
+     then reports the session would look right and say the wrong thing. */
+  const cellFor = name => $('revGrid').querySelectorAll('.cell')
+    .filter(c => c.querySelectorAll('.k').some(k => k.textContent === name))
+    .map(c => c.querySelectorAll('.v').map(v => v.textContent).join(''))[0] || '';
+  const whole = {sel: cellFor('Selected'), n: Review.stats.breaths};
+  check('the numbers describe the whole recording when the whole of it is in view',
+        whole.sel === Review.clock(Review.det.dur) && whole.n > 0,
+        `${whole.sel}, ${whole.n} breaths`);
+  Review.det.span = Review.det.dur/2;
+  Review.setPlay(Review.det.dur/4);
+  const half = {sel: cellFor('Selected'), n: Review.stats.breaths};
+  check('and follow the selection when you zoom into part of it',
+        Review.stats.sec < Review.det.dur*0.75 && half.n < whole.n && half.n > 0,
+        `${whole.sel}/${whole.n} -> ${half.sel}/${half.n}`);
+
+  /* The four parts of a breath are seconds per breath, not per stroke, so they
+     have to add up to one cycle. If they ever stop doing that the ratio under
+     them has quietly become four unrelated numbers with colons between. */
+  Review.zoomBy(1000, Review.det.play);
+  const st = Review.stats;
+  const parts = st.inhale + st.top + st.exhale + st.bottom;
+  const cycle = st.bpm.avg > 0 ? 60/st.bpm.avg : 0;
+  check('the four parts of a breath add up to one breath',
+        cycle > 0 && Math.abs(parts - cycle) < cycle*0.08,
+        `${parts.toFixed(1)}s of a ${cycle.toFixed(1)}s cycle`);
+  check('and are written out as a ratio', /\d/.test($('revRatio').textContent),
+        JSON.stringify($('revRatio').textContent));
+
+  // The rate distribution is drawn, and says which line is which underneath.
+  check('the rate distribution is drawn',
+        ($('revDistCv').getContext('2d').calls.fillRect || 0) > 4 &&
+        $('revDistKey').children.length === 3,
+        `${$('revDistCv').getContext('2d').calls.fillRect} bars, ${$('revDistKey').children.length} legend entries`);
+
   // Opening a recording must never cost a sample. Nothing on this screen
   // writes any more, but the store's refusal is what actually guarantees it.
   const rec0 = (await Store.list())[0];

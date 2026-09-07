@@ -68,14 +68,16 @@ export const Review = {
   /** projected signal unpacked from derived.rows, built once per session */
   sig:{ n:0 },
 
-  /* fine-lane widths. 0 means "the whole recording". 8 s is the
-     finest useful step: below that a breath no longer fits on screen. */
-  SPANS:[[0,'Whole'],[120,'2 min'],[30,'30 s'],[8,'8 s']],
+  /* Everything under the graph is measured over the slice the fine lane is
+     showing, so panning and zooming re-reads the session rather than only
+     re-drawing it. `seg` is the segmentation that makes that cheap: turning
+     points, strokes and holds for the whole recording, found once when the
+     screen opens. A pinch is a frame-rate event and re-walking 38 000 samples
+     inside one is a stutter you can feel.
 
-  /* seconds. Under this a session gets a Discard button on its summary. Half a
-     minute is about one slow breath plus the settling either side of it, so
-     there is nothing in a recording this short worth keeping. */
-  DISCARD_UNDER: 30,
+     The row of fixed span buttons that used to live here is gone; SPANS went
+     with it, and DISCARD_UNDER went with the separate Discard button. */
+  seg:null,
 
   /* ---------- lazy DOM + palette ---------- */
 
@@ -91,6 +93,9 @@ export const Review = {
       grid:$('revGrid'), flag:$('revFlag'), cap:$('revCap'),
       rows:$('revRows'), listEmpty:$('revListEmpty'), listFoot:$('revListFoot'),
       over:$('revOver'), fine:$('revFine'),
+      distWrap:$('revDist'), distHead:$('revDistHead'),
+      dist:$('revDistCv'), distKey:$('revDistKey'),
+      phaseWrap:$('revPhase'), quad:$('revQuad'), ratio:$('revRatio'),
       exportBtn:$('revExport'), deleteBtn:$('revDelete')
     };
     this.wire();
@@ -197,9 +202,12 @@ export const Review = {
     d.deleteBtn.dataset.armed = '0';
     d.deleteBtn.textContent = t('rev.delete', null, 'Delete this recording');
     this.prepare(session);
-    this.det.play = 0;
-    // Two breaths at the slowest rate the app follows is a minute and a half.
-    this.det.span = this.det.dur > 180 ? 90 : Math.max(this.det.dur, 1);
+    /* Open on the whole recording. Every number under the graph now describes
+       the slice in view, so opening on a ninety-second window — which is what
+       this did when the lane was only somewhere to scrub — meant a session
+       screen whose first answer to "how many breaths was that" was four. */
+    this.det.span = Math.max(this.det.dur, 1);
+    this.det.play = this.det.dur/2;
     this.renderInfo();
     this.redraw();
     this.startHr();
@@ -252,68 +260,80 @@ export const Review = {
     this.hrJob = null;
   },
 
+  /* ---------- the numbers under the graph ----------
+     Two halves. renderInfo() builds the cells and writes the sentences, once
+     per session; renderStats() writes the values into them, on every pan and
+     every pinch. They are split because the second one runs at the frame rate:
+     rebuilding a dozen elements inside a pinch churns the DOM for no visible
+     gain, and the labels do not change when the window does. */
+
   renderInfo(){
-    const d = this._dom, s = this.session, sum = (s && s.summary) || {};
+    const d = this._dom, s = this.session;
     if(!s) return;
-    const dur = this.det.dur;
-    const cell = (k, v, small)=>{
-      const c = this.h('div','cell');
-      c.appendChild(this.h('div','k',k));
-      const val = this.h('div','v', v);
-      if(small) val.appendChild(this.h('small',null,' '+small));
-      c.appendChild(val);
-      return c;
-    };
-    const bpm = v => (v>0 && isFinite(v)) ? nfmt(v, 1) : '\u2014';
 
-    const q = (sum.meanQuality!=null) ? sum.meanQuality : this.meanOf('q');
-    // Recordings made before these were summarised fall back to the signal.
-    const rate = this.rateStats(sum);
-
-    const g = d.grid;
-    g.textContent = '';
+    // Every value is written by renderStats(); this only puts the cells there
+    // and remembers where they are.
     const min = t('unit.min', null, '/min');
-    g.appendChild(cell(t('rev.length', null, 'Length'), this.clock(dur)));
-    g.appendChild(cell(t('rev.breaths', null, 'Breaths'), (sum.breaths!=null && sum.breaths>0) ? String(sum.breaths) : '\u2014'));
-    g.appendChild(cell(t('rev.avg', null, 'Average rate'), bpm(rate.avg), min));
-    g.appendChild(cell(t('rev.slowest', null, 'Slowest'), bpm(rate.min), min));
-    g.appendChild(cell(t('rev.fastest', null, 'Fastest'), bpm(rate.max), min));
+    const grid = [
+      ['dur',    t('rev.length',   null, 'Length'),       ''],
+      ['sel',    t('rev.selected', null, 'Selected'),     ''],
+      ['breaths',t('rev.breaths',  null, 'Breaths'),      ''],
+      ['p50',    t('rev.median',   null, 'Median rate'),  min],
+      ['avg',    t('rev.avg',      null, 'Average rate'), min],
+      ['p95',    t('rev.p95',      null, 'p95 rate'),     min],
+      ['held',   t('rev.held',     null, 'Held still'),   ''],
+      ['long',   t('rev.longhold', null, 'Longest hold'), 's'],
+      // Heart rate last, because it is the least sure of itself: an estimate
+      // from the same accelerometer, never checked against a real pulse, and
+      // labelled as an estimate wherever it appears.
+      ['hr',     t('rev.hr',       null, 'Heart rate'),   '']
+    ];
+    // The four parts of one breath. In and out are the strokes with any pause
+    // inside them taken out, so the four add up to the cycle.
+    const quad = [
+      ['in',  t('rev.in',     null, 'In'),     's'],
+      ['top', t('rev.top',    null, 'Top'),    's'],
+      ['out', t('rev.out',    null, 'Out'),    's'],
+      ['bot', t('rev.bottom', null, 'Bottom'), 's']
+    ];
+    this.cells = {};
+    const fill = (host, rows) => {
+      host.textContent = '';
+      for(const [key, label, unit] of rows){
+        const c = this.h('div','cell');
+        c.appendChild(this.h('div','k',label));
+        const v = this.h('div','v','—');
+        const u = unit ? this.h('small', null, ' '+unit) : null;
+        if(u) v.appendChild(u);
+        c.appendChild(v);
+        host.appendChild(c);
+        this.cells[key] = {v, u};
+      }
+    };
+    fill(d.grid, grid);
+    fill(d.quad, quad);
 
-    // Two more measurements, not two more verdicts. In and out are the halves
-    // the live readout shows, averaged; held is how much of the session the app
-    // read as a pause rather than a stroke, which for slow breathing is most of
-    // what distinguishes one session from another.
-    const inS = sum.meanInhaleSec, outS = sum.meanExhaleSec;
-    g.appendChild(cell(t('rev.inout', null, 'In / out'),
-      (inS > 0 && outS > 0) ? nfmt(inS,1) + ' / ' + nfmt(outS,1) : '\u2014', 's'));
-    g.appendChild(cell(t('rev.held', null, 'Held still'),
-      (sum.heldFraction != null && this.sig.n) ? Math.round(sum.heldFraction*100) + '%' : '\u2014'));
-
-    // The longest single pause. At three breaths a minute the interesting
-    // thing about a session is not the average of anything, it is how long the
-    // bottom of a breath was allowed to last.
-    const hold = this.longestHold();
-    g.appendChild(cell(t('rev.longhold', null, 'Longest hold'),
-      hold > 0 ? nfmt(hold, 1) : '\u2014', 's'));
-
-    // Heart rate last, because it is the least sure of itself: an estimate
-    // from the same accelerometer, never checked against a real pulse, and
-    // labelled as an estimate wherever it appears.
-    const hs = this.hr ? HR.summary(this.hr) : null;
-    g.appendChild(cell(t('rev.hr', null, 'Heart rate'),
-      hs ? (hs.bpm > 0 ? String(Math.round(hs.bpm)) : '\u2014') : '\u2026',
-      hs && hs.bpm > 0 ? t('rev.hr.est', null, 'est /min') : ''));
-
-    // Facts about the recording, not about the person. A failed calibration
-    // or a noisy signal changes how much the numbers above are worth, so say so.
+    // Facts about the recording, not about the person. A failed calibration or
+    // a noisy signal changes how much the numbers above are worth, so say so.
     const flags = [];
-    if(rate.avg === 0)
+    const q = this.meanOf('q');
+    if(!this.sig.n)
+      flags.push(t('rev.noflag.sig', null, 'This recording has no waveform stored, so the trace is empty.'));
+    else if(!this.seg || !this.seg.cycle.length)
       flags.push(t('rev.noflag.rate', null, 'This recording never settled into a rhythm the app could read, so no rate is given.'));
     else if(q > 0 && q < 0.4)
       flags.push(t('rev.noflag.q', null, 'The signal was noisy for most of this session. The rates above are approximate.'));
-    if(!this.sig.n)
-      flags.push(t('rev.noflag.sig', null, 'This recording has no waveform stored, so the trace is empty.'));
-    if(hs && hs.of > 0 && hs.bpm <= 0)
+    // Past the recorder's motion cap the waveform carries on and the raw signal
+    // does not, so the heart rate simply stops partway along the lane. Better
+    // to say why than to let a line that ends look like a body that stopped.
+    const cut = this.truncatedAt();
+    if(cut > 0)
+      flags.push(t('rev.noflag.trunc', [this.clock(cut)],
+        'Raw motion was only kept for the first ' + this.clock(cut) +
+        ', so the heart rate stops there. The breathing trace runs to the end.'));
+    if(this.sig.n && !this.sig.hasRest)
+      flags.push(t('rev.noflag.rest', null, 'This recording was made before the app stored where it heard you pausing, so the two hold figures are blank.'));
+    if(this.hr && this.hr.n === 0)
       flags.push(t('rev.noflag.hr', null, 'No heartbeat could be picked out of this recording.'));
     // Something the app changed because of this session, set by whoever changed
     // it. It goes here rather than in a toast because this is where you are
@@ -322,35 +342,165 @@ export const Review = {
     if(this.note) flags.push(this.note);
     d.flag.textContent = flags.join(' ');
     d.flag.classList.toggle('hidden', !flags.length);
+
+    this.renderStats();
   },
 
-  /** Longest run the app read as held, in seconds. */
-  longestHold(){
-    const S = this.sig;
-    if(!S.n || !S.hasRest) return 0;
-    let best = 0, from = -1;
-    for(let i=0;i<=S.n;i++){
-      const on = i<S.n && S.g[i] < 0.5;
-      if(on && from<0) from = i;
-      else if(!on && from>=0){ best = Math.max(best, S.t[i-1]-S.t[from]); from = -1; }
-    }
-    return best;
+  /** Where the raw motion stopped, when it stopped before the session did. */
+  truncatedAt(){
+    const evs = (this.session && this.session.events) || [];
+    for(let i=0;i<evs.length;i++)
+      if(evs[i] && evs[i].type === 'recording-truncated')
+        return +evs[i].afterSec || +evs[i].tSec || 0;
+    return 0;
   },
 
-  /** Rate min/avg/max, from the stored summary when it has them and from the
-      recorded rate channel when it does not. Zeros are excluded throughout: a
-      zero means no cycle had been timed yet, not a rate of zero. */
-  rateStats(sum){
-    if(sum && sum.minBpm > 0 && sum.maxBpm > 0)
-      return {min:sum.minBpm, avg:sum.meanBpm, max:sum.maxBpm};
-    const S = this.sig;
-    let lo=Infinity, hi=0, tot=0, k=0;
-    for(let i=0;i<S.n;i++){
-      const v = S.b[i];
-      if(v > 0){ if(v<lo) lo=v; if(v>hi) hi=v; tot+=v; k++; }
+  /** Write the current window's measurements into the cells. */
+  renderStats(){
+    const d = this._dom;
+    if(!this.cells || !d) return;
+    const win = this.fineWindow();
+    const st = this.stats = this.windowStats(Math.max(win.t0, 0),
+                                             Math.min(win.t1, this.det.dur));
+    const dash = '—';
+    const put = (key, text) => {
+      const c = this.cells[key]; if(!c) return;
+      // The unit is a child of the value, so replacing the text means putting
+      // it back rather than writing over it.
+      c.v.textContent = text;
+      if(c.u) c.v.appendChild(c.u);
+    };
+    const sec = v => (v > 0 && isFinite(v)) ? nfmt(v, 1) : dash;
+    const rate = v => (v > 0 && isFinite(v)) ? nfmt(v, 1) : dash;
+
+    put('dur',     this.clock(this.det.dur));
+    put('sel',     this.clock(st.sec));
+    put('breaths', st.breaths > 0 ? String(st.breaths) : dash);
+    put('p50',     rate(st.bpm.p50));
+    put('avg',     rate(st.bpm.avg));
+    put('p95',     rate(st.bpm.p95));
+    put('held',    st.held == null ? dash : Math.round(st.held*100) + '%');
+    put('long',    sec(st.longest));
+    put('hr',      this.hr === null ? '…' : (st.hr > 0 ? String(Math.round(st.hr)) : dash));
+    const hrUnit = this.cells.hr && this.cells.hr.u;
+    if(hrUnit) hrUnit.textContent = st.hr > 0 ? ' ' + t('rev.hr.est', null, 'est /min') : '';
+
+    put('in',  sec(st.inhale));
+    put('top', sec(st.top));
+    put('out', sec(st.exhale));
+    put('bot', sec(st.bottom));
+
+    d.distHead.textContent = t('rev.dist', null, 'Breathing rate') +
+      ' · ' + this.clock(st.sec);
+    d.ratio.textContent = '';
+    const r = this.ratio(st);
+    if(r){
+      d.ratio.appendChild(this.h('span', null, t('rev.ratio', null, 'Ratio')));
+      d.ratio.appendChild(document.createTextNode(r));
     }
-    if(!k) return {min:0, avg:(sum && sum.meanBpm) || 0, max:0};
-    return {min:lo, avg:tot/k, max:hi};
+  },
+
+  /** The four parts as a ratio. Whole seconds when every one of them is a
+      second or more, so the rhythm people call box breathing reads as the
+      4 : 4 : 4 : 4 it is named after; one decimal when any part is shorter,
+      because rounding a 0.4 s pause to zero would say there was no pause. */
+  ratio(st){
+    // A recording made before the gate was stored has no pauses to report, and
+    // two zeros in a four-part ratio would read as a breath with no pause in it
+    // rather than as a recording that cannot say. The cells show a dash and the
+    // ratio stays away.
+    if(!this.sig.hasRest) return '';
+    const v = [st.inhale, st.top, st.exhale, st.bottom];
+    if(!v.some(x => x > 0 && isFinite(x))) return '';
+    const dp = v.some(x => x > 0 && x < 1) ? 1 : 0;
+    return v.map(x => nfmt(x > 0 ? x : 0, dp)).join(' : ');
+  },
+
+  /* ---------- the rate distribution ----------
+     A histogram of how much of the selected stretch was spent at each rate. It
+     is weighted by time rather than by breath, for the reason windowStats()
+     gives: counting breaths says a stretch was fast when nearly all of it was
+     slow. The three markers are the two percentiles and the mean, which is the
+     same number as breaths divided by minutes. */
+
+  DIST_BINS: 34,
+
+  distBins(st){
+    const cyc = st.cycles;
+    if(cyc.length < 2) return null;
+    let lo = st.bpm.lo, hi = st.bpm.hi;
+    if(!(hi > lo)){ lo = Math.max(0, lo - 1); hi = lo + 2; }
+    // A little air either side, so the tallest bar is not flush with an edge.
+    const air = (hi - lo)*0.06;
+    lo = Math.max(0, lo - air); hi = hi + air;
+    const n = this.DIST_BINS, bin = new Float64Array(n), wid = (hi - lo)/n;
+    // The few breaths outside the axis land in the end bins rather than being
+    // dropped: the bars still add up to the stretch they describe.
+    for(let i=0;i<cyc.length;i++)
+      bin[clamp(Math.floor((cyc[i].bpm - lo)/wid), 0, n-1)] += cyc[i].sec;
+    let peak = 0;
+    for(let i=0;i<n;i++) if(bin[i] > peak) peak = bin[i];
+    return {lo, hi, bin, peak};
+  },
+
+  drawDist(){
+    const d = this._dom;
+    const {ctx,w,h} = fitCanvas(d.dist);
+    const K = this.ink();
+    this.ground(ctx,w,h);
+    d.distKey.textContent = '';
+    const st = this.stats;
+    const D = st ? this.distBins(st) : null;
+    const base = h - 13;
+
+    if(!D || !D.peak){
+      ctx.fillStyle = K.mute; ctx.globalAlpha = .7;
+      ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'center';
+      ctx.fillText(t('rev.nodist', null, 'Not enough breaths in this stretch'), w/2, h/2+3);
+      ctx.textAlign = 'start'; ctx.globalAlpha = 1;
+      return;
+    }
+
+    const bw = w/D.bin.length;
+    ctx.fillStyle = K.you; ctx.globalAlpha = .5;
+    for(let i=0;i<D.bin.length;i++){
+      const bh = D.bin[i]/D.peak*(base - 6);
+      if(bh <= 0) continue;
+      ctx.fillRect(i*bw + 0.5, base - bh, Math.max(bw - 1, 1), bh);
+    }
+    ctx.globalAlpha = 1;
+
+    const xOf = v => clamp((v - D.lo)/(D.hi - D.lo), 0, 1)*w;
+    const mark = (v, dash, colour) => {
+      if(!(v > 0)) return;
+      const x = clamp(xOf(v), 0.5, w - 0.5);
+      ctx.strokeStyle = colour; ctx.lineWidth = 1.4; ctx.globalAlpha = .9;
+      ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(x, 2); ctx.lineTo(x, base); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    };
+    mark(st.bpm.p95, [2,3], K.beat);
+    mark(st.bpm.avg, [5,3], K.foam);
+    mark(st.bpm.p50, [],    K.pace);
+
+    // The axis is two numbers, because a histogram this short has room for the
+    // ends of its range and nothing else.
+    ctx.fillStyle = K.mute; ctx.globalAlpha = .6;
+    ctx.font = '9px ui-monospace, monospace';
+    ctx.fillText(nfmt(D.lo, 1), 3, h - 3);
+    ctx.textAlign = 'end'; ctx.fillText(nfmt(D.hi, 1) + ' ' + t('unit.min', null, '/min'), w - 3, h - 3);
+    ctx.textAlign = 'start'; ctx.globalAlpha = 1;
+
+    // Which line is which, in words, under the picture. A canvas legend would
+    // be four more strings to lay out and none of them selectable.
+    const key = (label, v) => {
+      const n = this.h('span', null, label + ' ');
+      n.appendChild(this.h('b', null, nfmt(v, 1)));
+      d.distKey.appendChild(n);
+    };
+    key(t('rev.median', null, 'Median rate'), st.bpm.p50);
+    key(t('rev.avg',    null, 'Average rate'), st.bpm.avg);
+    key(t('rev.p95',    null, 'p95 rate'), st.bpm.p95);
   },
 
   /* ---------- 2. recordings ---------- */
@@ -514,15 +664,256 @@ export const Review = {
       g[i] = hasG ? (+r[ci.rest]||0) : 1;
     }
     this.sig = { n, t, s, b, q, g, hasRest: hasG };
-    this.det.dur = session.durationSec || (n ? t[n-1] : 0);
+    // Whichever channel ran longest. A session past the 45-minute motion cap
+    // was written with a durationSec taken off the motion channel alone, so
+    // recordings already on a phone carry a length shorter than their own
+    // waveform; clamping the time axis to it made the last stretch of the
+    // recording unreachable. Store no longer writes one, and this reads past
+    // the ones that were already written.
+    this.det.dur = Math.max(session.durationSec || 0, n ? t[n-1] : 0);
     this.det.play = clamp(this.det.play, 0, this.det.dur);
     if(!(this.det.span>0)) this.det.span = this.det.dur || 30;
+    this.segment();
     return this.sig;
+  },
+
+  /* ---------- the shape of a breath, found once ----------
+     Every number under the graph is measured over the slice the fine lane is
+     showing, which means panning and zooming re-read the recording rather than
+     only re-drawing it. Doing that from the samples would be a stutter you can
+     feel: a pinch is a frame-rate event and the whole channel is 38 000 rows.
+     So the expensive half runs once, when the screen opens, and a window is
+     then a filter over a few hundred strokes.
+
+     It reads the stored waveform, not the raw motion — this screen deliberately
+     never loads the motion channel (CLAUDE.md 6a), and 10 Hz is thirty-five
+     samples across the fastest cycle the detector will accept. */
+
+  /* The live detector's own numbers, so this is the same rule rather than a
+     second one that agrees most of the time. CLAUDE.md 4 and src/breath.js. */
+  SEED_AMP: 1.7,          // what a relaxed breath measures, normalised
+  AMP_A: 0.25,            // settles over about four breaths
+  AMP_LO: 0.35, AMP_HI: 3.6,
+
+  /* The count describes the waveform on screen, so it is not the live band.
+     The tracker discards a period outside 3–70 s from its *rate estimate*,
+     which is a different job: it emits a breath on every peak regardless, and
+     that is why a session recorded at 18 a minute carries breath events whose
+     periods sit under three seconds. Rejecting those here would have shown 213
+     breaths for a stretch that has 375 in it. 1.5 s is 40 a minute — still
+     above anything a resting body does, so the bogus recording's 1.2 s
+     "breaths" stay out — and 120 s is twice the slowest breath the app claims
+     to follow. */
+  MIN_PERIOD: 1.5,
+  MAX_PERIOD: 120,
+  /* The gate fades over 0.30 s either way, so anything shorter than that is
+     the fade rather than a pause. */
+  MIN_HOLD: 0.3,
+
+  /** Peak/trough with hysteresis, the same rule the tracker runs live: the
+      threshold scales to how deeply this user is breathing at the time, so it
+      follows a session that changes depth partway through instead of being set
+      once for the whole of it. That matters on a recording with two regimes in
+      it — a stroke six times shallower than the one before it is still a
+      stroke. Kind is 1 for a peak and 0 for a trough; `s` rises through the
+      inhale, so a trough is the bottom of an exhale. */
+  turns(){
+    const S = this.sig, out = [];
+    if(S.n < 2) return out;
+    let amp = this.SEED_AMP, H = clamp(amp*0.30, 0.30, 0.80);
+    let mx = S.s[0], mn = S.s[0], mxi = 0, mni = 0, up = null, peak = null, trough = null;
+    const learn = () => {
+      if(peak === null || trough === null) return;
+      const a = Math.abs(peak - trough);
+      if(a > this.AMP_LO && a < this.AMP_HI) amp += (a - amp)*this.AMP_A;
+      H = clamp(amp*0.30, 0.30, 0.80);
+    };
+    for(let i=1;i<S.n;i++){
+      const v = S.s[i];
+      if(v > mx){ mx = v; mxi = i; }
+      if(v < mn){ mn = v; mni = i; }
+      if(up !== false && v < mx - H){
+        out.push({t:S.t[mxi], v:mx, kind:1});
+        peak = mx; learn();
+        up = false; mn = v; mni = i;
+      }else if(up !== true && v > mn + H){
+        out.push({t:S.t[mni], v:mn, kind:0});
+        trough = mn; learn();
+        up = true; mx = v; mxi = i;
+      }
+    }
+    return out;
+  },
+
+  /** Turning points, strokes, holds and cycles for the whole recording. */
+  segment(){
+    const S = this.sig;
+    this.seg = {turn:[], hold:[], stroke:[], cycle:[]};
+    if(S.n < 4) return this.seg;
+
+    const tp = this.turns();
+
+    /* Holds come from the recorded rest gate rather than a second slope test,
+       so the seconds under the graph and the shading on it can never disagree
+       about where a breath stopped. A recording made before the gate was stored
+       has no holds, and reports none rather than inventing them. */
+    const hold = [];
+    if(S.hasRest){
+      let from = -1;
+      for(let i=0;i<=S.n;i++){
+        const on = i<S.n && S.g[i] < 0.5;
+        if(on && from<0) from = i;
+        else if(!on && from>=0){
+          const a = S.t[from], b = S.t[i-1];
+          if(b-a >= this.MIN_HOLD) hold.push({t0:a, t1:b, sec:b-a, mid:(a+b)/2, kind:-1});
+          from = -1;
+        }
+      }
+    }
+    /* A hold at the top of an inhale straddles the peak and one at the bottom
+       straddles the trough, so it is the *nearest* turning point that says which
+       end a hold belongs to. Taking the last turn before it — which is what
+       tools/analyze.mjs does, and is right for what that tool asks — would call
+       every bottom hold a top one here, because the belly stops before the
+       signal reaches its minimum. */
+    if(tp.length){
+      let k = 0;
+      for(let i=0;i<hold.length;i++){
+        const m = hold[i].mid;
+        while(k+1 < tp.length && Math.abs(tp[k+1].t - m) <= Math.abs(tp[k].t - m)) k++;
+        hold[i].kind = tp[k].kind;
+      }
+    }
+
+    /* Held time inside an interval, so an inhale is the stroke minus the pause
+       that sits inside it rather than the whole gap between two turning points.
+       Both lists are in time order, so the search starts where the last one
+       stopped instead of walking the holds again for every stroke. */
+    let hi0 = 0;
+    const heldIn = (a,b)=>{
+      while(hi0 > 0 && hold[hi0-1].t1 > a) hi0--;
+      while(hi0 < hold.length && hold[hi0].t1 <= a) hi0++;
+      let sum = 0;
+      for(let i=hi0;i<hold.length;i++){
+        if(hold[i].t0 >= b) break;
+        sum += Math.min(hold[i].t1,b) - Math.max(hold[i].t0,a);
+      }
+      return sum;
+    };
+
+    const stroke = [], cycle = [];
+    for(let i=0;i+1<tp.length;i++){
+      const a = tp[i], b = tp[i+1], sec = b.t - a.t;
+      // Half a cycle, so half the detector's band either side of it.
+      if(!(sec > 0) || sec*2 < this.MIN_PERIOD || sec*2 > this.MAX_PERIOD) continue;
+      stroke.push({t0:a.t, t1:b.t, mid:(a.t+b.t)/2, kind:a.kind,
+                   sec:Math.max(sec - heldIn(a.t, b.t), 0), span:sec});
+    }
+    // Trough to trough, which is one whole breath: up, over, down and the pause
+    // at the bottom. The turning points alternate, so i, i+1, i+2 is one cycle.
+    for(let i=0;i+2<tp.length;i++){
+      if(tp[i].kind !== 0) continue;
+      const sec = tp[i+2].t - tp[i].t;
+      if(sec < this.MIN_PERIOD || sec > this.MAX_PERIOD) continue;
+      cycle.push({t0:tp[i].t, t1:tp[i+2].t, mid:(tp[i].t+tp[i+2].t)/2, sec:sec, bpm:60/sec});
+    }
+
+    this.seg = {turn:tp, hold:hold, stroke:stroke, cycle:cycle};
+    return this.seg;
+  },
+
+  /** Everything the numbers under the graph report, for one stretch of it.
+      A stroke, hold or cycle belongs to the window if its middle does, so
+      nothing is counted twice and nothing is cut in half at the edge. */
+  windowStats(t0, t1){
+    const G = this.seg || {hold:[], stroke:[], cycle:[]};
+    const inW = x => x.mid >= t0 && x.mid <= t1;
+    const cyc = G.cycle.filter(inW);
+    /* The four parts are seconds per *breath*, not per stroke and not per
+       pause, so that they add up to one cycle and the ratio means something.
+       Averaging the pauses over the pauses instead gives the length of a pause
+       when there was one, which is a different and much larger number: asleep
+       this user holds at the top of maybe one breath in four, and dividing by
+       the holds reported a 6.4 s breath in a stretch whose cycles are 3.3 s
+       long. Dividing by the breaths says 0.35 s, which is what an average
+       breath there actually contains. */
+    let inh = 0, exh = 0, top = 0, bot = 0, longest = 0, heldSec = 0;
+    for(let i=0;i<G.stroke.length;i++){
+      const s = G.stroke[i]; if(!inW(s)) continue;
+      if(s.kind) exh += s.sec; else inh += s.sec;
+    }
+    for(let i=0;i<G.hold.length;i++){
+      const hd = G.hold[i]; if(!inW(hd)) continue;
+      if(hd.kind === 1) top += hd.sec; else bot += hd.sec;
+      heldSec += hd.sec;
+      if(hd.sec > longest) longest = hd.sec;
+    }
+    const per = cyc.length || 0;
+
+    /* Rate, weighted by how long each breath lasted rather than by how many
+       there were. A stretch that spends four minutes at 3 a minute and one
+       minute at 18 was mostly at 3, and counting breaths says the opposite —
+       eighteen of them against twelve. The weighting also makes the mean exact
+       rather than merely fairer: sum(bpm*sec)/sum(sec) is 60*breaths/seconds,
+       which is the number you would get by dividing one by the other. */
+    const byRate = cyc.slice().sort((a,b)=>a.bpm-b.bpm);
+    let span = 0;
+    for(let i=0;i<byRate.length;i++) span += byRate[i].sec;
+    const wpct = p => {
+      if(!byRate.length) return 0;
+      let run = 0;
+      for(let i=0;i<byRate.length;i++){
+        run += byRate[i].sec;
+        if(run >= span*p) return byRate[i].bpm;
+      }
+      return byRate[byRate.length-1].bpm;
+    };
+    const each = v => per ? v/per : 0;
+
+    return {
+      from:t0, to:t1, sec:Math.max(t1-t0, 0),
+      breaths:cyc.length, cycles:cyc,
+      /* The histogram's own axis is the 2nd and 98th percentile, not the
+         slowest and fastest breath in the stretch. One mis-segmented cycle at
+         twenty a minute inside twenty minutes of breathing at two stretched
+         the axis to 0.4–20.5 and squeezed every real breath into the first
+         eighth of the picture. tools/onset.mjs learned the same lesson about
+         its own thresholds; this is that rule applied to a chart. */
+      bpm:{ avg: span > 0 ? 60*byRate.length/span : 0,
+            p50: wpct(0.5), p95: wpct(0.95),
+            lo: wpct(0.02), hi: wpct(0.98) },
+      inhale:each(inh), exhale:each(exh), top:each(top), bottom:each(bot),
+      longest:longest,
+      held: this.sig.hasRest && t1 > t0 ? heldSec/(t1-t0) : null,
+      hr:this.hrIn(t0, t1)
+    };
+  },
+
+  /** Median of the recovered heart rate over a window, ignoring the points the
+      estimator declined — see CLAUDE.md 4a2 for why a declined point must never
+      be filled in. Returns 0 when there is nothing it was sure enough about. */
+  hrIn(t0, t1){
+    const H = this.hr;
+    if(!H || !H.n) return 0;
+    const v = [];
+    for(let i=0;i<H.n;i++){
+      if(H.t[i] < t0 || H.t[i] > t1) continue;
+      if(H.bpm[i] > 0 && H.conf[i] >= HR.MIN_CONF) v.push(H.bpm[i]);
+    }
+    if(!v.length) return 0;
+    v.sort((a,b)=>a-b);
+    return v[v.length>>1];
   },
 
   calEnd(){
     const c = this.session && this.session.calibration;
     return (c && c.endSec>0) ? c.endSec : 0;
+  },
+
+  /** How many stored samples fall inside a window. */
+  spanSamples(t0, t1){
+    if(!this.sig.n) return 0;
+    return Math.max(this.idxAt(t1) - this.idxAt(t0), 0);
   },
 
   idxAt(t){
@@ -544,8 +935,14 @@ export const Review = {
 
   /* ---------- drawing ---------- */
 
+  /* The numbers under the graph are measured over the slice the fine lane is
+     showing, so a pan or a zoom re-reads them. renderStats() only writes text
+     into cells that already exist — rebuilding the grid inside a pinch would
+     churn a dozen elements a frame for no visible gain. */
   redraw(){
-    if(this.screen==='info'){ this.drawOverview(); this.drawFine(); this.readout(); }
+    if(this.screen!=='info') return;
+    this.drawOverview(); this.drawFine(); this.readout();
+    this.renderStats(); this.drawDist();
   },
 
   ground(ctx,w,h){
@@ -676,7 +1073,12 @@ export const Review = {
     ctx.globalAlpha=1;
 
     // seconds grid
-    const stepFor = sp => sp<=10?1 : sp<=30?5 : sp<=120?10 : sp<=420?30 : 60;
+    /* Aim for six or eight labels whatever the zoom. It stopped at a minute,
+       which is right down to about a seven-minute window and draws sixty-three
+       overlapping stamps across an hour — the screen opens on the whole
+       recording now, so that was the first thing on it. */
+    const stepFor = sp => sp<=10?1 : sp<=30?5 : sp<=120?10 : sp<=420?30
+                        : sp<=1200?60 : sp<=2400?300 : sp<=7200?600 : 1800;
     const step = stepFor(t1-t0);
     ctx.strokeStyle=K.mute; ctx.fillStyle=K.mute;
     ctx.font='9px ui-monospace, monospace'; ctx.textAlign='center';
@@ -696,8 +1098,23 @@ export const Review = {
 
     if(this.sig.n){
       this.held(ctx,w,h,t0,t1);
-      ctx.strokeStyle=K.you; ctx.lineWidth=1.9;
-      this.poly(ctx,w,h,t0,t1,'s',pad);
+      /* Zoomed out, the lane holds more samples than it has pixels, and a
+         polyline through them draws whichever sample happened to land on each
+         column — a moiré that changes as you pan. Past two samples a pixel the
+         min/max envelope the strip uses is the honest picture; inside that a
+         polyline is the waveform itself. The screen opens zoomed out now, so
+         this is the first thing anyone sees. */
+      const perPx = this.spanSamples(t0,t1)/Math.max(w,1);
+      if(perPx > 2){
+        // Same weight the strip gives it: a filled envelope at full strength
+        // reads as a block rather than as a session.
+        ctx.fillStyle = K.you; ctx.globalAlpha = 0.42;
+        this.band(ctx,w,h,t0,t1,'s',pad);
+        ctx.globalAlpha = 1;
+      }else{
+        ctx.strokeStyle=K.you; ctx.lineWidth=1.9;
+        this.poly(ctx,w,h,t0,t1,'s',pad);
+      }
     }
     this.hrLine(ctx,w,h,t0,t1,pad);
     this.playMark(ctx,w,h,(this.det.play-t0)/(t1-t0)*w,true);
@@ -900,7 +1317,7 @@ export const Review = {
 
   setPlay(t){
     this.det.play = clamp(t, 0, Math.max(this.det.dur,0));
-    if(this.screen==='info'){ this.drawOverview(); this.drawFine(); this.readout(); }
+    this.redraw();
   },
 
   /** The lane is a slider to a screen reader, and the only place the current

@@ -282,13 +282,27 @@
                 aria-valuemin="0" aria-valuenow="0" aria-valuetext="0:00"></canvas>
       </div>
 
-      <p class="rev-cap" id="revCap" data-t="rev.cap">The upper strip is the whole session: how
-         deep each breath was, and the line through it is your rate. Pinch the lane below to
-         zoom into it.</p>
+      <p class="rev-cap" id="revCap" data-t="rev.cap">Pinch to zoom</p>
 
       <p class="rev-flag hidden" id="revFlag"></p>
 
       <div class="readout rev-grid" id="revGrid"></div>
+
+      <!-- Every number below the graph is measured over the slice the fine
+           lane is showing, so the picture and the figures are the same claim.
+           The heading says which stretch that is. -->
+      <div class="rev-dist" id="revDist">
+        <div class="rev-sub" id="revDistHead" data-t="rev.dist">Breathing rate</div>
+        <canvas class="dist" id="revDistCv"
+                role="img" aria-label="Distribution of breathing rate"></canvas>
+        <div class="rev-legend" id="revDistKey"></div>
+      </div>
+
+      <div class="rev-phase" id="revPhase">
+        <div class="rev-sub" data-t="rev.phase">One breath, in four parts</div>
+        <div class="readout rev-quad" id="revQuad"></div>
+        <div class="rev-ratio" id="revRatio"></div>
+      </div>
 
       <div class="rev-acts">
         <button type="button" class="ghost rowbtn" id="revExport" data-t="rev.export">Export</button>

@@ -809,8 +809,18 @@ export const Recorder = {
 
   build(){
     const m = this.m, d = this.d;
-    const durationSec = m.n ? m.t[m.n-1]/1000 : (d.n ? d.t[d.n-1]/1000 : 0);
-    const hz = durationSec > 1 ? m.n/durationSec : 0;
+    const mSec = m.n ? m.t[m.n-1]/1000 : 0;
+    const dSec = d.n ? d.t[d.n-1]/1000 : 0;
+    /* Past the 45-minute cap the motion channel stops growing while the derived
+       channel runs on for another three quarters of an hour, so the last motion
+       sample is no longer the end of the session. Reading the length off motion
+       alone reported 45:00 for a session that ran 63 — and the review screen
+       clamps its time axis to durationSec, so the last eighteen minutes of a
+       recording that was on disk could not be scrolled to. Take the later of
+       the two. `hz` still divides by the motion span, because that is the span
+       those samples actually cover. */
+    const durationSec = Math.max(mSec, dSec);
+    const hz = mSec > 1 ? m.n/mSec : 0;
 
     const cal = calFromEvents(this.events);
     const app = (this.meta && this.meta.app) || {};

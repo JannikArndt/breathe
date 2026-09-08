@@ -542,6 +542,52 @@ export const Store = {
     });
   },
 
+  /* ---------- import ----------
+     The other direction of the same contract: a `breathe-session/1` file, or
+     the `breathe-sessions/1` bundle "Export all" writes, read back into this
+     device's store. It exists so a session recorded on a phone can be looked
+     at on a desktop, where the tools are.
+
+     Nothing here fetches anything. The caller has already read a file the user
+     picked, and put() is the same path Recorder uses — so an imported session
+     is indistinguishable from a recorded one, id included. Importing the same
+     file twice therefore overwrites rather than duplicating.
+
+     @param text  the file's text, or an already-parsed object
+     @returns Promise<{added, failed, error}> — never rejects. */
+  importJson(text){
+    const self = this;
+    let doc;
+    try{ doc = (typeof text === 'string') ? JSON.parse(text) : text; }
+    catch(e){ return Promise.resolve({added:0, failed:0, error:'not-json'}); }
+
+    const list = this.sessionsIn(doc);
+    if(!list.length) return Promise.resolve({added:0, failed:0, error:'not-a-recording'});
+
+    const out = {added:0, failed:0, error:null};
+    let chain = Promise.resolve();
+    list.forEach(function(s){
+      chain = chain.then(function(){
+        if(!s || !s.id){ out.failed++; return; }
+        return self.put(s).then(function(ok){
+          if(ok) out.added++; else { out.failed++; out.error = out.error || self.lastError; }
+        }, function(err){
+          out.failed++; out.error = out.error || ((err && err.name) || 'write failed');
+        });
+      });
+    });
+    return chain.then(function(){ return out; });
+  },
+
+  /** One export file or a bundle of them, as a flat list. Anything else is
+      not a recording and gives back nothing — a JSON file that happens to
+      parse must not be written into the store. */
+  sessionsIn(doc){
+    if(!doc || typeof doc !== 'object') return [];
+    if(Array.isArray(doc.sessions)) return doc.sessions.filter(function(s){ return s && s.id; });
+    return (doc.id && (doc.motion || doc.derived)) ? [doc] : [];
+  },
+
   exportName(session){
     // 20260827T180411Z-a3f1 -> breathe-20260827-1804.json
     const id = String(session.id || '');

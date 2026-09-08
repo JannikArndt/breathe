@@ -143,6 +143,7 @@ const STRINGS = {
     'rev.hr.est':     'gesch. /min',
     'rev.export':     'Exportieren',
     'rev.exportall':  'Alle exportieren',
+    'rev.import':     'Importieren',
     'rev.delete':     'Diese Aufnahme löschen',
     'rev.delete2':    'Wirklich löschen',
     'rev.none':       'Es wurde nichts aufgenommen, deshalb gibt es hier nichts zu sehen.',

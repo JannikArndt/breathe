@@ -693,6 +693,23 @@ if(metas.length){
   check('the export carries the rows, not just the header',
         !!parsed && parsed.motion && parsed.motion.rows.length > 1000,
         parsed && parsed.motion ? parsed.motion.rows.length + ' rows' : 'none');
+
+  // The other direction: that file, read back in. This is what lets a session
+  // recorded on a phone be opened on a desktop, so the round trip has to be
+  // lossless in the one thing that matters — the raw motion channel.
+  const copy = JSON.parse(json); copy.id = 'imported-1';
+  const res = await Store.importJson(JSON.stringify(copy));
+  check('an exported file imports back into the store',
+        res.added === 1 && res.failed === 0, JSON.stringify(res));
+  const back = await Store.get('imported-1', {motion:true});
+  check('and the imported recording carries its raw motion',
+        !!back && back.motion.rows.length === parsed.motion.rows.length,
+        back ? back.motion.rows.length + ' rows' : 'none');
+  check('a JSON file that is not a recording is refused',
+        (await Store.importJson('{"hello":1}')).error === 'not-a-recording');
+  check('and so is a file that is not JSON',
+        (await Store.importJson('nope')).error === 'not-json');
+  await Store.delete('imported-1');
 }
 
 $('revBack').click();

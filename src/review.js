@@ -127,6 +127,8 @@ export const Review = {
     d.exportBtn.addEventListener('click', ()=>this.exportOne(this.session));
     d.deleteBtn.addEventListener('click', ()=>this.remove());
     $('revExportAll').addEventListener('click', ()=>this.exportAll());
+    $('revImport').addEventListener('click', ()=>$('revImportFile').click());
+    $('revImportFile').addEventListener('change', e=>this.importFiles(e.target.files));
 
     this.bindLane(d.over, 'over');
     this.bindLane(d.fine, 'fine');
@@ -1396,6 +1398,43 @@ export const Review = {
       return;
     }
     this.saveBlob(Store.exportName(session), blob);
+  },
+
+  /* ---------- import ----------
+     A recording made on the phone, opened on a desktop. The file never leaves
+     the machine: it is read with FileReader and handed to Store.put(), which
+     is the same path a live recording takes. */
+
+  async importFiles(files){
+    const list = Array.from(files || []);
+    $('revImportFile').value = '';                 // so the same file can be picked twice
+    if(!list.length) return;
+    if(typeof Store === 'undefined' || Store.available === false){
+      notice('Nothing was imported','This browser is blocking local storage, so a recording cannot be kept here.',6000);
+      return;
+    }
+    $('revImport').disabled = true;
+    let added = 0, failed = 0, why = null;
+    for(const file of list){
+      let res;
+      try{ res = await Store.importJson(await file.text()); }
+      catch(err){ res = {added:0, failed:1, error:(err && err.name) || 'unreadable'}; }
+      added += res.added; failed += res.failed || 0;
+      if(!res.added && !res.failed) failed++;       // a file with nothing in it is a failure
+      why = why || res.error;
+    }
+    $('revImport').disabled = false;
+    if(added){
+      notice('Imported', added + (added===1 ? ' recording added' : ' recordings added') +
+             (failed ? ', ' + failed + ' could not be read' : '') + '.', 5000);
+      this.metas = await Store.list();
+      this.renderList();
+      this.refreshCount();
+    }else{
+      notice('Nothing was imported',
+        'Pick a file this app exported — one recording or an "Export all" bundle.' +
+        (why ? ' (' + why + ')' : ''), 7000);
+    }
   },
 
   async exportAll(){

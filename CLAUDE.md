@@ -821,7 +821,7 @@ regression.
 
 `tools/smoke.mjs` runs the whole app in Node — `src/main.js` and everything it pulls in —
 against a stub DOM built from `index.html`, a stub Web Audio and an in-memory IndexedDB,
-all in `tools/stub/`. A hundred and seventy-one checks: it opens each panel, drives the update
+all in `tools/stub/`. A hundred and seventy-five checks: it opens each panel, drives the update
 flow (check, nothing new, a version arriving, a failed install, the handover), works the
 header's sound switch both ways, slows the wave with the pace slider and checks it really
 runs slower, turns on Demo mode, taps Start, watches the tracker stay silent until the phone
@@ -1000,7 +1000,7 @@ Do not split them again to give a new feature somewhere to sit.
 Two rules hold everywhere, and the previous layout broke both:
 
 **Back is top-left, and it is the only way out.** There are no Done or Close buttons. The
-bottom bar carries actions only — Begin, End, Export all. Before this, Back was at the top
+bottom bar carries actions only — Begin, End, Export all and Import. Before this, Back was at the top
 and Done at the bottom did the same job, on different screens.
 
 **The session screen has no bottom bar at all**, and that is the point. Export and Delete
@@ -1025,6 +1025,19 @@ nothing anyone has recorded loses a field. They are simply never edited again, a
 `Store` has no metadata-edit path any more: `setTrim`, `addLabel`, `removeLabel`,
 `setLabels` and `_editMeta` are deleted. **Do not add a labelling mechanism back without a
 measurement showing the tracker cannot find the same thing itself.**
+
+**Import is the export contract read backwards, and it is the only way into the store
+that is not `Recorder`.** `Store.importJson()` takes the text of a `breathe-session/1`
+file or a `breathe-sessions/1` bundle and hands each session to `Store.put()` — the same
+path a live recording takes, id included, so importing the same file twice overwrites
+rather than duplicating. `Store.sessionsIn()` is what decides a parsed object is a
+recording at all; a JSON file that merely parses must never be written to the store.
+It exists so a session recorded on a phone can be opened on a desktop, where the tools
+in `tools/` are. It does not weaken §9: the file is read with `FileReader` off the local
+disk, nothing fetches and nothing is uploaded. **It also does not weaken the rule that
+nothing but `Recorder` writes a sample channel** — `_write` still refuses a put that
+would replace a non-empty motion channel with an empty one, so an import carrying no
+motion cannot erase a recording that has some.
 
 **One delete, and where it lands is the whole difference.** There were two — a Discard on
 the summary for a session under 30 seconds, and a Delete on the detail screen — because

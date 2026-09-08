@@ -36,6 +36,10 @@ function touched(){
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.22.0', date:'2026-09-08', notes:[
+    'Recordings can now be brought in from a file. Open Recordings, tap Import and pick something this app exported — one recording or an "Export all" bundle — and it joins the list as if it had been recorded here. That is how a session recorded on the phone gets onto a computer to be looked at properly. The file is read on the device and nothing is sent anywhere, same as export.',
+    'Importing the same file twice replaces the recording rather than making a second copy of it.'
+  ]},
   {v:'0.21.0', date:'2026-09-07', notes:[
     'The numbers under a recording now describe the part of it you are looking at. Pinch the lane to pick a stretch and the count, the rate and the timings all follow it. A session where you breathed slowly for twenty minutes and then something else happened for forty used to average the two into one number that was true of neither half.',
     'A breath is shown in its four parts: in, the pause at the top, out, and the pause at the bottom — with the ratio between them, so a steady rhythm reads as something like 6 : 5 : 6 : 7. The four add up to one breath.',

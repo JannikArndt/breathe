@@ -325,6 +325,13 @@
          look, not somewhere to press. -->
     <div class="bar hidden" id="revListBar">
       <button id="revExportAll" data-t="rev.exportall">Export all</button>
+      <button id="revImport" class="ghost" data-t="rev.import">Import</button>
+      <!-- The picker is hidden because a bare file input cannot be styled to
+           match the bar; the button clicks it. Nothing is uploaded — the file
+           is read with FileReader and written straight to this device's own
+           store. -->
+      <input type="file" id="revImportFile" class="hidden"
+             accept="application/json,.json" multiple>
     </div>
   </div>
 

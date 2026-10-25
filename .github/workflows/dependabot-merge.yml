@@ -1,0 +1,35 @@
+# Dependabot's pull requests merge themselves once the same checks a push
+# runs have passed, then deploy. Template from the app-conventions skill.
+#
+# A merge made with the workflow token does not trigger push workflows, so
+# the deploy is started explicitly (workflow_dispatch is an event that token
+# may start). Majors are ignored in dependabot.yml, so every PR that reaches
+# this is a pin, digest, minor or patch bump.
+name: Dependabot
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: node tools/verify.mjs
+      - name: Merge and deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          DEPLOY_WORKFLOW: "" # Pages serves the branch: a merge publishes by itself
+        run: |
+          gh pr merge "$PR_URL" --squash --delete-branch
+          if [ -n "$DEPLOY_WORKFLOW" ]; then gh workflow run "$DEPLOY_WORKFLOW" --ref main -R "$GITHUB_REPOSITORY"; fi

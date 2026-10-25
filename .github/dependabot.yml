@@ -1,0 +1,17 @@
+# Weekly pin bumps for the GitHub Actions in .github/workflows. There is no
+# package.json or Dockerfile here (CLAUDE.md §2), so that is the only
+# ecosystem. Majors are never proposed: a new Node LTS line is moved on
+# purpose, by hand. Every PR this opens merges itself once tools/verify.mjs
+# passes (.github/workflows/dependabot-merge.yml).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

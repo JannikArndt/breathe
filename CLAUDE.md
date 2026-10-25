@@ -40,6 +40,9 @@ CLAUDE.md               this file
 recordings/             real sessions, and the evidence every §4 constant rests on
 recordings/CLAUDE.md    what each recording proved; read before tuning the chain
 recordings/README.md    how to get a session off a phone and into the repository
+tools/verify.mjs        everything CI runs, one verdict line: VERIFY: PASS|FAIL
+tools/live.mjs          is this tree's VERSION what Pages serves? LIVE: <VERSION>
+tools/deploy-contract.test.mjs  workflows pinned and bounded, docs name the loop
 tools/dsp-harness.mjs   headless Node test for the signal chain
 tools/smoke.mjs         runs the whole app in Node against stub DOM/audio/IndexedDB
 tools/stub/             the DOM, Web Audio and IndexedDB those tests run against
@@ -763,6 +766,13 @@ heartbeat.** Say so wherever the number is discussed.
 
 ## 6. Testing
 
+**The gate is `node tools/verify.mjs`.** It runs every step CI runs (both suites below,
+`--android`, onset, replay and analyze over real recordings, and the workflow contract),
+runs them all even after a failure, prints only what failed, and ends on `VERIFY: PASS` or
+`VERIFY: FAIL (<steps>)`. CI's test job calls that same file, so the two cannot drift;
+`node tools/verify.mjs smoke` runs one step. There is no `package.json` (§2), so there is
+no `npm run verify`.
+
 Two suites. Run both.
 
 ```bash
@@ -821,7 +831,7 @@ regression.
 
 `tools/smoke.mjs` runs the whole app in Node — `src/main.js` and everything it pulls in —
 against a stub DOM built from `index.html`, a stub Web Audio and an in-memory IndexedDB,
-all in `tools/stub/`. A hundred and seventy-five checks: it opens each panel, drives the update
+all in `tools/stub/`. Around a hundred and eighty checks: it opens each panel, drives the update
 flow (check, nothing new, a version arriving, a failed install, the handover), works the
 header's sound switch both ways, slows the wave with the pace slider and checks it really
 runs slower, turns on Demo mode, taps Start, watches the tracker stay silent until the phone
@@ -1148,7 +1158,10 @@ and iOS goes on serving the copy it has, including in answer to `location.reload
 The service worker holds the whole app as one cache named for `VERSION`. A new worker
 precaches the new set and then sits in `waiting` — `install` deliberately does **not**
 call `skipWaiting()`, because swapping the code out from under a running session is worse
-than being a version behind. `Updater` in `src/main.js` notices, says so, and offers the
+than being a version behind. `Updater.refresh()` asks for a new worker on open and on every
+return to the foreground (an installed copy otherwise waits for the browser's own schedule,
+which can be days), silently, and `tools/smoke.mjs` holds it; what it finds waits until End
+mid-session like any other arrival. `Updater` in `src/main.js` notices, says so, and offers the
 install; the install posts `skip-waiting`, and the resulting `controllerchange` reloads
 once. Cache-first *inside a version* is what makes this safe: a fresh `index.html` can
 never end up driving last week's modules, because both come from the same cache and that
@@ -1225,10 +1238,21 @@ The app is a directory of static files with nothing to compile, so branch publis
 the simplest correct option — **no Actions workflow deploys this app, and none should**
 unless a build step appears. What GitHub Pages serves is what is committed.
 
-`.github/workflows/test.yml` is not a deploy workflow. It runs `node tools/dsp-harness.mjs`
-and `node tools/smoke.mjs` on a push, plus `tools/onset.mjs` over a real recording, and it
-fails the build if a `package.json`, a lockfile or a `node_modules` appears — the one
-constraint a CI job can usefully hold that a human reviewer forgets.
+`.github/workflows/test.yml` is not a deploy workflow. Its `test` job fails the build if a
+`package.json`, a lockfile or a `node_modules` appears — the one constraint a CI job can
+usefully hold that a human reviewer forgets — and then runs `node tools/verify.mjs`. On a
+push its `live` job waits (up to ten minutes, Pages' CDN) until the served
+`https://jannikarndt.github.io/breathe/sw.js` carries the committed `VERSION`; locally
+`node tools/live.mjs` asks once and `node tools/live.mjs --wait` waits, ending on
+`LIVE: <VERSION>` or `NOT LIVE: want …`. Actions are pinned to commit SHAs, workflows carry
+`permissions`, `concurrency` and a timeout per job, and Node is 24; `tools/deploy-contract.test.mjs`
+holds all of that. Dependabot bumps the pins weekly (majors ignored) and
+`dependabot-merge.yml` merges its pull requests once `tools/verify.mjs` passes; no deploy is
+started, because a push to `main` publishes by itself.
+
+**The ship loop:** `node tools/verify.mjs` → commit and push `main` → `node tools/live.mjs --wait`
+(in the background). A change is not done until that says `LIVE:`; after one cold start on
+the phone the version stamp under Mehr/Changes should match.
 
 1. Settings → Pages → Source: **Deploy from a branch** → pick the branch and the root
    folder. Everything the app needs is at the repository root.
@@ -1245,7 +1269,7 @@ HTTPS is mandatory, not cosmetic: `devicemotion`, `requestPermission()` and
 `serviceWorker.register()` are all secure-context only (see the MDN links in §2 and §4).
 `*.github.io` is HTTPS by default.
 
-A deploy is only finished when the version stamp on the phone changes. Because the worker
+A deploy is only finished when `node tools/live.mjs` says `LIVE:` and, on the phone, the version stamp changes. Because the worker
 serves cache-first, the first load after a push still shows the old version and then
 offers the new one — that is the design, not a failed deploy.
 

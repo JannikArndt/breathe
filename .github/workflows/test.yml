@@ -1,55 +1,58 @@
-# Runs the two test suites on every push and pull request.
+# Tests on every push and pull request, then (push only) wait until GitHub
+# Pages is serving this commit's sw.js VERSION.
 #
-# This is NOT a build step and must not become one: GitHub Pages publishes the
-# repository root exactly as it is committed, with nothing generated. See §8 of
-# CLAUDE.md. The only thing here is `node tools/*.mjs`, which is what a
-# contributor runs locally anyway — the point is that a push that breaks the
-# wiring says so, rather than waiting to be found on a phone.
+# This is NOT a build or deploy step and must not become one: GitHub Pages
+# publishes the repository root exactly as it is committed, with nothing
+# generated (CLAUDE.md §8). `node tools/verify.mjs` is what a contributor runs
+# locally; CI calls the same file so the two cannot drift.
 name: tests
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: 24
 
       # No install step: the app and its tools have no dependencies, which is
       # the constraint this job exists partly to keep honest.
       - name: no dependencies crept in
         run: |
           if [ -f package.json ] || [ -f package-lock.json ] || [ -d node_modules ]; then
-            echo "This project has no dependencies and no build step (CLAUDE.md §2)."
+            echo "::error::This project has no dependencies and no build step (CLAUDE.md §2)."
             exit 1
           fi
 
-      - name: the signal chain
-        run: node tools/dsp-harness.mjs
+      # The signal chain, the whole app as iOS and as Android see it, onset
+      # and replay against real recordings, and the workflow contract.
+      - run: node tools/verify.mjs
 
-      - name: the whole app, as iOS sees it
-        run: node tools/smoke.mjs
-
-      # Android Chrome has no DeviceMotionEvent.requestPermission, so the app
-      # takes a different branch on the path that decides whether it works at
-      # all. Every check has to pass on both.
-      - name: the whole app, as Android sees it
-        run: node tools/smoke.mjs --android
-
-      - name: onset against a real recording
-        run: node tools/onset.mjs recordings/breathe-20260830T223632.json
-
-      # The plot, not just the header. replay.mjs threw on its last line for
-      # weeks because reading the top of its output looks like it working.
-      - name: replay a real recording, all the way to the bottom
-        run: |
-          node tools/replay.mjs recordings/breathe-20260830T223632.json
-          node tools/analyze.mjs recordings/breathe-20260831-0853.json
-          node tools/analyze.mjs recordings/breathe-20260829T115717-bogus.json
+  live:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # Pages publishes by itself after the push; its CDN may take ~10 minutes.
+      - name: Confirm this commit is live
+        run: node tools/live.mjs --wait

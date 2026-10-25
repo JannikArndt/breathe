@@ -357,13 +357,38 @@ check('the worker precaches every file the app is made of', missing.length === 0
 const phantom = shell.filter(f => f && !existsSync(resolve(root, f)));
 check('the worker precaches nothing that is not there', phantom.length === 0, phantom.join(' '));
 
+// Rules from CLAUDE.md that nothing else holds.
+const installHandler = swText.match(/addEventListener\('install'[\s\S]*?\n\}\);/)[0];
+check('the worker never skips waiting on its own',
+      !/skipWaiting/.test(installHandler.replace(/\/\/.*$/gm, '')));
+check('GitHub Pages is told not to run Jekyll', existsSync(resolve(root, '.nojekyll')));
+check('no package.json, lockfile or node_modules crept in',
+      !['package.json', 'package-lock.json', 'node_modules'].some(f => existsSync(resolve(root, f))));
+const srcWithFetch = readdirSync(resolve(root, 'src'))
+  .filter(f => /\bfetch\s*\(/.test(readFileSync(resolve(root, 'src', f), 'utf8')));
+check('nothing under src/ calls fetch', srcWithFetch.length === 0, srcWithFetch.join(' '));
+
 await settle();
 $('buildBtn').click();
 check('with a worker registered the row offers a check, not a blind reload',
       $('reloadBtn').textContent === 'Check', JSON.stringify($('reloadBtn').textContent));
 
+// Left to its own schedule an installed copy can go days without looking for a
+// new worker, so the page asks on open and on every return to the foreground.
+check('opening the app asks the server for a new version', swRegistration.updates === 1,
+      String(swRegistration.updates));
+document.visibilityState = 'hidden';
+document.dispatch('visibilitychange', {});
+check('going to the background asks nothing', swRegistration.updates === 1, String(swRegistration.updates));
+document.visibilityState = 'visible';
+document.dispatch('visibilitychange', {});
+check('coming back to the foreground asks again', swRegistration.updates === 2,
+      String(swRegistration.updates));
+check('and the unasked check says nothing', $('noticeTitle').textContent !== 'Up to date',
+      JSON.stringify($('noticeTitle').textContent));
+
 $('reloadBtn').click();
-check('the button asks the server', swRegistration.updates === 1, String(swRegistration.updates));
+check('the button asks the server', swRegistration.updates === 3, String(swRegistration.updates));
 await new Promise(r => setTimeout(r, 1400));
 check('nothing new leaves it saying so', $('noticeTitle').textContent === 'Up to date',
       JSON.stringify($('noticeTitle').textContent));

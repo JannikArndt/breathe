@@ -36,6 +36,9 @@ function touched(){
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.22.1', date:'2026-10-25', notes:[
+    'A new version now turns up by itself. The app asks for one when you open it and every time you come back to it, instead of waiting for the phone to get round to it — added to the Home Screen it could go days without noticing. If one arrives while you are breathing, it waits until you press End.'
+  ]},
   {v:'0.22.0', date:'2026-09-08', notes:[
     'Recordings can now be brought in from a file. Open Recordings, tap Import and pick something this app exported — one recording or an "Export all" bundle — and it joins the list as if it had been recorded here. That is how a session recorded on the phone gets onto a computer to be looked at properly. The file is read on the device and nothing is sent anywhere, same as export.',
     'Importing the same file twice replaces the recording rather than making a second copy of it.'
@@ -194,6 +197,7 @@ export const Updater = {
     navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'}).then(reg=>{
       this.reg = reg;
       if(reg.waiting) this.arrived(reg.waiting);
+      this.refresh();
       reg.addEventListener('updatefound', ()=>{
         const sw = reg.installing;
         if(!sw) return;
@@ -221,11 +225,27 @@ export const Updater = {
     //
     // The other case is the handover we asked for, which does want the reload:
     // the page is running code the new cache no longer holds.
+    // A copy opened from the Home Screen rarely does the navigation that makes
+    // a browser look for a new worker, so left to its own schedule it can go
+    // days without finding one. Asking on open (above) and on every return to
+    // the foreground is what makes an update turn up. It is only a check: what
+    // it finds goes through arrived(), which holds it until End mid-session.
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState === 'visible') this.refresh();
+    });
+
     navigator.serviceWorker.addEventListener('controllerchange', ()=>{
       if(!this.handingOver) return;
       this.handingOver = false;
       location.reload();
     });
+  },
+
+  /** A check nobody asked for, so it says nothing: no "Up to date", no error
+      when offline. The Check button is the one that reports. */
+  refresh(){
+    if(!this.reg || this.state === 'checking' || this.state === 'ready') return;
+    this.reg.update().catch(()=>{ /* offline; the next return tries again */ });
   },
 
   arrived(sw){

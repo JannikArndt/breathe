@@ -36,6 +36,9 @@ function touched(){
     notes for someone who has never seen the code — what the sound or the
     screen does differently, never how. */
 const RELEASES = [
+  {v:'0.22.2', date:'2026-10-26', notes:[
+    'The icon on your Home Screen is a proper one now: the same ring on deep teal, filling the whole tile, and the name under it is "breathe". Added to the Home Screen before, it could show up with white corners. To see the new one, remove the old icon and add the app again.'
+  ]},
   {v:'0.22.1', date:'2026-10-25', notes:[
     'A new version now turns up by itself. The app asks for one when you open it and every time you come back to it, instead of waiting for the phone to get round to it — added to the Home Screen it could go days without noticing. If one arrives while you are breathing, it waits until you press End.'
   ]},

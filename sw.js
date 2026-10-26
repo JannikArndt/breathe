@@ -21,7 +21,7 @@
    keep them in step, so tools/smoke.mjs asserts it, along with the precache
    list covering everything in src/. */
 
-const VERSION = '0.22.1';
+const VERSION = '0.22.2';
 const CACHE = 'breathe-' + VERSION;
 
 /* The whole app, precached as one set. Cache-first inside a version-named
@@ -33,7 +33,11 @@ const SHELL = [
   './index.html',
   './app.css',
   './manifest.webmanifest',
-  './icon.png',
+  './icons/apple-touch-icon.png',
+  './icons/favicon-32.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
   './src/main.js',
   './src/util.js',
   './src/i18n.js',

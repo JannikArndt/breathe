@@ -350,7 +350,8 @@ check('the worker and the app agree on the version', swVersion === appVersion,
       `sw ${swVersion} vs app ${appVersion}`);
 
 const shell = [...swText.matchAll(/'\.\/([^']*)'/g)].map(m => m[1]);
-const onDisk = ['index.html', 'app.css', 'manifest.webmanifest', 'icon.png',
+const onDisk = ['index.html', 'app.css', 'manifest.webmanifest',
+                ...readdirSync(resolve(root, 'icons')).map(f => 'icons/' + f),
                 ...readdirSync(resolve(root, 'src')).map(f => 'src/' + f)];
 const missing = onDisk.filter(f => !shell.includes(f));
 check('the worker precaches every file the app is made of', missing.length === 0, missing.join(' '));

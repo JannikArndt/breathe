@@ -59,3 +59,41 @@ test('CLAUDE.md names the dev-loop commands', () => {
   const claude = read('CLAUDE.md');
   for (const cmd of ['node tools/verify.mjs', 'node tools/live.mjs']) assert.ok(claude.includes(cmd), `CLAUDE.md does not mention ${cmd}`);
 });
+
+// ---- Home Screen checklist (app-conventions: home-screen.md) ----
+const pngSize = (rel) => {
+  const b = readFileSync(join(ROOT, rel));
+  assert.equal(b.subarray(1, 4).toString(), 'PNG', `${rel} is not a PNG`);
+  assert.equal(b[25], 2, `${rel} must be opaque RGB (no alpha channel)`);
+  return `${b.readUInt32BE(16)}x${b.readUInt32BE(20)}`;
+};
+
+test('Home Screen: the head has what iOS needs', () => {
+  const html = read('index.html');
+  assert.match(html, /viewport-fit=cover/);
+  assert.match(html, /name="theme-color"/);
+  assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
+  assert.match(html, /name="mobile-web-app-capable" content="yes"/);
+  assert.match(html, /name="apple-mobile-web-app-status-bar-style"/);
+  assert.match(html, /rel="manifest"/);
+  const title = html.match(/name="apple-mobile-web-app-title" content="([^"]+)"/);
+  assert.ok(title && title[1].length <= 12, 'apple-mobile-web-app-title missing or longer than 12 characters');
+  const touch = html.match(/rel="apple-touch-icon" href="([^"]+)"/);
+  assert.ok(touch && touch[1].endsWith('.png'), 'apple-touch-icon must be a PNG');
+  assert.equal(pngSize(touch[1]), '180x180');
+  const fav = html.match(/rel="icon" href="([^"]+)"/);
+  assert.ok(fav && fav[1].endsWith('.png'), 'favicon must be a PNG');
+  assert.equal(pngSize(fav[1]), '32x32');
+});
+
+test("Home Screen: the manifest's icons exist at their stated size, one maskable, all precached", () => {
+  const m = JSON.parse(read('manifest.webmanifest'));
+  assert.equal(m.display, 'standalone');
+  assert.ok(m.icons.some((i) => i.purpose === 'maskable'), 'no maskable icon');
+  const sw = read('sw.js');
+  for (const i of m.icons) {
+    assert.equal(i.type, 'image/png');
+    assert.equal(pngSize(i.src), i.sizes);
+    assert.ok(sw.includes(`'./${i.src}'`), `${i.src} is not in sw.js SHELL`);
+  }
+});
